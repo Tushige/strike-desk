@@ -16,6 +16,10 @@ describe('client messages', () => {
   it.each([
     [{ t: 'hello', v: 1 }],
     [{ t: 'hello', v: 1, session: 'abc', board: 2508 }],
+    // Another version still parses: the handler compares it and can answer by name.
+    [{ t: 'hello', v: 2 }],
+    [{ t: 'hello', v: 0 }],
+    [{ t: 'hello', v: 1000 }],
     [{ t: 'start', commandId: ID, pace: 1 }],
     [{ t: 'start', commandId: ID, pace: 3 }],
     [{ t: 'start', commandId: ID, pace: 7.5 }],
@@ -33,7 +37,11 @@ describe('client messages', () => {
     ['an unknown key on a command', { ...buy, seed: 1 }],
     ['an unknown key on hello', { t: 'hello', v: 1, admin: true }],
     ['an unknown message', { t: 'restart', commandId: ID }],
-    ['a wrong version', { t: 'hello', v: 2 }],
+    ['a version that is not whole', { t: 'hello', v: 1.5 }],
+    ['a negative version', { t: 'hello', v: -1 }],
+    ['a version past the bound', { t: 'hello', v: 1001 }],
+    ['a version sent as text', { t: 'hello', v: '1' }],
+    ['a hello with no version', { t: 'hello' }],
     ['a bad pace', { t: 'start', commandId: ID, pace: 2 }],
     ['a pace sent as text', { t: 'start', commandId: ID, pace: '3' }],
     ['a short commandId', { ...buy, commandId: 'short' }],
@@ -58,6 +66,7 @@ describe('client messages', () => {
     // The seed is the server's alone: a browser that asks for one must be
     // refused by the contract itself, before any handler sees the message.
     expect(parseClientMessage({ t: 'hello', v: 1, seed: 77 })).toBeNull();
+    expect(parseClientMessage({ t: 'hello', v: 2, seed: 77 })).toBeNull();
     expect(parseClientMessage({ ...buy, seed: 77 })).toBeNull();
     expect(parseClientMessage({ t: 'start', commandId: ID, pace: 1, seed: 77 })).toBeNull();
   });

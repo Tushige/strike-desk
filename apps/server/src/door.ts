@@ -1,5 +1,5 @@
-import type { ServerMessage, StartCommand } from '@strike-desk/shared';
-import { frameFor, handleCommand, parseClientMessage } from '@strike-desk/shared';
+import type { Hello, ServerMessage, StartCommand } from '@strike-desk/shared';
+import { PROTOCOL_VERSION, frameFor, handleCommand, parseClientMessage } from '@strike-desk/shared';
 import type { FrameSocket } from './sampler';
 import type { SessionRegistry } from './sessions';
 
@@ -28,12 +28,34 @@ function answer(connection: Connection, message: ServerMessage): void {
   connection.socket.send(JSON.stringify(message));
 }
 
-function hello(options: DoorOptions, connection: Connection, wantedId: string | undefined): void {
+/**
+ * Every hello gets an explicit answer, decided in this order. A refusal makes
+ * no session, and an error is always sent before the frame that follows it.
+ */
+function hello(options: DoorOptions, connection: Connection, message: Hello): void {
   if (connection.sessionId !== null) {
     answer(connection, { t: 'error', code: 'badMessage' });
     return;
   }
-  const known = wantedId === undefined ? undefined : options.registry.get(wantedId);
+  // Compared here, not in the schema, so that another version can be told
+  // what is wrong instead of being refused as unreadable.
+  if (message.v !== PROTOCOL_VERSION) {
+    answer(connection, { t: 'error', code: 'versionMismatch' });
+    return;
+  }
+  // The stress board size is not taken by this service: refused, not ignored,
+  // so no client can come to rely on sending it.
+  if (message.board !== undefined) {
+    answer(connection, { t: 'error', code: 'badMessage' });
+    return;
+  }
+
+  const known = message.session === undefined ? undefined : options.registry.get(message.session);
+  if (message.session !== undefined && known === undefined) {
+    // The named game is gone. Say so first, then carry on with a new one, so
+    // the client never mistakes the new game's frame for the old game.
+    answer(connection, { t: 'error', code: 'noSession' });
+  }
   const entry = known ?? options.registry.create();
   options.registry.attach(entry.session.id, connection.socket);
   connection.sessionId = entry.session.id;
@@ -73,8 +95,7 @@ export function handleInbound(options: DoorOptions, connection: Connection, text
 
   switch (message.t) {
     case 'hello':
-      // Only the session id is read. The stress board size is not taken here.
-      hello(options, connection, message.session);
+      hello(options, connection, message);
       return;
     case 'start':
       start(options, connection, message);

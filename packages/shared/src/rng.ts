@@ -7,7 +7,15 @@ import { exactLn } from './exact';
  * day and company its own stream.
  */
 
-/** Exclusive upper bound of a master seed: 2^48, exact in a JS number. */
+/**
+ * Upper bound of a master seed, exclusive: 2^48, exact in a JS number. A
+ * valid seed is a whole number from 0 up to, and not including, this value.
+ *
+ * Do not pass this to `crypto.randomInt` to draw a seed. That function caps
+ * the size of its range at 2^48 - 1, one below this bound, and throws when
+ * asked for more. The server draws six random bytes instead and reads them
+ * as one unsigned integer: exactly 48 bits, the whole seed range.
+ */
 export const SEED_LIMIT = 281474976710656;
 
 export type StreamName = 'prices' | 'newsPick' | 'newsWording' | 'newsOutcome' | 'cosmetics';

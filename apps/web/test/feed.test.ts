@@ -274,6 +274,26 @@ describe('the WebSocket feed', () => {
     expect(storage.held.has(SESSION_KEY)).toBe(false);
   });
 
+  it('takes up the new session the server sends after saying the old one is gone', () => {
+    const { feed, sockets, scheduler, storage, events } = harness({ stored: 's-old' });
+    feed.connect();
+    sockets.last().fireOpen();
+    expect(helloTexts(sockets.last().sent)).toEqual([{ t: 'hello', v: PROTOCOL_VERSION, session: 's-old' }]);
+
+    // The order the server answers in: the error first, then the new game's frame.
+    sockets.last().fireMessage(JSON.stringify({ t: 'error', code: 'noSession' }));
+    sockets.last().fireMessage(JSON.stringify(testFrame({ session: 's-new' })));
+
+    expect(storage.held.get(SESSION_KEY)).toBe('s-new');
+    const messages = events.flatMap((event) => (event.type === 'message' ? [event.message.t] : []));
+    expect(messages).toEqual(['error', 'frame']);
+
+    sockets.last().fireClose();
+    scheduler.runNext();
+    sockets.last().fireOpen();
+    expect(helloTexts(sockets.last().sent)).toEqual([{ t: 'hello', v: PROTOCOL_VERSION, session: 's-new' }]);
+  });
+
   it('forgets the stored session once the game is over', () => {
     const { feed, sockets, scheduler, storage } = harness();
     feed.connect();

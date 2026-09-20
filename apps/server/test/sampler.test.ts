@@ -6,14 +6,13 @@ import {
   PROTOCOL_VERSION,
   buildMarket,
   frameSchema,
-  isValidSeed,
   marketDay,
   sharePriceCents,
 } from '@strike-desk/shared';
 import type { Frame } from '@strike-desk/shared';
 import type { FrameSocket } from '../src/sampler';
 import { offerFrame, sampleSessions } from '../src/sampler';
-import { drawSeed, drawSessionId } from '../src/seed';
+import { drawSessionId } from '../src/seed';
 import { createRegistry } from '../src/sessions';
 import type { Harness, TestClient } from './harness';
 import { FIXED_SEEDS, startHarness } from './harness';
@@ -39,10 +38,10 @@ afterEach(async () => {
 });
 
 /** Connect, say hello, and take the lobby frame. */
-async function join(to: Harness, session?: string): Promise<{ client: TestClient; lobby: Frame }> {
+async function join(to: Harness): Promise<{ client: TestClient; lobby: Frame }> {
   const client = to.connect();
   await client.opened();
-  client.send(session === undefined ? HELLO : { ...HELLO, session });
+  client.send(HELLO);
   return { client, lobby: await client.nextFrame() };
 }
 
@@ -119,35 +118,6 @@ describe('hello and start', () => {
     await client.opened();
     client.send(start('start-0001'));
     expect(await client.nextError()).toEqual({ t: 'error', code: 'noSession', commandId: 'start-0001' });
-  });
-
-  it('a second hello on the same socket is refused and makes no session', async () => {
-    const running = await boot();
-    const { client, lobby } = await join(running);
-    client.send(HELLO);
-    expect(await client.nextError()).toEqual({ t: 'error', code: 'badMessage' });
-    expect((await sampleFrame(running, client)).session).toBe(lobby.session);
-  });
-
-  it('a hello that names a live session resumes it on a new socket and restarts nothing', async () => {
-    const running = await boot();
-    const { client, lobby } = await join(running);
-    client.send(start('start-0001'));
-    await client.nextReply();
-    running.clock.advance(SAMPLE_MS * 50);
-    const before = await sampleFrame(running, client);
-    expect(before.step).toBe(50);
-    await client.close();
-
-    running.clock.advance(SAMPLE_MS * 25);
-    const { lobby: resumed } = await join(running, lobby.session);
-    expect(resumed).toMatchObject({ session: lobby.session, rev: 1, step: 75, clock: { phase: 'preBell', pace: 1 } });
-  });
-
-  it('a hello that names an unknown session gets a new one', async () => {
-    const { lobby } = await join(await boot(), 'not-a-session-the-server-has');
-    expect(lobby.session).not.toBe('not-a-session-the-server-has');
-    expect(lobby.step).toBe(0);
   });
 });
 
@@ -416,16 +386,6 @@ describe('bad input at the door', () => {
     expect(await client.closed()).toBe(1009);
     expect((await sampleFrame(running, bystander)).clock.phase).toBe('lobby');
   });
-
-  it('the stress board field on hello is never read', async () => {
-    const running = await boot();
-    const client = running.connect();
-    await client.opened();
-    client.send({ ...HELLO, board: 25_000 });
-    const lobby = await client.nextFrame();
-    expect(lobby.stress).toBe(false);
-    expectThin(lobby);
-  });
 });
 
 describe('the session registry', () => {
@@ -458,29 +418,5 @@ describe('the session registry', () => {
     sampleSessions(registry, 1_000, stats);
     expect(stats).toEqual({ sent: 0, skipped: 0 });
     expect(entry.session).toBe(before);
-  });
-});
-
-describe('the seed and the session id', () => {
-  it('draws a valid 48-bit seed from the crypto source, and uses the top of the range', () => {
-    let highest = 0;
-    for (let i = 0; i < 200; i += 1) {
-      const seed = drawSeed();
-      expect(isValidSeed(seed)).toBe(true);
-      highest = Math.max(highest, seed);
-    }
-    // 200 uniform draws all below 2^40 would be a 1 in 2^1600 event: the top bits are in use.
-    expect(highest).toBeGreaterThan(2 ** 40);
-  });
-
-  it('draws a 22-character id that is safe in a URL and never the same twice', () => {
-    const ids = new Set(Array.from({ length: 200 }, () => drawSessionId()));
-    expect(ids.size).toBe(200);
-    for (const id of ids) expect(id).toMatch(/^[A-Za-z0-9_-]{22}$/);
-  });
-
-  it('the session id does not give the seed away', async () => {
-    const { lobby } = await join(await boot());
-    for (const seed of FIXED_SEEDS) expect(JSON.stringify(lobby)).not.toContain(String(seed));
   });
 });

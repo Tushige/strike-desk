@@ -30,8 +30,19 @@ const pace = z.union([z.literal(PACES[0]), z.literal(PACES[1]), z.literal(PACES[
 
 export const helloSchema = z.strictObject({
   t: z.literal('hello'),
-  v: z.literal(PROTOCOL_VERSION),
-  /** Resume this session if the server still has it; otherwise a new one is made. */
+  /**
+   * The protocol version the client speaks. Any whole number in the bound
+   * parses, so that the server can compare it with `PROTOCOL_VERSION` and
+   * answer another version `versionMismatch` by name. A literal here would
+   * make every other version fail the schema and look like a bad message.
+   */
+  v: z.number().int().min(0).max(1000),
+  /**
+   * The session to resume. When the server still has it, this connection
+   * joins it where it is. When it does not, the server answers `noSession`
+   * first and then makes a new session and sends its frame, so a client can
+   * tell "your game is gone" from "here is your game".
+   */
   session: z.string().max(64).optional(),
   /** Stress setting: wanted number of contracts. Only read when a session is created. */
   board: z.number().int().min(1).max(100000).optional(),

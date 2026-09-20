@@ -39,6 +39,7 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: system-ui, sans-serif;
+  font-weight: 350;
 }
 
 main {
@@ -98,6 +99,62 @@ th {
 
 .sd-ticker {
   color: var(--muted-foreground);
+}
+
+/* The side is said twice: by the arrow and the word, and by its colour. */
+.sd-side-up {
+  color: var(--up);
+}
+
+.sd-side-down {
+  color: var(--down);
+}
+
+/* The column that flashes is the one the eye should land on. */
+.sd-price {
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+/*
+ * The flash. The table does the timing; the page only names the colour, by
+ * setting the one variable the table's flash reads, on the cell itself: the
+ * UP colour when the price rose, the DOWN colour when it fell. A wash, not a
+ * fill, so the number stays easy to read through it.
+ */
+.sd-up {
+  --ag-value-change-value-highlight-background-color: color-mix(in srgb, var(--up) 22%, transparent);
+}
+
+.sd-down {
+  --ag-value-change-value-highlight-background-color: color-mix(in srgb, var(--down) 22%, transparent);
+}
+
+/*
+ * A ticket too cheap to trade: quieter, still readable, and it never
+ * flashes. Three classes deep so that it beats the table's own rules
+ * whichever of the two style blocks the browser happens to load first.
+ */
+.ag-row.sd-row-dimmed .ag-cell {
+  color: var(--muted-foreground);
+  --ag-value-change-value-highlight-background-color: transparent;
+}
+
+/*
+ * The table draws the focused cell with a one-pixel border in the ring
+ * colour. One more pixel inside it makes a ring that is easy to find on a
+ * table where everything else is moving.
+ */
+.ag-cell.ag-cell-focus:focus-within {
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+/* Prices still change for someone who asked for less motion; nothing flashes. */
+@media (prefers-reduced-motion: reduce) {
+  .sd-up,
+  .sd-down {
+    --ag-value-change-value-highlight-background-color: transparent;
+  }
 }
 
 .build-stamp {

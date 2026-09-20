@@ -42,9 +42,16 @@ export const strikeTheme = themeQuartz.withParams({
   oddRowBackgroundColor: 'transparent',
   rowBorder: { color: 'var(--border)' },
   accentColor: 'var(--gold)',
+  // Keyboard focus is lilac everywhere in the table; gold is kept for what
+  // the player has chosen. The grid rings a focused header with
+  // `focusShadow` and outlines a focused cell in its range-selection border
+  // colour, which would otherwise follow the accent.
   focusShadow: { radius: 2, spread: 2, color: 'var(--ring)' },
+  rangeSelectionBorderColor: 'var(--ring)',
   fontFamily: 'system-ui, sans-serif',
   fontSize: 13,
+  // A hair lighter than regular, where the font allows it: a dense dark table reads less heavy.
+  fontWeight: 350,
   headerFontSize: 11,
   headerFontWeight: 500,
   rowHeight: 34,
@@ -56,4 +63,7 @@ export const strikeTheme = themeQuartz.withParams({
   borderRadius: 0,
   // Dark scrollbars: the only scrollbar on the page is the one inside the table.
   browserColorScheme: 'dark',
+  // A changed cell shows no colour unless the stylesheet names one for it:
+  // the UP colour for a rise, the DOWN colour for a fall, nothing otherwise.
+  valueChangeValueHighlightBackgroundColor: 'transparent',
 });

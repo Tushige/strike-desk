@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
 import { AgGridReact } from 'ag-grid-react';
-import type { GetRowIdParams, GridApi, GridReadyEvent } from 'ag-grid-community';
+import type { GetRowIdParams, GridApi, GridReadyEvent, RowClassParams } from 'ag-grid-community';
 import type { ContractRow } from '../store/contractRows';
 import { currentRows, registerRowSink, useBoardRows } from '../store/hooks';
 import { COLUMNS, DEFAULT_COL_DEF } from './columns';
@@ -33,6 +33,27 @@ const gridStyleContainer = (): HTMLElement => document.body;
 
 /** How long the grid gathers changed rows before it repaints them, in milliseconds. */
 const BATCH_WAIT_MS = 50;
+
+/**
+ * A changed price holds its colour for 240 ms and fades over 360 ms, so it
+ * has finished before the next frame can flash it again. Someone who has
+ * asked their device for less motion gets no flash at all: a duration of
+ * zero is the grid's own way of saying "do not flash". Read once, here,
+ * because the grid must not be handed a new value while it runs.
+ */
+const REDUCED_MOTION =
+  typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const FLASH_MS = REDUCED_MOTION ? 0 : 240;
+const FADE_MS = REDUCED_MOTION ? 0 : 360;
+
+/**
+ * A ticket too cheap to trade keeps its place as a dimmed row. The store
+ * decides which rows those are, and only while tickets can be bought, so
+ * from the closing bell on every row shows what it settled at.
+ */
+const ROW_CLASS_RULES = {
+  'sd-row-dimmed': (row: RowClassParams<ContractRow>): boolean => row.data?.dimmed === true,
+};
 
 /**
  * A price can move between the store building the day's rows and the grid
@@ -92,6 +113,9 @@ export const ContractBoard = memo(function ContractBoard() {
       asyncTransactionWaitMillis={BATCH_WAIT_MS}
       suppressModelUpdateAfterUpdateTransaction
       animateRows={false}
+      rowClassRules={ROW_CLASS_RULES}
+      cellFlashDuration={FLASH_MS}
+      cellFadeDuration={FADE_MS}
     />
   );
 });

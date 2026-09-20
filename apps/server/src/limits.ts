@@ -8,6 +8,13 @@
  */
 export interface Limits {
   /**
+   * Connections held at once, of any kind, greeted or not. The other limits
+   * allow at most 300 sessions of 3 sockets, 900, and the rest is room for
+   * sockets that are still saying hello. A connection costs tens of
+   * kilobytes, so the ceiling here is a few tens of megabytes of the 512.
+   */
+  maxConnections: number;
+  /**
    * Sessions held at once. Measured at 142 KB each: 300 is about 42 MB, some
    * 8% of the free instance's 512 MB.
    */
@@ -38,6 +45,7 @@ export interface Limits {
 }
 
 export const LIMITS: Limits = {
+  maxConnections: 1000,
   maxSessions: 300,
   maxSocketsPerSession: 3,
   sessionTtlMs: 1_800_000,

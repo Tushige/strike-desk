@@ -159,6 +159,8 @@ export function createApp(options: AppOptions): App {
   });
 
   const connections = new Map<WebSocket, ConnState>();
+  /** Whether the cap line has already been logged for the crossing the service is in. */
+  let capLogged = false;
 
   function handleRequest(req: IncomingMessage, res: ServerResponse): void {
     try {
@@ -227,11 +229,39 @@ export function createApp(options: AppOptions): App {
       return;
     }
 
+    if (connections.size >= limits.maxConnections) {
+      // Counted here, before the handshake: the handshake is the expensive
+      // part, and a connection that never speaks costs nothing anywhere else
+      // in the service, so this count is the only thing standing between it
+      // and the host's memory. The count and the `set` below are one
+      // synchronous turn — there is no `await` between them — so two upgrades
+      // can never both pass on the last free place.
+      //
+      // A short answer rather than a bare destroy, so a client can tell
+      // "full" from "broken". The http server has already handed the raw
+      // socket over, so it gets a listener of its own first: a peer that
+      // resets in the middle of this write must not become an unhandled
+      // event and take the process down with it.
+      socket.on('error', () => undefined);
+      socket.end('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Length: 0\r\n\r\n', () => {
+        socket.destroy();
+      });
+      if (!capLogged) {
+        // Once each time the cap is reached, never once per refusal: a flood
+        // must not be able to fill the host's log, and saying nothing at all
+        // would leave the owner blind to a full service.
+        console.warn('ws connection cap reached', limits.maxConnections);
+        capLogged = true;
+      }
+      return;
+    }
+
     const mode = probeModes ? modeFromUrl(url) : 'normal';
 
     wss.handleUpgrade(req, socket, head, (ws) => {
       const state: ConnState = { mode, lastSendMs: now(), missedPongs: 0 };
       connections.set(ws, state);
+      capLogged = false;
 
       ws.on('pong', () => {
         state.missedPongs = 0;

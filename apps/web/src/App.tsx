@@ -1,77 +1,55 @@
-import { useEffect, useState } from 'react';
-import { WS_PATH } from '@strike-desk/shared';
+import { formatCents } from '@strike-desk/shared/money';
 import { VERSION } from './generated/version';
+import { usePrice } from './store/hooks';
 
-interface TickMessage {
-  type: 'tick';
-  tick: number;
+/**
+ * Six rows, each one subscribed to its own price. The root subscribes to
+ * nothing that changes as the market moves, so a new price redraws one
+ * cell and nothing else. No frame ever enters React state.
+ */
+
+interface Listing {
+  id: number;
+  name: string;
+  ticker: string;
 }
 
-function isTickMessage(value: unknown): value is TickMessage {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-  const candidate = value as { type?: unknown; tick?: unknown };
-  return candidate.type === 'tick' && typeof candidate.tick === 'number';
+/** Stand-in names, in company id order. */
+const LISTINGS: readonly Listing[] = [
+  { id: 0, name: 'RoboPup', ticker: 'RPUP' },
+  { id: 1, name: 'Fizzly', ticker: 'FIZZ' },
+  { id: 2, name: 'JetKicks', ticker: 'JETK' },
+  { id: 3, name: 'MoonMunch', ticker: 'MUNC' },
+  { id: 4, name: 'PixelPals', ticker: 'PIXL' },
+  { id: 5, name: 'ZapCharge', ticker: 'ZAPP' },
+];
+
+/** Shown until the first frame arrives. */
+const NO_PRICE = '—';
+
+function PriceRow({ listing }: { listing: Listing }) {
+  const price = usePrice(listing.id);
+  return (
+    <tr>
+      <th scope="row">
+        {listing.name} <span className="ticker">{listing.ticker}</span>
+      </th>
+      <td className="price">{price === null ? NO_PRICE : formatCents(price)}</td>
+    </tr>
+  );
 }
 
 export default function App() {
-  const [tick, setTick] = useState(0);
-  const [connected, setConnected] = useState(false);
-  const [reconnects, setReconnects] = useState(0);
-
-  useEffect(() => {
-    let socket: WebSocket | null = null;
-    let retryTimer: ReturnType<typeof setTimeout> | null = null;
-    let cancelled = false;
-
-    function connect(): void {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      socket = new WebSocket(`${protocol}//${window.location.host}${WS_PATH}`);
-
-      socket.addEventListener('open', () => {
-        setConnected(true);
-      });
-
-      socket.addEventListener('message', (event) => {
-        try {
-          const data: unknown = JSON.parse(event.data as string);
-          if (isTickMessage(data)) {
-            setTick(data.tick);
-          }
-        } catch {
-          // Ignore malformed frames.
-        }
-      });
-
-      socket.addEventListener('close', () => {
-        setConnected(false);
-        if (cancelled) return;
-        setReconnects((count) => count + 1);
-        retryTimer = setTimeout(connect, 2000);
-      });
-    }
-
-    connect();
-
-    return () => {
-      cancelled = true;
-      if (retryTimer !== null) clearTimeout(retryTimer);
-      socket?.close();
-    };
-  }, []);
-
   return (
     <main>
       <h1>Strike Desk</h1>
-      <p>Test page</p>
-      <p>
-        Server tick <span className="tick-value">{tick}</span>
-      </p>
-      <p>{connected ? 'Live' : 'Connecting'}</p>
-      <p>
-        Reconnects <span>{reconnects}</span>
-      </p>
+      <table>
+        <tbody>
+          {LISTINGS.map((listing) => (
+            <PriceRow key={listing.id} listing={listing} />
+          ))}
+        </tbody>
+      </table>
       <p className="build-stamp">
         build {VERSION.commit} · {VERSION.buildTime}
       </p>

@@ -4,7 +4,9 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { createApp } from '../src/app';
-import type { App } from '../src/app';
+import type { App, BuildVersion } from '../src/app';
+
+const TEST_VERSION: BuildVersion = { commit: 'abc1234', buildTime: '2026-01-02T03:04:05Z' };
 
 let staticDir: string;
 let app: App;
@@ -110,7 +112,7 @@ afterEach(async () => {
 
 describe('ws tick', () => {
   it('ws tick delivers messages increasing by exactly 1, first on connect', async () => {
-    app = createApp({ staticDir, tickMs: 20 });
+    app = createApp({ staticDir, tickMs: 20, version: TEST_VERSION });
     const port = await listen(app);
     const client = collectTicks(`ws://127.0.0.1:${port}/ws`);
     await client.opened();
@@ -125,7 +127,7 @@ describe('ws tick', () => {
   });
 
   it('ws tick with two clients: both sequences agree on order', async () => {
-    app = createApp({ staticDir, tickMs: 20 });
+    app = createApp({ staticDir, tickMs: 20, version: TEST_VERSION });
     const port = await listen(app);
     const clientA = collectTicks(`ws://127.0.0.1:${port}/ws`);
     const clientB = collectTicks(`ws://127.0.0.1:${port}/ws`);
@@ -150,8 +152,8 @@ describe('ws tick', () => {
 });
 
 describe('healthz', () => {
-  it('healthz answers 200 with ok true and rejects other methods, with zero ws clients connected', async () => {
-    app = createApp({ staticDir, tickMs: 1000 });
+  it('healthz answers 200 with ok true, the build commit and build time, and nothing else', async () => {
+    app = createApp({ staticDir, tickMs: 1000, version: TEST_VERSION });
     const port = await listen(app);
     const baseUrl = `http://127.0.0.1:${port}`;
 
@@ -159,16 +161,38 @@ describe('healthz', () => {
     expect(getRes.status).toBe(200);
     expect(getRes.headers.get('content-type')).toContain('application/json');
     const body = await getRes.json();
-    expect(body).toEqual({ ok: true });
+    expect(body).toEqual({ ok: true, commit: TEST_VERSION.commit, buildTime: TEST_VERSION.buildTime });
+    expect(Object.keys(body as object).sort()).toEqual(['buildTime', 'commit', 'ok']);
 
     const postRes = await fetch(`${baseUrl}/healthz`, { method: 'POST' });
     expect(postRes.status).toBe(405);
+  });
+
+  it('healthz: the tick message carries no version fields', async () => {
+    app = createApp({ staticDir, tickMs: 20, version: TEST_VERSION });
+    const port = await listen(app);
+
+    const firstMessage = await new Promise<unknown>((resolve, reject) => {
+      const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+      socket.once('message', (data) => {
+        try {
+          resolve(JSON.parse(toText(data)));
+        } catch (err) {
+          reject(err instanceof Error ? err : new Error(String(err)));
+        } finally {
+          socket.close();
+        }
+      });
+      socket.once('error', reject);
+    });
+
+    expect(Object.keys(firstMessage as object).sort()).toEqual(['tick', 'type']);
   });
 });
 
 describe('upgrade not swallowed', () => {
   it('upgrade not swallowed: only /ws completes the handshake, other paths behave correctly', async () => {
-    app = createApp({ staticDir, tickMs: 1000 });
+    app = createApp({ staticDir, tickMs: 1000, version: TEST_VERSION });
     const port = await listen(app);
     const baseUrl = `http://127.0.0.1:${port}`;
 
@@ -208,7 +232,7 @@ describe('upgrade not swallowed', () => {
   });
 
   it('close() resolves and connected clients see close code 1001', async () => {
-    app = createApp({ staticDir, tickMs: 1000 });
+    app = createApp({ staticDir, tickMs: 1000, version: TEST_VERSION });
     const port = await listen(app);
     const client = collectTicks(`ws://127.0.0.1:${port}/ws`);
     await client.opened();

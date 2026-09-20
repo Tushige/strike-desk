@@ -5,11 +5,24 @@ import { WebSocketServer } from 'ws';
 import sirv from 'sirv';
 import { HEALTH_PATH, WS_PATH } from '@strike-desk/shared';
 
+export interface BuildVersion {
+  /** First 7 characters of the commit the build was made from. */
+  commit: string;
+  /** ISO 8601 UTC time of the build, seconds precision, for example 2026-09-20T01:02:03Z. */
+  buildTime: string;
+}
+
 export interface AppOptions {
   /** Absolute path of the built web files (apps/web/dist). */
   staticDir: string;
   /** Milliseconds between ticks. Default 1000. Tests pass a small value. */
   tickMs?: number;
+  /**
+   * Stamped once at build time by scripts/write-version.mjs, never read from
+   * the clock or the environment here — a free instance waking from sleep
+   * restarts this process without a new build.
+   */
+  version: BuildVersion;
 }
 
 export interface App {
@@ -44,7 +57,7 @@ export function createApp(options: AppOptions): App {
           return;
         }
         res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ ok: true }));
+        res.end(JSON.stringify({ ok: true, commit: options.version.commit, buildTime: options.version.buildTime }));
         return;
       }
 

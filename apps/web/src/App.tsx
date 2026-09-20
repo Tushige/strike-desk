@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { WS_PATH } from '@strike-desk/shared';
+import { VERSION } from './generated/version';
 
 interface TickMessage {
   type: 'tick';
@@ -70,6 +71,9 @@ export default function App() {
       <p>{connected ? 'Live' : 'Connecting'}</p>
       <p>
         Reconnects <span>{reconnects}</span>
+      </p>
+      <p className="build-stamp">
+        build {VERSION.commit} · {VERSION.buildTime}
       </p>
     </main>
   );

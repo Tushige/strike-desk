@@ -11,6 +11,10 @@ const repoRoot = path.resolve(here, '..');
 const args = process.argv.slice(2);
 const urlFlagIndex = args.indexOf('--url');
 const targetUrl = urlFlagIndex !== -1 ? args[urlFlagIndex + 1] : null;
+const expectCommitFlagIndex = args.indexOf('--expect-commit');
+const expectCommit = expectCommitFlagIndex !== -1 ? args[expectCommitFlagIndex + 1] : null;
+
+const SHORT_COMMIT_RE = /^[0-9a-f]{7}$/;
 
 function wsUrlFor(baseUrl) {
   const url = new URL('/ws', baseUrl);
@@ -72,6 +76,16 @@ async function runChecks(baseUrl) {
   if (healthBody.ok !== true) {
     throw new Error('healthz: body did not report ok true');
   }
+  const healthKeys = Object.keys(healthBody).sort();
+  if (healthKeys.join(',') !== 'buildTime,commit,ok') {
+    throw new Error(`healthz: expected exactly the keys ok, commit, buildTime (got ${healthKeys.join(', ')})`);
+  }
+  if (!SHORT_COMMIT_RE.test(healthBody.commit)) {
+    throw new Error(`healthz: commit "${healthBody.commit}" is not 7 hex characters`);
+  }
+  if (expectCommit !== null && healthBody.commit !== expectCommit) {
+    throw new Error(`healthz: expected commit "${expectCommit}", got "${healthBody.commit}"`);
+  }
 
   const pageRes = await fetch(new URL('/', baseUrl));
   if (pageRes.status !== 200) {
@@ -97,6 +111,13 @@ async function runChecks(baseUrl) {
   const assetCacheControl = assetRes.headers.get('cache-control') ?? '';
   if (!assetCacheControl.includes('immutable')) {
     throw new Error(`asset: cache-control missing immutable (got "${assetCacheControl}")`);
+  }
+  const assetText = await assetRes.text();
+  if (!assetText.includes(healthBody.commit)) {
+    throw new Error(`asset: page bundle does not contain the healthz commit "${healthBody.commit}"`);
+  }
+  if (!assetText.includes(healthBody.buildTime)) {
+    throw new Error(`asset: page bundle does not contain the healthz buildTime "${healthBody.buildTime}"`);
   }
 
   await checkTicks(wsUrlFor(baseUrl));

@@ -7,12 +7,12 @@
     "node": "24.x"
   },
   "scripts": {
-    "build": "tsc --build && pnpm --filter @strike-desk/web run build && pnpm --filter @strike-desk/server run build",
-    "typecheck": "tsc --build",
-    "lint": "eslint .",
+    "build": "node scripts/write-version.mjs && tsc --build && pnpm --filter @strike-desk/web run build && pnpm --filter @strike-desk/server run build",
+    "typecheck": "node scripts/write-version.mjs && tsc --build",
+    "lint": "node scripts/write-version.mjs && eslint .",
     "test": "vitest run",
     "start": "node apps/server/dist/server.js",
-    "dev": "pnpm --parallel --filter @strike-desk/server --filter @strike-desk/web run dev",
+    "dev": "node scripts/write-version.mjs && pnpm --parallel --filter @strike-desk/server --filter @strike-desk/web run dev",
     "smoke": "node scripts/smoke.mjs"
   },
   "devDependencies": {

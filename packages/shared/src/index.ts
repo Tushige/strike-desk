@@ -10,3 +10,5 @@ export * from './protocol';
 export * from './market';
 export * from './game';
 export * from './frame';
+export * from './session';
+export * from './feed';

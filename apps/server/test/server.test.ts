@@ -16,6 +16,21 @@ interface TickCollector {
   waitForCount(count: number): Promise<number[]>;
 }
 
+/**
+ * `ws`'s "message" event data is typed as `Buffer | ArrayBuffer | Buffer[]`
+ * (never `string`) — a plain `.toString()` silently gives `"[object
+ * ArrayBuffer]"` for the ArrayBuffer case instead of the frame's text.
+ */
+function toText(data: WebSocket.RawData): string {
+  if (Buffer.isBuffer(data)) {
+    return data.toString();
+  }
+  if (Array.isArray(data)) {
+    return Buffer.concat(data).toString();
+  }
+  return Buffer.from(data).toString();
+}
+
 function getPort(instance: App): number {
   const address = instance.server.address();
   if (address === null || typeof address === 'string') {
@@ -42,7 +57,7 @@ function collectTicks(url: string): TickCollector {
 
   socket.on('message', (data) => {
     try {
-      const parsed = JSON.parse(data.toString()) as { type: string; tick: number };
+      const parsed = JSON.parse(toText(data)) as { type: string; tick: number };
       if (parsed.type === 'tick') {
         ticks.push(parsed.tick);
         if (waiter !== null && ticks.length >= waiter.count) {

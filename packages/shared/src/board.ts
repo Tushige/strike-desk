@@ -1,11 +1,13 @@
 import type { Cents } from './money';
 import { sharePriceCents } from './money';
+import { decodeContractId } from './protocol';
 
 /**
  * The contract board for one day. Every company has the same number of
  * targets, UP and DOWN on each, so a contract's numeric id encodes all
  * three parts and stays stable for the day. `quotes[contractId]` in a frame
- * is that contract's price.
+ * is that contract's price, so the id scheme itself lives in the wire
+ * contract (`protocol.ts`).
  *
  * A board may offer less than it lists. A target is "already passed" when it
  * sits on the far side of the opening price for its direction: below it for
@@ -13,8 +15,6 @@ import { sharePriceCents } from './money';
  * each side is still on offer. A contract that is not offered keeps its id,
  * its target and its place in `quotes`; it simply cannot be bought.
  */
-
-export type Side = 'up' | 'down';
 
 export const DEFAULT_TARGETS_PER_COMPANY = 21;
 /** Targets span this many expected moves either side of the opening price. */
@@ -42,26 +42,6 @@ export interface CompanyBoard {
 export interface Board {
   targetsPerCompany: number;
   companies: CompanyBoard[];
-}
-
-export interface ContractRef {
-  companyId: number;
-  targetIndex: number;
-  side: Side;
-}
-
-export function contractId(targetsPerCompany: number, ref: ContractRef): number {
-  return (ref.companyId * targetsPerCompany + ref.targetIndex) * 2 + (ref.side === 'up' ? 0 : 1);
-}
-
-export function decodeContractId(targetsPerCompany: number, id: number): ContractRef {
-  const side: Side = id % 2 === 0 ? 'up' : 'down';
-  const slot = Math.floor(id / 2);
-  return {
-    companyId: Math.floor(slot / targetsPerCompany),
-    targetIndex: slot % targetsPerCompany,
-    side,
-  };
 }
 
 export function contractCount(board: Board): number {

@@ -5,7 +5,8 @@ import { STARTING_CASH_CENTS, breakEvenCents, playerOf, spendCapCents } from './
 import type { Market } from './market';
 import { boardFor, marketDay, quoteAt } from './market';
 import { sharePriceCents, totalCents } from './money';
-import type { Frame, NewsView, PositionView } from './protocol';
+import { MIN_TICKET_PRICE_CENTS } from './pricing';
+import type { CompanyView, Frame, NewsView, PositionView } from './protocol';
 import { FRAME_RECEIPTS } from './protocol';
 import { seedToMarketCode } from './rng';
 
@@ -30,11 +31,13 @@ export interface ProjectOptions {
   /** Include today's price history. Only the full form carries it. */
   history: boolean;
   /**
-   * Which sections are filled in.
-   * 'live': rev, step, the clock, six share prices and the account with
-   *         `canBuy` false. `board` is null; quotes, news, positions,
-   *         receipts and days are empty; `history` and `final` are never
-   *         set. No board is built and no ticket is priced.
+   * Which sections are filled in. Both forms carry rev, step, the clock,
+   * the companies' names, six share prices, the cheapest tradable price,
+   * today's board and one ticket price per contract with its real and hope
+   * value (no board and no ticket price in the lobby).
+   * 'live': besides those, only the account, with the player's cash as its
+   *         worth and `canBuy` false. News, positions, receipts and days
+   *         are empty; `history` and `final` are never set.
    * 'full': every section. The default.
    */
   sections?: 'live' | 'full';
@@ -87,6 +90,8 @@ export function projectFrame(market: Market, game: GameState, playerId: string, 
   const player = playerOf(game, playerId);
   const live = options.sections === 'live';
   const started = game.pace !== null;
+  // Field by field: a field added to a company later never reaches the wire by default.
+  const companies: CompanyView[] = market.cast.map((company) => ({ ticker: company.ticker, name: company.name }));
   const receipts = live ? [] : player.receipts.slice(-FRAME_RECEIPTS);
   const days = live
     ? []
@@ -103,9 +108,13 @@ export function projectFrame(market: Market, game: GameState, playerId: string, 
       rev: player.rev,
       step: 0,
       clock: { phase: 'lobby', day: 0, stepsLeft: 0, priceIndex: 0, pace: null },
+      companies,
       prices: market.cast.map((company) => sharePriceCents(company.startPrice)),
+      minTicketCents: MIN_TICKET_PRICE_CENTS,
       board: null,
       quotes: [],
+      quoteReals: [],
+      quoteHopes: [],
       news: [],
       account: { cashCents: player.cashCents, worthCents: player.cashCents, capCents: spendCapCents(player.cashCents), canBuy: false },
       positions: [],
@@ -119,17 +128,38 @@ export function projectFrame(market: Market, game: GameState, playerId: string, 
   const data = marketDay(market, moment.day);
   const prices = data.paths.map((path) => sharePriceCents(path[moment.priceIndex] ?? 0));
 
+  // Both forms share the board and the quotes. One pricing call per contract,
+  // at the current point of the path and nowhere else, gives the price and
+  // its two parts, so real plus hope is the price on every contract.
+  const board = boardFor(market, moment.day, game.targetsPerCompany);
+  const quotes: number[] = [];
+  const quoteReals: number[] = [];
+  const quoteHopes: number[] = [];
+  const total = contractCount(board);
+  for (let id = 0; id < total; id += 1) {
+    const value = quoteAt(market, moment.day, moment.priceIndex, board, id);
+    quotes.push(value?.priceCents ?? 0);
+    quoteReals.push(value?.realCents ?? 0);
+    quoteHopes.push(value?.hopeCents ?? 0);
+  }
+
   if (live) {
-    // Returns before any board, ticket price, headline or position is touched.
+    // Returns before any headline or position is projected: news and
+    // positions stay empty, the account is the player's cash alone, and
+    // history and final are never set.
     return {
       t: 'frame',
       session: options.session,
       rev: player.rev,
       step,
       clock: { ...moment, pace: game.pace },
+      companies,
       prices,
-      board: null,
-      quotes: [],
+      minTicketCents: MIN_TICKET_PRICE_CENTS,
+      board,
+      quotes,
+      quoteReals,
+      quoteHopes,
       news: [],
       account: { cashCents: player.cashCents, worthCents: player.cashCents, capCents: spendCapCents(player.cashCents), canBuy: false },
       positions: [],
@@ -139,14 +169,7 @@ export function projectFrame(market: Market, game: GameState, playerId: string, 
     };
   }
 
-  const board = boardFor(market, moment.day, game.targetsPerCompany);
   const bellRung = moment.priceIndex >= OPEN_STEPS;
-
-  const quotes: number[] = [];
-  const total = contractCount(board);
-  for (let id = 0; id < total; id += 1) {
-    quotes.push(quoteAt(market, moment.day, moment.priceIndex, board, id)?.priceCents ?? 0);
-  }
 
   const news: NewsView[] = data.news.map(({ headline, hidden }) => {
     const revealed = moment.priceIndex >= hidden.revealIndex;
@@ -179,9 +202,13 @@ export function projectFrame(market: Market, game: GameState, playerId: string, 
     rev: player.rev,
     step,
     clock: { ...moment, pace: game.pace },
+    companies,
     prices,
+    minTicketCents: MIN_TICKET_PRICE_CENTS,
     board,
     quotes,
+    quoteReals,
+    quoteHopes,
     news,
     account: {
       cashCents: player.cashCents,

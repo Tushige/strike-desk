@@ -1,19 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { Side } from '../src/board';
 import type { Board } from '../src/board';
-import {
-  BOARD_SPAN_MOVES,
-  DEFAULT_TARGETS_PER_COMPANY,
-  OFFERED_PASSED_MOVES,
-  buildCompanyBoard,
-  contractCount,
-  contractId,
-  contractTarget,
-  decodeContractId,
-  isOffered,
-} from '../src/board';
+import { BOARD_SPAN_MOVES, DEFAULT_TARGETS_PER_COMPANY, OFFERED_PASSED_MOVES, buildCompanyBoard, contractCount, contractTarget, isOffered } from '../src/board';
 import { CAST, COMPANY_COUNT } from '../src/cast';
 import { CONTENT_VERSION, ENGINE_VERSION, boardFor, buildMarket, quoteAt } from '../src/market';
+import type { Side } from '../src/protocol';
+import { contractId, decodeContractId } from '../src/protocol';
 
 const IDENTITY = { seed: 4242, engine: ENGINE_VERSION, content: CONTENT_VERSION };
 const market = buildMarket(IDENTITY);

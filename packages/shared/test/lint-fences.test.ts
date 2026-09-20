@@ -63,7 +63,10 @@ const probeSource = `${probes.map((probe) => probe.code).join('\n')}\n`;
 
 // Type-aware linting builds a real TypeScript program per unique file path
 // the first time it sees it, which is slow relative to Vitest's 5s default.
-const LINT_TIMEOUT_MS = 30000;
+// The first probe inside the web app loads that whole project, the table
+// library's type declarations included: thousands of small files, which a
+// slow disk takes most of half a minute to read. The limit is only a ceiling.
+const LINT_TIMEOUT_MS = 120000;
 
 describe('shared package lint fences', () => {
   it('lint fences: the canonical bannedMathMembers list matches this test\'s expectation', async () => {

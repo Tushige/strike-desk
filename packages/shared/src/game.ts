@@ -1,5 +1,4 @@
-import type { Side } from './board';
-import { DEFAULT_TARGETS_PER_COMPANY, decodeContractId, isOffered } from './board';
+import { DEFAULT_TARGETS_PER_COMPANY, isOffered } from './board';
 import type { Pace } from './clock';
 import { DAYS, GAME_STEPS, OPEN_STEPS, bellStep, jumpTarget, momentAt } from './clock';
 import type { Market } from './market';
@@ -7,7 +6,8 @@ import { boardFor, quoteAt } from './market';
 import type { Cents } from './money';
 import { quantityForSpend, totalCents } from './money';
 import { SHARES_PER_TICKET, isTradable } from './pricing';
-import type { Command, Receipt, RejectReason } from './protocol';
+import type { Command, Receipt, RejectReason, Side } from './protocol';
+import { decodeContractId } from './protocol';
 
 /**
  * The rules of a game, as pure functions of the logical step. A game is what

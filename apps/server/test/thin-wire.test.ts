@@ -18,7 +18,9 @@ import { FIXED_SEEDS, startHarness } from './harness';
  * fixed market, sampled at every kind of moment there is — the lobby, either
  * side of both bells, across a day boundary, and past the last step of the
  * last day. Two things are asserted about every frame collected: that the
- * only sections filled in are the ones this service owns, and that the
+ * only sections filled in are the ones this service owns (the clock, the
+ * share prices, the names, the board and the ticket prices; never news,
+ * positions, receipts, days, history or the final result), and that the
  * market's identity is nowhere in the text of it.
  *
  * The fake clock is jumped straight to each moment. It may jump forward as
@@ -28,6 +30,11 @@ import { FIXED_SEEDS, startHarness } from './harness';
 const HELLO = { t: 'hello', v: PROTOCOL_VERSION };
 const SEED = FIXED_SEEDS[0] ?? Number.NaN;
 const STARTING_CASH_CENTS = 100_000_000;
+const LOBBY = 'the lobby';
+const COMPANIES = 6;
+const TARGETS_PER_COMPANY = 21;
+/** Six companies, 21 targets each, UP and DOWN on every target. */
+const CONTRACTS = 252;
 
 /** Every moment worth sampling, as a step of the game, in the order they happen. */
 const MOMENTS: [where: string, step: number][] = [
@@ -57,7 +64,7 @@ beforeAll(async () => {
   await client.opened();
 
   client.send(HELLO);
-  collected.push({ where: 'the lobby', frame: await client.nextFrame() });
+  collected.push({ where: LOBBY, frame: await client.nextFrame() });
 
   const startedAtMs = wire.clock.now();
   client.send({ t: 'start', commandId: 'start-0001', pace: 1 });
@@ -76,13 +83,20 @@ afterAll(async () => {
   wire = null;
 });
 
+const wholeCentsFromZero = (values: readonly number[]): boolean => values.every((value) => Number.isInteger(value) && value >= 0);
+
 /** Everything the allow-list cares about, with the moment attached so a failure names itself. */
 function allowList(sampled: Sampled): Record<string, unknown> {
   const { where, frame } = sampled;
   return {
     where,
-    board: frame.board,
-    quotes: frame.quotes,
+    boardSize: frame.board === null ? null : { targetsPerCompany: frame.board.targetsPerCompany, targetsOfEachCompany: frame.board.companies.map((company) => company.targets.length) },
+    quoteCount: frame.quotes.length,
+    realCount: frame.quoteReals.length,
+    hopeCount: frame.quoteHopes.length,
+    everyQuoteIsWholeCentsFromZero: wholeCentsFromZero(frame.quotes) && wholeCentsFromZero(frame.quoteReals) && wholeCentsFromZero(frame.quoteHopes),
+    quotesThatAreNotRealPlusHope: frame.quotes.flatMap((price, id) => ((frame.quoteReals[id] ?? Number.NaN) + (frame.quoteHopes[id] ?? Number.NaN) === price ? [] : [id])),
+    companyKeys: frame.companies.map((company) => Object.keys(company).sort().join(',')),
     news: frame.news,
     positions: frame.positions,
     receipts: frame.receipts,
@@ -96,11 +110,18 @@ function allowList(sampled: Sampled): Record<string, unknown> {
   };
 }
 
+/** The lobby has no board and no ticket price. Every other moment has the whole board and one price, with its two parts, per contract. */
 function thinAt(where: string): Record<string, unknown> {
+  const started = where !== LOBBY;
   return {
     where,
-    board: null,
-    quotes: [],
+    boardSize: started ? { targetsPerCompany: TARGETS_PER_COMPANY, targetsOfEachCompany: Array.from({ length: COMPANIES }, () => TARGETS_PER_COMPANY) } : null,
+    quoteCount: started ? CONTRACTS : 0,
+    realCount: started ? CONTRACTS : 0,
+    hopeCount: started ? CONTRACTS : 0,
+    everyQuoteIsWholeCentsFromZero: true,
+    quotesThatAreNotRealPlusHope: [],
+    companyKeys: Array.from({ length: COMPANIES }, () => 'name,ticker'),
     news: [],
     positions: [],
     receipts: [],
@@ -116,10 +137,10 @@ function thinAt(where: string): Record<string, unknown> {
 
 describe('every frame this service emits', () => {
   it('was collected at every moment of the game', () => {
-    expect(collected.map(({ where }) => where)).toEqual(['the lobby', ...MOMENTS.map(([where]) => where)]);
+    expect(collected.map(({ where }) => where)).toEqual([LOBBY, ...MOMENTS.map(([where]) => where)]);
   });
 
-  it('fills in nothing but the clock, six whole-cent prices and the starting account', () => {
+  it('fills in nothing but the clock, six whole-cent prices, the six names, the board, the ticket prices with their two parts, and the starting account', () => {
     for (const sampled of collected) {
       expect(allowList(sampled)).toEqual(thinAt(sampled.where));
       expect({ where: sampled.where, account: sampled.frame.account }).toEqual({

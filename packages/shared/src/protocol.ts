@@ -167,6 +167,13 @@ export const newsViewSchema = z.object({
 });
 export type NewsView = z.infer<typeof newsViewSchema>;
 
+/** What a player may read of one company: never its wobble, its rival or its start price. */
+export const companyViewSchema = z.object({
+  ticker: z.string(),
+  name: z.string(),
+});
+export type CompanyView = z.infer<typeof companyViewSchema>;
+
 export const companyBoardSchema = z.object({
   targets: z.array(cents),
   simpleUp: z.tuple([count, count, count]),
@@ -181,6 +188,35 @@ export const boardSchema = z.object({
   targetsPerCompany: count,
   companies: z.array(companyBoardSchema),
 });
+
+/**
+ * The contract id. A frame's `quotes`, `quoteReals` and `quoteHopes` are
+ * indexed by it, so the scheme is part of the wire contract: both sides must
+ * turn a company, a target and a side into the same number. Every company
+ * has the same number of targets, UP and DOWN on each, so ids are dense from
+ * 0 and stay stable for the day.
+ */
+export type Side = z.infer<typeof side>;
+
+export interface ContractRef {
+  companyId: number;
+  targetIndex: number;
+  side: Side;
+}
+
+export function contractId(targetsPerCompany: number, ref: ContractRef): number {
+  return (ref.companyId * targetsPerCompany + ref.targetIndex) * 2 + (ref.side === 'up' ? 0 : 1);
+}
+
+export function decodeContractId(targetsPerCompany: number, id: number): ContractRef {
+  const side: Side = id % 2 === 0 ? 'up' : 'down';
+  const slot = Math.floor(id / 2);
+  return {
+    companyId: Math.floor(slot / targetsPerCompany),
+    targetIndex: slot % targetsPerCompany,
+    side,
+  };
+}
 
 export const positionExitSchema = z.object({
   kind: z.enum(['cashOut', 'bell']),
@@ -249,12 +285,20 @@ export const frameSchema = z.object({
   rev: count,
   step: count,
   clock: clockViewSchema,
+  /** The companies' tickers and names, by company id. */
+  companies: z.array(companyViewSchema),
   /** Share prices in cents, by company id. */
   prices: z.array(cents),
+  /** The cheapest ticket price that can be bought, in cents. A ticket under it shows as too cheap to trade. */
+  minTicketCents: cents,
   /** Today's board; null in the lobby. */
   board: boardSchema.nullable(),
   /** Ticket prices in cents, by contract id. Empty in the lobby. */
   quotes: z.array(cents),
+  /** Real value of each ticket in cents, by contract id, same length as `quotes`. Real plus hope is the price. */
+  quoteReals: z.array(cents),
+  /** Hope value of each ticket in cents, by contract id, same length as `quotes`. Real plus hope is the price. */
+  quoteHopes: z.array(cents),
   /** Today's headlines. */
   news: z.array(newsViewSchema),
   account: accountViewSchema,

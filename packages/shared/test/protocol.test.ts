@@ -3,6 +3,9 @@ import {
   boardSchema,
   clientMessageSchema,
   commandSchema,
+  contractId,
+  decodeContractId,
+  frameSchema,
   isNewerFrame,
   parseClientMessage,
   parseServerMessage,
@@ -87,8 +90,15 @@ describe('server messages', () => {
     step: 0,
     clock: { phase: 'lobby', day: 0, stepsLeft: 0, priceIndex: 0, pace: null },
     prices: [8400, 4200, 12000, 2800, 6500, 15000],
+    companies: [
+      { ticker: 'RPUP', name: 'RoboPup' },
+      { ticker: 'FIZZ', name: 'Fizzly' },
+    ],
+    minTicketCents: 500,
     board: null,
     quotes: [],
+    quoteReals: [],
+    quoteHopes: [],
     news: [],
     account: { cashCents: 100_000_000, worthCents: 100_000_000, capCents: 50_000_000, canBuy: false },
     positions: [],
@@ -96,6 +106,27 @@ describe('server messages', () => {
     days: [],
     stress: false,
   };
+
+  it('a frame needs the names, the cheapest tradable price and both parts of every ticket price', () => {
+    expect(frameSchema.parse(frame)).toEqual(frame);
+    for (const field of ['companies', 'minTicketCents', 'quoteReals', 'quoteHopes']) {
+      const without: Record<string, unknown> = { ...frame };
+      delete without[field];
+      expect({ field, parses: frameSchema.safeParse(without).success }).toEqual({ field, parses: false });
+      expect({ field, parses: parseServerMessage(without) !== null }).toEqual({ field, parses: false });
+    }
+    const filled = { ...frame, quotes: [1200, 0], quoteReals: [700, 0], quoteHopes: [500, 0] };
+    expect(frameSchema.parse(filled)).toEqual(filled);
+  });
+
+  it('refuses a company without a name or a ticker, and ticket money that is not whole cents', () => {
+    expect(frameSchema.safeParse({ ...frame, companies: [{ ticker: 'RPUP' }] }).success).toBe(false);
+    expect(frameSchema.safeParse({ ...frame, companies: [{ name: 'RoboPup' }] }).success).toBe(false);
+    expect(frameSchema.safeParse({ ...frame, companies: [{ ticker: 7, name: 'RoboPup' }] }).success).toBe(false);
+    expect(frameSchema.safeParse({ ...frame, minTicketCents: 499.5 }).success).toBe(false);
+    expect(frameSchema.safeParse({ ...frame, quoteReals: [0.5] }).success).toBe(false);
+    expect(frameSchema.safeParse({ ...frame, quoteHopes: ['500'] }).success).toBe(false);
+  });
 
   it('accepts a frame, a reply, a quotes batch and an error', () => {
     expect(parseServerMessage(frame)).toEqual(frame);
@@ -136,6 +167,41 @@ describe('server messages', () => {
     }
     expect(parseServerMessage({ ...frame, board: board(offered) })).not.toBeNull();
     expect(parseServerMessage({ ...frame, board: board(company) })).toBeNull();
+  });
+});
+
+describe('the contract id, which is how a frame\'s quotes are indexed', () => {
+  const COMPANIES = 6;
+  const SIDES = ['up', 'down'] as const;
+
+  it.each([21, 209])('%i targets per company: every company, target and side makes one id, the ids are dense from 0, and each decodes back', (targetsPerCompany) => {
+    const ids: number[] = [];
+    for (let companyId = 0; companyId < COMPANIES; companyId += 1) {
+      for (let targetIndex = 0; targetIndex < targetsPerCompany; targetIndex += 1) {
+        for (const side of SIDES) {
+          const ref = { companyId, targetIndex, side };
+          const id = contractId(targetsPerCompany, ref);
+          expect(decodeContractId(targetsPerCompany, id)).toEqual(ref);
+          ids.push(id);
+        }
+      }
+    }
+    const contracts = COMPANIES * targetsPerCompany * 2;
+    expect(ids).toHaveLength(contracts);
+    expect([...ids].sort((a, b) => a - b)).toEqual(Array.from({ length: contracts }, (_unused, id) => id));
+  });
+
+  it('UP on the first target of the first company is 0, and DOWN on the same target is 1', () => {
+    expect(contractId(21, { companyId: 0, targetIndex: 0, side: 'up' })).toBe(0);
+    expect(contractId(21, { companyId: 0, targetIndex: 0, side: 'down' })).toBe(1);
+  });
+
+  it('a company\'s contracts sit together: 42 to a company on the 21-target board, 251 the last', () => {
+    expect(contractId(21, { companyId: 1, targetIndex: 0, side: 'up' })).toBe(42);
+    expect(contractId(21, { companyId: 5, targetIndex: 20, side: 'down' })).toBe(251);
+    expect(decodeContractId(21, 251)).toEqual({ companyId: 5, targetIndex: 20, side: 'down' });
+    expect(decodeContractId(21, 85)).toEqual({ companyId: 2, targetIndex: 0, side: 'down' });
+    expect(decodeContractId(209, 2507)).toEqual({ companyId: 5, targetIndex: 208, side: 'down' });
   });
 });
 

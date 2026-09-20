@@ -1,7 +1,7 @@
 import { exactLn, normCdf } from './exact';
 import type { Cents } from './money';
 import { ticketPriceCents } from './money';
-import type { Side } from './board';
+import type { Side } from './protocol';
 
 /**
  * Ticket pricing. A ticket covers 100 shares. Its value is real value (how

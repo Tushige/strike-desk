@@ -25,6 +25,8 @@ const SMOKE_PACE = 7.5;
 const FRAMES_WANTED = 3;
 const WS_TIMEOUT_MS = 15000;
 const COMPANY_COUNT = 6;
+// Six companies, 21 targets each, UP and DOWN on every target.
+const TICKET_COUNT = 252;
 
 function wsUrlFor(baseUrl) {
   const url = new URL('/ws', baseUrl);
@@ -39,7 +41,8 @@ function dollars(cents) {
 /**
  * Speaks the real protocol: hello, then start, then reads the live stream.
  * Prints one `prices` line per frame so a person running this by hand can see
- * six share prices moving, not just a pass or a fail.
+ * six share prices moving, not just a pass or a fail, and one `tickets` line
+ * with how many ticket prices the first streamed frame carried.
  */
 function checkStream(wsUrl) {
   return new Promise((resolve, reject) => {
@@ -76,6 +79,44 @@ function checkStream(wsUrl) {
           fail(`a price is not a whole number of cents: ${JSON.stringify(price)}`);
           return false;
         }
+      }
+      return true;
+    }
+
+    function isWholeCentsFromZero(value) {
+      return Number.isInteger(value) && value >= 0;
+    }
+
+    /**
+     * True when the frame of a started game carries the board, the six names
+     * and one whole-cent ticket price per contract, each with a real value
+     * and a hope value that add up to it.
+     */
+    function ticketsAddUp(frame) {
+      if (!Array.isArray(frame.companies) || frame.companies.length !== COMPANY_COUNT) {
+        fail(`expected ${COMPANY_COUNT} company names, got ${JSON.stringify(frame.companies)}`);
+        return false;
+      }
+      if (!Array.isArray(frame.board?.companies) || frame.board.companies.length !== COMPANY_COUNT) {
+        fail(`expected a board of ${COMPANY_COUNT} companies, got ${JSON.stringify(frame.board?.companies?.length)}`);
+        return false;
+      }
+      for (const name of ['quotes', 'quoteReals', 'quoteHopes']) {
+        const values = frame[name];
+        if (!Array.isArray(values) || values.length !== TICKET_COUNT) {
+          fail(`expected ${TICKET_COUNT} entries in ${name}, got ${Array.isArray(values) ? values.length : JSON.stringify(values)}`);
+          return false;
+        }
+        const bad = values.findIndex((value) => !isWholeCentsFromZero(value));
+        if (bad !== -1) {
+          fail(`${name}[${bad}] is not a whole number of cents at or above zero: ${JSON.stringify(values[bad])}`);
+          return false;
+        }
+      }
+      const apart = frame.quotes.findIndex((price, id) => frame.quoteReals[id] + frame.quoteHopes[id] !== price);
+      if (apart !== -1) {
+        fail(`ticket ${apart}: real ${frame.quoteReals[apart]} plus hope ${frame.quoteHopes[apart]} is not its price ${frame.quotes[apart]}`);
+        return false;
       }
       return true;
     }
@@ -127,11 +168,13 @@ function checkStream(wsUrl) {
 
       if (message.t !== 'frame') return;
       if (!pricesAreWholeCents(message)) return;
+      if (!ticketsAddUp(message)) return;
       const previous = steps.length === 0 ? -1 : steps[steps.length - 1];
       if (!(message.step > previous)) {
         fail(`step did not rise: ${previous} then ${message.step}`);
         return;
       }
+      if (steps.length === 0) console.log(`tickets ${message.quotes.length}`);
       steps.push(message.step);
       console.log(`prices ${message.prices.map(dollars).join(' ')}`);
       if (steps.length >= FRAMES_WANTED) finish(resolve);

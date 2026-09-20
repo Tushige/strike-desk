@@ -33,8 +33,30 @@ p {
   color: var(--color-muted);
 }
 
-.tick-value {
+table {
+  border-collapse: collapse;
+  margin: 0 auto;
+}
+
+th,
+td {
+  padding: 0.25rem 0.75rem;
+}
+
+th {
+  font-weight: 400;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.ticker {
+  color: var(--color-muted);
+}
+
+.price {
   font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .build-stamp {

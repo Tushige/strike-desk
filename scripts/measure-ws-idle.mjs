@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 // Holds one WebSocket open against any address and reports how long it
 // lasted and how it closed. No dependencies: Node 24's global WebSocket
-// only. Never sends a message on its own, like a browser tab left open.
+// only. By default it never sends a message on its own, like a browser tab
+// left open. With --start it says hello and starts a game at pace 1 first,
+// so a connection that also carries the live price stream can be measured.
 //
 // Usage:
-//   node scripts/measure-ws-idle.mjs <ws-or-wss-url> --minutes <n> [--label <text>] [--connect-wait-s <n>]
+//   node scripts/measure-ws-idle.mjs <ws-or-wss-url> --minutes <n> [--label <text>] [--connect-wait-s <n>] [--start]
 
 const args = process.argv.slice(2);
 const url = args[0];
@@ -17,6 +19,11 @@ function flagValue(name, fallback) {
 const label = flagValue('--label', null);
 const minutes = Number(flagValue('--minutes', null));
 const connectWaitS = Number(flagValue('--connect-wait-s', '90'));
+const alsoStart = args.includes('--start');
+
+// Written out because this file cannot import TypeScript; a protocol version
+// bump must change it.
+const PROTOCOL_VERSION = 1;
 
 if (!url || url.startsWith('--')) {
   console.error(
@@ -79,20 +86,25 @@ async function main() {
   }
 
   let messageCount = 0;
-  let lastTick = null;
+  let lastStep = null;
   let closedInfo = null;
 
   ws.addEventListener('message', (event) => {
     messageCount += 1;
     try {
       const data = JSON.parse(String(event.data));
-      if (data && data.type === 'tick' && typeof data.tick === 'number') {
-        lastTick = data.tick;
+      if (data && data.t === 'frame' && typeof data.step === 'number') {
+        lastStep = data.step;
       }
     } catch {
-      // Not JSON, or not a tick — still counted as a message.
+      // Not JSON, or not a frame — still counted as a message.
     }
   });
+
+  if (alsoStart) {
+    ws.send(JSON.stringify({ t: 'hello', v: PROTOCOL_VERSION }));
+    ws.send(JSON.stringify({ t: 'start', commandId: crypto.randomUUID(), pace: 1 }));
+  }
 
   const closed = new Promise((resolve) => {
     ws.addEventListener(
@@ -106,7 +118,7 @@ async function main() {
   });
 
   const minuteTimer = setInterval(() => {
-    console.log(`t=${elapsedS()}s open messages=${messageCount} lastTick=${lastTick === null ? '-' : lastTick}`);
+    console.log(`t=${elapsedS()}s open messages=${messageCount} lastStep=${lastStep === null ? '-' : lastStep}`);
   }, 60_000);
 
   const targetMs = minutes * 60_000;

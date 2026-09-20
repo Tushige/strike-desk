@@ -9,7 +9,11 @@ const staticDir = path.resolve(here, '../../web/dist');
 const portEnv = process.env.PORT;
 const port = portEnv === undefined || portEnv === '' ? 10000 : Number(portEnv);
 
-const app = createApp({ staticDir, version: VERSION });
+// The measurement-only connection modes are off unless this instance was
+// started for a measurement. The public host does not set it.
+const probeModes = process.env.WS_PROBE_MODES === '1';
+
+const app = createApp({ staticDir, version: VERSION, probeModes });
 
 app.server.listen(port, '0.0.0.0', () => {
   const address = app.server.address();

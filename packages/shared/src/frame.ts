@@ -1,7 +1,7 @@
 import { contractCount } from './board';
 import { DAYS, GAME_STEPS, OPEN_STEPS, momentAt } from './clock';
 import type { GameState, PositionRecord } from './game';
-import { STARTING_CASH_CENTS, breakEvenCents, spendCapCents } from './game';
+import { STARTING_CASH_CENTS, breakEvenCents, playerOf, spendCapCents } from './game';
 import type { Market } from './market';
 import { boardFor, marketDay, quoteAt } from './market';
 import { sharePriceCents, totalCents } from './money';
@@ -10,11 +10,17 @@ import { FRAME_RECEIPTS } from './protocol';
 import { seedToMarketCode } from './rng';
 
 /**
- * The single projection: hidden market + game state + a step in, the public
- * frame out. Everything a player ever sees passes through here, so this is
- * the one place that keeps the future secret. It reads nothing past the
- * current price index except where the result provably does not depend on
- * it; the test scrambles the future and expects an identical frame.
+ * The single projection: hidden market + game state + a player + a step in,
+ * that player's public frame out. Everything a player ever sees passes
+ * through here, so this is the one place that keeps the future secret. It
+ * reads nothing past the current price index except where the result provably
+ * does not depend on it; the test scrambles the future and expects an
+ * identical frame.
+ *
+ * A frame is one player's picture. The revision, the account, the positions,
+ * the receipts and the day results are the named player's and nobody else's;
+ * prices, the clock, the board, the quotes and the news are the same for
+ * every player of the session.
  *
  * `game` must already be advanced to the step (see `advanceTo`).
  */
@@ -77,15 +83,16 @@ function projectPosition(market: Market, game: GameState, position: PositionReco
   return view;
 }
 
-export function projectFrame(market: Market, game: GameState, step: number, options: ProjectOptions): Frame {
+export function projectFrame(market: Market, game: GameState, playerId: string, step: number, options: ProjectOptions): Frame {
+  const player = playerOf(game, playerId);
   const live = options.sections === 'live';
   const started = game.pace !== null;
-  const receipts = live ? [] : game.receipts.slice(-FRAME_RECEIPTS);
+  const receipts = live ? [] : player.receipts.slice(-FRAME_RECEIPTS);
   const days = live
     ? []
-    : game.dayEndCents.map((endCents, index) => ({
+    : player.dayEndCents.map((endCents, index) => ({
         day: index + 1,
-        startCents: index === 0 ? STARTING_CASH_CENTS : (game.dayEndCents[index - 1] ?? STARTING_CASH_CENTS),
+        startCents: index === 0 ? STARTING_CASH_CENTS : (player.dayEndCents[index - 1] ?? STARTING_CASH_CENTS),
         endCents,
       }));
 
@@ -93,14 +100,14 @@ export function projectFrame(market: Market, game: GameState, step: number, opti
     return {
       t: 'frame',
       session: options.session,
-      rev: game.rev,
+      rev: player.rev,
       step: 0,
       clock: { phase: 'lobby', day: 0, stepsLeft: 0, priceIndex: 0, pace: null },
       prices: market.cast.map((company) => sharePriceCents(company.startPrice)),
       board: null,
       quotes: [],
       news: [],
-      account: { cashCents: game.cashCents, worthCents: game.cashCents, capCents: spendCapCents(game.cashCents), canBuy: false },
+      account: { cashCents: player.cashCents, worthCents: player.cashCents, capCents: spendCapCents(player.cashCents), canBuy: false },
       positions: [],
       receipts,
       days,
@@ -117,14 +124,14 @@ export function projectFrame(market: Market, game: GameState, step: number, opti
     return {
       t: 'frame',
       session: options.session,
-      rev: game.rev,
+      rev: player.rev,
       step,
       clock: { ...moment, pace: game.pace },
       prices,
       board: null,
       quotes: [],
       news: [],
-      account: { cashCents: game.cashCents, worthCents: game.cashCents, capCents: spendCapCents(game.cashCents), canBuy: false },
+      account: { cashCents: player.cashCents, worthCents: player.cashCents, capCents: spendCapCents(player.cashCents), canBuy: false },
       positions: [],
       receipts,
       days,
@@ -159,17 +166,17 @@ export function projectFrame(market: Market, game: GameState, step: number, opti
     return view;
   });
 
-  const positions = game.positions.map((position) => projectPosition(market, game, position, step));
+  const positions = player.positions.map((position) => projectPosition(market, game, position, step));
   const openValueCents = positions
     .filter((position) => position.status === 'open')
     .reduce((sum, position) => sum + position.valueCents, 0);
   const marketIsOpen = moment.phase === 'preBell' || moment.phase === 'open';
-  const boughtToday = game.positions.some((position) => position.day === moment.day);
+  const boughtToday = player.positions.some((position) => position.day === moment.day);
 
   const frame: Frame = {
     t: 'frame',
     session: options.session,
-    rev: game.rev,
+    rev: player.rev,
     step,
     clock: { ...moment, pace: game.pace },
     prices,
@@ -177,9 +184,9 @@ export function projectFrame(market: Market, game: GameState, step: number, opti
     quotes,
     news,
     account: {
-      cashCents: game.cashCents,
-      worthCents: game.cashCents + openValueCents,
-      capCents: spendCapCents(game.cashCents),
+      cashCents: player.cashCents,
+      worthCents: player.cashCents + openValueCents,
+      capCents: spendCapCents(player.cashCents),
       canBuy: marketIsOpen && !boughtToday && !game.stress,
     },
     positions,
@@ -195,7 +202,7 @@ export function projectFrame(market: Market, game: GameState, step: number, opti
       marketCode: seedToMarketCode(market.identity.seed),
       engine: market.identity.engine,
       content: market.identity.content,
-      finalCents: game.cashCents,
+      finalCents: player.cashCents,
     };
   }
   return frame;

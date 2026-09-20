@@ -1,5 +1,5 @@
 import type { Hello, ServerMessage, StartCommand } from '@strike-desk/shared/engine';
-import { PROTOCOL_VERSION, frameFor, handleCommand, parseClientMessage } from '@strike-desk/shared/engine';
+import { FIRST_PLAYER_ID, PROTOCOL_VERSION, frameFor, handleCommand, parseClientMessage } from '@strike-desk/shared/engine';
 import type { TokenBucket, WindowCounter } from './limits';
 import type { FrameSocket } from './sampler';
 import type { SessionRegistry } from './sessions';
@@ -15,6 +15,12 @@ export interface Connection {
   socket: FrameSocket;
   /** Null until a hello has been answered. */
   sessionId: string | null;
+  /**
+   * The player this connection acts and watches as. Null until a hello has
+   * been answered. Set here from the session, never taken from a message: no
+   * message carries a player id.
+   */
+  playerId: string | null;
   /** This socket's own message budget. One chatty socket cannot spend another's. */
   messages: WindowCounter;
 }
@@ -74,7 +80,9 @@ function hello(options: DoorOptions, connection: Connection, message: Hello): vo
     answer(connection, { t: 'error', code: 'serverFull' });
     return;
   }
-  const attached = options.registry.attach(entry.session.id, connection.socket);
+  // A session has exactly one player, and every connection to it is that player.
+  const playerId = FIRST_PLAYER_ID;
+  const attached = options.registry.attach(entry.session.id, playerId, connection.socket);
   if (attached !== 'attached') {
     // Too many tabs on one game. The tabs already on it keep it; this one is
     // simply not added.
@@ -82,8 +90,9 @@ function hello(options: DoorOptions, connection: Connection, message: Hello): vo
     return;
   }
   connection.sessionId = entry.session.id;
+  connection.playerId = playerId;
 
-  const { session, frame } = frameFor(entry.session, options.now(), { history: false, sections: 'live' });
+  const { session, frame } = frameFor(entry.session, playerId, options.now(), { history: false, sections: 'live' });
   options.registry.replace(session.id, session);
   answer(connection, frame);
 }
@@ -91,13 +100,14 @@ function hello(options: DoorOptions, connection: Connection, message: Hello): vo
 /** The one command taken. Its type is the fence: no other command can be handed to the game rules from here. */
 function start(options: DoorOptions, connection: Connection, command: StartCommand): void {
   const entry = connection.sessionId === null ? undefined : options.registry.get(connection.sessionId);
-  if (entry === undefined) {
+  const playerId = connection.playerId;
+  if (entry === undefined || playerId === null) {
     answer(connection, { t: 'error', code: 'noSession', commandId: command.commandId });
     return;
   }
   const nowMs = options.now();
-  const handled = handleCommand(entry.session, command, nowMs);
-  const { session, frame } = frameFor(handled.session, nowMs, { history: false, sections: 'live' });
+  const handled = handleCommand(entry.session, playerId, command, nowMs);
+  const { session, frame } = frameFor(handled.session, playerId, nowMs, { history: false, sections: 'live' });
   options.registry.replace(session.id, session);
   answer(connection, { t: 'reply', receipt: handled.receipt, frame });
 }
@@ -145,4 +155,5 @@ export function handleClosed(options: DoorOptions, connection: Connection): void
   if (connection.sessionId === null) return;
   options.registry.detach(connection.sessionId, connection.socket, options.now());
   connection.sessionId = null;
+  connection.playerId = null;
 }

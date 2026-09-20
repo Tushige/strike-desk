@@ -30,16 +30,25 @@ export function offerFrame(socket: FrameSocket, text: string): 'sent' | 'skipped
 
 /**
  * One sampling pass over every session somebody is watching. What a frame
- * holds depends only on the session and on `nowMs`, and turning `nowMs` into
- * a step is the shared code's business: nothing here does arithmetic on time.
+ * holds depends only on the session, the player it is for and `nowMs`, and
+ * turning `nowMs` into a step is the shared code's business: nothing here does
+ * arithmetic on time. A session is advanced once a pass, and a frame is
+ * projected and turned into text once per player somebody is watching as,
+ * however many sockets that player has.
  */
 export function sampleSessions(registry: SessionRegistry, nowMs: number, stats: SamplerStats): void {
   for (const entry of registry.entries()) {
     if (entry.sockets.size === 0) continue;
-    const { session, frame } = frameFor(entry.session, nowMs, { history: false, sections: 'live' });
-    registry.replace(session.id, session);
-    const text = JSON.stringify(frame);
-    for (const socket of entry.sockets) {
+    const texts = new Map<string, string>();
+    for (const [socket, playerId] of entry.sockets) {
+      let text = texts.get(playerId);
+      if (text === undefined) {
+        // The first of these advances the session; after it `entry.session` is already at this step.
+        const { session, frame } = frameFor(entry.session, playerId, nowMs, { history: false, sections: 'live' });
+        registry.replace(session.id, session);
+        text = JSON.stringify(frame);
+        texts.set(playerId, text);
+      }
       const outcome = offerFrame(socket, text);
       if (outcome === 'sent') stats.sent += 1;
       else if (outcome === 'skipped') stats.skipped += 1;

@@ -6,7 +6,7 @@ import { STARTING_CASH_CENTS, advanceTo, applyCommand, breakEvenCents, newGame, 
 import { boardFor } from '../src/market';
 import { isTradable } from '../src/pricing';
 import type { Command } from '../src/protocol';
-import { buyAt, buyCommand, cashOut, clockCommand, findContract, priceOf, start, startedGame, testMarket } from './helpers';
+import { ME, buyAt, buyCommand, cashOut, clockCommand, findContract, me, priceOf, start, startedGame, testMarket } from './helpers';
 
 const market = testMarket();
 const SPEND = 5_000_000;
@@ -18,28 +18,29 @@ const CONTRACT = findContract(market, 1, (id) => isTradable(priceOf(market, 1, I
 const PRICE = priceOf(market, 1, INDEX, CONTRACT);
 
 function bought(): GameState {
-  const result = buyAt(market, startedGame(market), STEP, 1, INDEX, CONTRACT, SPEND);
+  const result = buyAt(market, startedGame(market), ME, STEP, 1, INDEX, CONTRACT, SPEND);
   expect(result.receipt.outcome).toBe('accepted');
   return result.game;
 }
 
 function expectRejected(game: GameState, command: Command, step: number, reason: string): void {
-  const result = applyCommand(market, game, command, step);
+  const result = applyCommand(market, game, ME, command, step);
   expect(result.receipt).toMatchObject({ commandId: command.commandId, kind: command.t, outcome: 'rejected', reason });
   expect(result.repeat).toBe(false);
-  expect(result.game.cashCents).toBe(game.cashCents);
-  expect(result.game.positions).toEqual(game.positions);
+  expect(me(result.game).cashCents).toBe(me(game).cashCents);
+  expect(me(result.game).positions).toEqual(me(game).positions);
 }
 
 describe('start', () => {
   it('leaves the lobby once, at the chosen pace', () => {
     const lobby = newGame();
-    expect(lobby).toMatchObject({ rev: 0, step: 0, pace: null, cashCents: 100_000_000, stress: false });
-    const result = applyCommand(market, lobby, start(3), 0);
+    expect(lobby).toMatchObject({ step: 0, pace: null, stress: false });
+    expect(me(lobby)).toMatchObject({ rev: 0, cashCents: 100_000_000 });
+    const result = applyCommand(market, lobby, ME, start(3), 0);
     expect(result.receipt).toMatchObject({ kind: 'start', outcome: 'accepted', step: 0 });
     expect(result.game.pace).toBe(3);
     expectRejected(result.game, start(7.5), 5, 'alreadyStarted');
-    expect(applyCommand(market, result.game, start(7.5), 5).game.pace).toBe(3);
+    expect(applyCommand(market, result.game, ME, start(7.5), 5).game.pace).toBe(3);
   });
 
   it('refuses every other command before it', () => {
@@ -52,13 +53,13 @@ describe('start', () => {
 
 describe('buy', () => {
   it('takes exactly price x quantity out of cash', () => {
-    const result = buyAt(market, startedGame(market), STEP, 1, INDEX, CONTRACT, SPEND);
+    const result = buyAt(market, startedGame(market), ME, STEP, 1, INDEX, CONTRACT, SPEND);
     const quantity = Math.floor(SPEND / PRICE);
     expect(quantity).toBeGreaterThan(0);
     expect(result.receipt).toEqual({ commandId: result.receipt.commandId, kind: 'buy', step: STEP, outcome: 'accepted', positionId: 'd1' });
-    expect(result.game.cashCents).toBe(STARTING_CASH_CENTS - PRICE * quantity);
+    expect(me(result.game).cashCents).toBe(STARTING_CASH_CENTS - PRICE * quantity);
     const ref = decodeContractId(21, CONTRACT);
-    expect(result.game.positions).toEqual([
+    expect(me(result.game).positions).toEqual([
       {
         id: 'd1',
         day: 1,
@@ -77,22 +78,22 @@ describe('buy', () => {
 
   it('is allowed before the opening bell, at the opening price', () => {
     const contract = findContract(market, 1, (id) => isTradable(priceOf(market, 1, 0, id)));
-    const result = buyAt(market, startedGame(market), 120, 1, 0, contract, SPEND);
+    const result = buyAt(market, startedGame(market), ME, 120, 1, 0, contract, SPEND);
     expect(result.receipt.outcome).toBe('accepted');
-    expect(result.game.positions[0]).toMatchObject({ entryStep: 120, entryPriceIndex: 0, entryPriceCents: priceOf(market, 1, 0, contract) });
+    expect(me(result.game).positions[0]).toMatchObject({ entryStep: 120, entryPriceIndex: 0, entryPriceCents: priceOf(market, 1, 0, contract) });
   });
 
   it('fills at the server price when that is better than the price seen', () => {
     const command = buyCommand({ day: 1, contractId: CONTRACT, spendCents: SPEND, seenPriceCents: PRICE * 2 });
-    const result = applyCommand(market, startedGame(market), command, STEP);
+    const result = applyCommand(market, startedGame(market), ME, command, STEP);
     expect(result.receipt.outcome).toBe('accepted');
-    expect(result.game.positions[0]?.entryPriceCents).toBe(PRICE);
+    expect(me(result.game).positions[0]?.entryPriceCents).toBe(PRICE);
   });
 
   it('may spend up to the cap and not a cent more', () => {
     const cap = spendCapCents(STARTING_CASH_CENTS);
     expect(cap).toBe(50_000_000);
-    expect(buyAt(market, startedGame(market), STEP, 1, INDEX, CONTRACT, cap).receipt.outcome).toBe('accepted');
+    expect(buyAt(market, startedGame(market), ME, STEP, 1, INDEX, CONTRACT, cap).receipt.outcome).toBe('accepted');
     expectRejected(startedGame(market), buyCommand({ day: 1, contractId: CONTRACT, spendCents: cap + 1, seenPriceCents: PRICE }), STEP, 'overCap');
   });
 
@@ -110,7 +111,7 @@ describe('buy', () => {
   it('closes at exactly the bell step', () => {
     const lastIndex = 499;
     const contract = findContract(market, 1, (id) => isTradable(priceOf(market, 1, lastIndex, id)));
-    expect(buyAt(market, startedGame(market), 799, 1, lastIndex, contract, SPEND).receipt.outcome).toBe('accepted');
+    expect(buyAt(market, startedGame(market), ME, 799, 1, lastIndex, contract, SPEND).receipt.outcome).toBe('accepted');
     const command = buyCommand({ day: 1, contractId: contract, spendCents: SPEND, seenPriceCents: priceOf(market, 1, 500, contract) || 100 });
     expectRejected(startedGame(market), command, 800, 'marketClosed');
     expectRejected(startedGame(market), { ...command, commandId: 'later-in-debrief' }, 899, 'marketClosed');
@@ -119,7 +120,7 @@ describe('buy', () => {
   it('allows one ticket a day, even after cashing it out', () => {
     const game = bought();
     expectRejected(game, buyCommand({ day: 1, contractId: CONTRACT, spendCents: SPEND, seenPriceCents: PRICE }), STEP + 1, 'alreadyBought');
-    const sold = applyCommand(market, game, cashOut('d1'), STEP + 5).game;
+    const sold = applyCommand(market, game, ME, cashOut('d1'), STEP + 5).game;
     const again = buyCommand({ day: 1, contractId: CONTRACT, spendCents: SPEND, seenPriceCents: priceOf(market, 1, INDEX + 6, CONTRACT) });
     expectRejected(sold, again, STEP + 6, 'alreadyBought');
   });
@@ -166,42 +167,42 @@ describe('buy', () => {
 
   it('never leaves cash negative or costs more than the spend', () => {
     for (const spendCents of [PRICE, PRICE + 1, 1_234_567, 49_999_999]) {
-      const result = buyAt(market, startedGame(market), STEP, 1, INDEX, CONTRACT, spendCents);
-      const position = result.game.positions[0];
+      const result = buyAt(market, startedGame(market), ME, STEP, 1, INDEX, CONTRACT, spendCents);
+      const position = me(result.game).positions[0];
       expect(position?.costCents).toBeLessThanOrEqual(spendCents);
-      expect(result.game.cashCents + (position?.costCents ?? NaN)).toBe(STARTING_CASH_CENTS);
+      expect(me(result.game).cashCents + (position?.costCents ?? NaN)).toBe(STARTING_CASH_CENTS);
     }
   });
 });
 
 describe('a repeated commandId', () => {
   it('returns the original accepted receipt and changes nothing', () => {
-    const first = buyAt(market, startedGame(market), STEP, 1, INDEX, CONTRACT, SPEND);
+    const first = buyAt(market, startedGame(market), ME, STEP, 1, INDEX, CONTRACT, SPEND);
     const resend = buyCommand({ day: 1, contractId: CONTRACT, spendCents: SPEND, seenPriceCents: PRICE, commandId: first.receipt.commandId });
-    const second = applyCommand(market, first.game, resend, STEP + 40);
+    const second = applyCommand(market, first.game, ME, resend, STEP + 40);
     expect(second.repeat).toBe(true);
     expect(second.receipt).toBe(first.receipt);
     expect(second.game).toBe(first.game);
-    expect(second.game.positions).toHaveLength(1);
+    expect(me(second.game).positions).toHaveLength(1);
   });
 
   it('returns the original rejected receipt and changes nothing, even when it would now pass', () => {
     const tooMuch = buyCommand({ day: 1, contractId: CONTRACT, spendCents: 60_000_000, seenPriceCents: PRICE });
-    const first = applyCommand(market, startedGame(market), tooMuch, STEP);
+    const first = applyCommand(market, startedGame(market), ME, tooMuch, STEP);
     expect(first.receipt.reason).toBe('overCap');
     const retry = buyCommand({ day: 1, contractId: CONTRACT, spendCents: SPEND, seenPriceCents: PRICE, commandId: tooMuch.commandId });
-    const second = applyCommand(market, first.game, retry, STEP);
+    const second = applyCommand(market, first.game, ME, retry, STEP);
     expect(second).toEqual({ game: first.game, receipt: first.receipt, repeat: true });
     expect(second.game).toBe(first.game);
-    expect(second.game.cashCents).toBe(STARTING_CASH_CENTS);
+    expect(me(second.game).cashCents).toBe(STARTING_CASH_CENTS);
   });
 
   it('pays a cash-out once however often it is resent', () => {
     const command = cashOut('d1');
-    const first = applyCommand(market, bought(), command, 500);
+    const first = applyCommand(market, bought(), ME, command, 500);
     let game = first.game;
     for (const step of [500, 501, 650, 800, 2000]) {
-      const again = applyCommand(market, game, command, step);
+      const again = applyCommand(market, game, ME, command, step);
       expect(again.repeat).toBe(true);
       expect(again.receipt).toBe(first.receipt);
       game = again.game;
@@ -211,8 +212,8 @@ describe('a repeated commandId', () => {
 
   it('does not re-run a jump', () => {
     const command = clockCommand('openBell', 1);
-    const first = applyCommand(market, startedGame(market), command, 10);
-    const again = applyCommand(market, first.game, command, 300);
+    const first = applyCommand(market, startedGame(market), ME, command, 10);
+    const again = applyCommand(market, first.game, ME, command, 300);
     expect(again.repeat).toBe(true);
     expect(again.jumpedTo).toBeUndefined();
     expect(again.game).toBe(first.game);
@@ -222,12 +223,12 @@ describe('a repeated commandId', () => {
 describe('cash out', () => {
   it('pays quantity x the current price', () => {
     const game = bought();
-    const position = game.positions[0];
+    const position = me(game).positions[0];
     const priceNow = priceOf(market, 1, 200, CONTRACT);
-    const result = applyCommand(market, game, cashOut('d1'), 500);
+    const result = applyCommand(market, game, ME, cashOut('d1'), 500);
     expect(result.receipt).toMatchObject({ kind: 'cashOut', outcome: 'accepted', step: 500, positionId: 'd1' });
-    expect(result.game.cashCents).toBe(game.cashCents + priceNow * (position?.quantity ?? NaN));
-    expect(result.game.positions[0]?.exit).toEqual({
+    expect(me(result.game).cashCents).toBe(me(game).cashCents + priceNow * (position?.quantity ?? NaN));
+    expect(me(result.game).positions[0]?.exit).toEqual({
       kind: 'cashOut',
       step: 500,
       priceIndex: 200,
@@ -237,30 +238,30 @@ describe('cash out', () => {
   });
 
   it('refuses a second cash-out and a ticket that does not exist', () => {
-    const sold = applyCommand(market, bought(), cashOut('d1'), 500).game;
+    const sold = applyCommand(market, bought(), ME, cashOut('d1'), 500).game;
     expectRejected(sold, cashOut('d1'), 510, 'alreadyClosed');
     expectRejected(sold, cashOut('d2'), 510, 'unknownPosition');
-    expect(advanceTo(market, sold, 900).cashCents).toBe(sold.cashCents);
+    expect(me(advanceTo(market, sold, 900)).cashCents).toBe(me(sold).cashCents);
   });
 
   it.each([800, 801, 899, 900, 2345, GAME_STEPS])('at or after the bell (step %i) is accepted and pays the bell value exactly once', (step) => {
     const game = bought();
-    const quantity = game.positions[0]?.quantity ?? NaN;
-    const bellCash = game.cashCents + priceOf(market, 1, 500, CONTRACT) * quantity;
-    const first = applyCommand(market, game, cashOut('d1'), step);
+    const quantity = me(game).positions[0]?.quantity ?? NaN;
+    const bellCash = me(game).cashCents + priceOf(market, 1, 500, CONTRACT) * quantity;
+    const first = applyCommand(market, game, ME, cashOut('d1'), step);
     expect(first.receipt).toMatchObject({ outcome: 'accepted', positionId: 'd1' });
-    expect(first.game.cashCents).toBe(bellCash);
-    expect(first.game.positions[0]?.exit).toMatchObject({ kind: 'bell', step: 800, priceIndex: 500 });
-    const second = applyCommand(market, first.game, cashOut('d1'), step + 1);
+    expect(me(first.game).cashCents).toBe(bellCash);
+    expect(me(first.game).positions[0]?.exit).toMatchObject({ kind: 'bell', step: 800, priceIndex: 500 });
+    const second = applyCommand(market, first.game, ME, cashOut('d1'), step + 1);
     expect(second.receipt.outcome).toBe('accepted');
-    expect(second.game.cashCents).toBe(bellCash);
-    expect(advanceTo(market, second.game, GAME_STEPS).cashCents).toBe(bellCash);
+    expect(me(second.game).cashCents).toBe(bellCash);
+    expect(me(advanceTo(market, second.game, GAME_STEPS)).cashCents).toBe(bellCash);
   });
 
   it('one step before the bell still pays the live price', () => {
     const game = bought();
-    const result = applyCommand(market, game, cashOut('d1'), 799);
-    expect(result.game.positions[0]?.exit).toMatchObject({ kind: 'cashOut', priceIndex: 499, priceCents: priceOf(market, 1, 499, CONTRACT) });
+    const result = applyCommand(market, game, ME, cashOut('d1'), 799);
+    expect(me(result.game).positions[0]?.exit).toMatchObject({ kind: 'cashOut', priceIndex: 499, priceCents: priceOf(market, 1, 499, CONTRACT) });
   });
 });
 
@@ -276,9 +277,9 @@ describe('advanceTo', () => {
     const winner = findContract(market, 1, (id) => isTradable(priceOf(market, 1, INDEX, id)) && realAtBell(id) > 0);
     const loser = findContract(market, 1, (id) => isTradable(priceOf(market, 1, INDEX, id)) && realAtBell(id) === 0);
     for (const contract of [winner, loser]) {
-      const game = buyAt(market, startedGame(market), STEP, 1, INDEX, contract, SPEND).game;
+      const game = buyAt(market, startedGame(market), ME, STEP, 1, INDEX, contract, SPEND).game;
       const settled = advanceTo(market, game, 800);
-      const position = settled.positions[0];
+      const position = me(settled).positions[0];
       expect(position?.exit).toEqual({
         kind: 'bell',
         step: 800,
@@ -286,17 +287,17 @@ describe('advanceTo', () => {
         priceCents: realAtBell(contract),
         proceedsCents: realAtBell(contract) * (position?.quantity ?? NaN),
       });
-      expect(settled.cashCents).toBe(game.cashCents + realAtBell(contract) * (position?.quantity ?? NaN));
-      expect(settled.dayEndCents).toEqual([settled.cashCents]);
+      expect(me(settled).cashCents).toBe(me(game).cashCents + realAtBell(contract) * (position?.quantity ?? NaN));
+      expect(me(settled).dayEndCents).toEqual([me(settled).cashCents]);
     }
   });
 
   it('does not settle one step early', () => {
     const game = bought();
     const before = advanceTo(market, game, 799);
-    expect(before.positions[0]?.exit).toBeUndefined();
-    expect(before.cashCents).toBe(game.cashCents);
-    expect(before.dayEndCents).toEqual([]);
+    expect(me(before).positions[0]?.exit).toBeUndefined();
+    expect(me(before).cashCents).toBe(me(game).cashCents);
+    expect(me(before).dayEndCents).toEqual([]);
   });
 
   it('gives identical state whether it is called late, often or early', () => {
@@ -311,7 +312,7 @@ describe('advanceTo', () => {
     early = advanceTo(market, early, GAME_STEPS + 500);
     expect(often).toEqual(late);
     expect(early).toEqual(late);
-    expect(late.dayEndCents).toHaveLength(5);
+    expect(me(late).dayEndCents).toHaveLength(5);
     expect(late.step).toBe(GAME_STEPS);
   });
 
@@ -329,7 +330,7 @@ describe('advanceTo', () => {
 
 describe('clock commands', () => {
   it('ring the opening bell early', () => {
-    const result = applyCommand(market, startedGame(market), clockCommand('openBell', 1), 10);
+    const result = applyCommand(market, startedGame(market), ME, clockCommand('openBell', 1), 10);
     expect(result.receipt).toMatchObject({ kind: 'openBell', outcome: 'accepted', step: 10 });
     expect(result.jumpedTo).toBe(300);
     expect(result.game.step).toBe(300);
@@ -337,24 +338,24 @@ describe('clock commands', () => {
 
   it('skip to the closing bell and settle the held ticket there', () => {
     const game = bought();
-    const result = applyCommand(market, game, clockCommand('skipToBell', 1), 400);
+    const result = applyCommand(market, game, ME, clockCommand('skipToBell', 1), 400);
     expect(result.jumpedTo).toBe(800);
     expect(result.game.step).toBe(800);
-    expect(result.game.positions[0]?.exit).toMatchObject({ kind: 'bell', step: 800 });
-    expect(result.game.cashCents).toBe(advanceTo(market, game, 800).cashCents);
+    expect(me(result.game).positions[0]?.exit).toMatchObject({ kind: 'bell', step: 800 });
+    expect(me(result.game).cashCents).toBe(me(advanceTo(market, game, 800)).cashCents);
   });
 
   it('move to the next day from the debrief', () => {
-    const result = applyCommand(market, startedGame(market), clockCommand('nextDay', 1), 850);
+    const result = applyCommand(market, startedGame(market), ME, clockCommand('nextDay', 1), 850);
     expect(result.jumpedTo).toBe(900);
-    expect(result.game.dayEndCents).toHaveLength(1);
+    expect(me(result.game).dayEndCents).toHaveLength(1);
   });
 
   it('reach the final screen after day 5', () => {
-    const result = applyCommand(market, startedGame(market), clockCommand('nextDay', 5), 4450);
+    const result = applyCommand(market, startedGame(market), ME, clockCommand('nextDay', 5), 4450);
     expect(result.jumpedTo).toBe(GAME_STEPS);
     expect(result.game.step).toBe(GAME_STEPS);
-    expect(result.game.dayEndCents).toHaveLength(5);
+    expect(me(result.game).dayEndCents).toHaveLength(5);
     expectRejected(result.game, clockCommand('nextDay', 5), GAME_STEPS, 'gameOver');
   });
 
@@ -368,8 +369,8 @@ describe('clock commands', () => {
   });
 
   it('keep later commands at or after the jump target', () => {
-    const jumped = applyCommand(market, startedGame(market), clockCommand('openBell', 1), 10).game;
-    const result = applyCommand(market, jumped, clockCommand('openBell', 1), 50);
+    const jumped = applyCommand(market, startedGame(market), ME, clockCommand('openBell', 1), 10).game;
+    const result = applyCommand(market, jumped, ME, clockCommand('openBell', 1), 50);
     expect(result.receipt).toMatchObject({ step: 300, outcome: 'rejected', reason: 'wrongPhase' });
   });
 });
@@ -378,12 +379,12 @@ describe('clock commands', () => {
 function playScriptedGame(): GameState {
   let game = newGame();
   const send = (command: Command, step: number) => {
-    game = applyCommand(market, game, command, step).game;
+    game = applyCommand(market, game, ME, command, step).game;
   };
   const buy = (day: number, step: number, priceIndex: number, commandId?: string) => {
     const contract = findContract(market, day, (id) => id % 7 === day && isTradable(priceOf(market, day, priceIndex, id)));
     const seenPriceCents = priceOf(market, day, priceIndex, contract);
-    const fields = { day, contractId: contract, spendCents: spendCapCents(game.cashCents), seenPriceCents };
+    const fields = { day, contractId: contract, spendCents: spendCapCents(me(game).cashCents), seenPriceCents };
     send(buyCommand(commandId === undefined ? fields : { ...fields, commandId }), step);
   };
 
@@ -416,49 +417,49 @@ function playScriptedGame(): GameState {
 describe('rev, log and replay', () => {
   it('raises rev on every receipt and on every settlement, and on nothing else', () => {
     let game = startedGame(market);
-    expect(game.rev).toBe(1);
-    game = buyAt(market, game, STEP, 1, INDEX, CONTRACT, SPEND).game;
-    expect(game.rev).toBe(2);
-    game = applyCommand(market, game, cashOut('nope'), STEP + 1).game;
-    expect(game.rev).toBe(3);
+    expect(me(game).rev).toBe(1);
+    game = buyAt(market, game, ME, STEP, 1, INDEX, CONTRACT, SPEND).game;
+    expect(me(game).rev).toBe(2);
+    game = applyCommand(market, game, ME, cashOut('nope'), STEP + 1).game;
+    expect(me(game).rev).toBe(3);
     game = advanceTo(market, game, 799);
-    expect(game.rev).toBe(3);
+    expect(me(game).rev).toBe(3);
     game = advanceTo(market, game, 800);
-    expect(game.rev).toBe(4);
+    expect(me(game).rev).toBe(4);
     game = advanceTo(market, game, 1700);
-    expect(game.rev).toBe(4);
-    const repeat = applyCommand(market, game, cashOut('d1', game.receipts[2]?.commandId), 1700);
-    expect(repeat.game.rev).toBe(4);
+    expect(me(game).rev).toBe(4);
+    const repeat = applyCommand(market, game, ME, cashOut('d1', me(game).receipts[2]?.commandId), 1700);
+    expect(me(repeat.game).rev).toBe(4);
   });
 
   it('logs every command that is not a repeat, with the step it arrived at', () => {
     const game = playScriptedGame();
-    expect(game.log).toHaveLength(game.receipts.length);
-    game.log.forEach((entry, index) => {
-      expect(entry.command.commandId).toBe(game.receipts[index]?.commandId);
-      expect(entry.step).toBe(game.receipts[index]?.step);
+    expect(me(game).log).toHaveLength(me(game).receipts.length);
+    me(game).log.forEach((entry, index) => {
+      expect(entry.command.commandId).toBe(me(game).receipts[index]?.commandId);
+      expect(entry.step).toBe(me(game).receipts[index]?.step);
     });
-    expect(game.log.filter((entry) => entry.command.commandId === 'first-buy-of-the-game')).toHaveLength(1);
-    const steps = game.log.map((entry) => entry.step);
+    expect(me(game).log.filter((entry) => entry.command.commandId === 'first-buy-of-the-game')).toHaveLength(1);
+    const steps = me(game).log.map((entry) => entry.step);
     expect(steps).toEqual([...steps].sort((a, b) => a - b));
-    expect(new Set(game.receipts.map((receipt) => receipt.outcome))).toEqual(new Set(['accepted', 'rejected']));
-    expect(game.positions.map((position) => position.exit?.kind)).toEqual(['cashOut', 'bell', 'bell', 'bell']);
+    expect(new Set(me(game).receipts.map((receipt) => receipt.outcome))).toEqual(new Set(['accepted', 'rejected']));
+    expect(me(game).positions.map((position) => position.exit?.kind)).toEqual(['cashOut', 'bell', 'bell', 'bell']);
   });
 
   it('replays the log on the same market to the identical state', () => {
     const played = playScriptedGame();
     let replayed = newGame();
-    for (const entry of played.log) replayed = applyCommand(market, replayed, entry.command, entry.step).game;
+    for (const entry of me(played).log) replayed = applyCommand(market, replayed, ME, entry.command, entry.step).game;
     replayed = advanceTo(market, replayed, played.step);
     expect(replayed).toEqual(played);
-    expect(played.cashCents).not.toBe(STARTING_CASH_CENTS);
+    expect(me(played).cashCents).not.toBe(STARTING_CASH_CENTS);
   });
 
   it('keeps cash equal to the start plus every exit minus every cost', () => {
     const game = playScriptedGame();
-    const flows = game.positions.reduce((sum, position) => sum - position.costCents + (position.exit?.proceedsCents ?? 0), 0);
-    expect(game.cashCents).toBe(STARTING_CASH_CENTS + flows);
-    expect(game.dayEndCents[4]).toBe(game.cashCents);
+    const flows = me(game).positions.reduce((sum, position) => sum - position.costCents + (position.exit?.proceedsCents ?? 0), 0);
+    expect(me(game).cashCents).toBe(STARTING_CASH_CENTS + flows);
+    expect(me(game).dayEndCents[4]).toBe(me(game).cashCents);
   });
 });
 

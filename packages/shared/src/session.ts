@@ -9,10 +9,15 @@ import { buildMarket } from './market';
 import type { Command, Frame, Receipt } from './protocol';
 
 /**
- * One player's session: the hidden market, the game state and the wall-clock
- * anchor that turns "now" into a logical step. This is the only layer that
- * sees milliseconds, and it never reads a clock itself: `nowMs` is always
- * passed in. Every function returns a new session and leaves its input alone.
+ * A session owns the hidden market, the clock and the pace, and holds
+ * players; a player owns an account. Every command and every frame names the
+ * player it is for. A session made here has exactly one player unless a test
+ * asks for more: nothing lets a second player join.
+ *
+ * The wall-clock anchor that turns "now" into a logical step lives here. This
+ * is the only layer that sees milliseconds, and it never reads a clock
+ * itself: `nowMs` is always passed in. Every function returns a new session
+ * and leaves its input alone.
  */
 
 export interface Session {
@@ -23,7 +28,7 @@ export interface Session {
   clock: ClockState | null;
 }
 
-export function createSession(id: string, identity: MarketIdentity, options: { targetsPerCompany?: number } = {}): Session {
+export function createSession(id: string, identity: MarketIdentity, options: { targetsPerCompany?: number; playerIds?: readonly string[] } = {}): Session {
   return { id, market: buildMarket(identity), game: newGame(options), clock: null };
 }
 
@@ -40,9 +45,9 @@ export interface HandledCommand {
   repeat: boolean;
 }
 
-/** Apply one schema-valid command at the step `nowMs` falls in. */
-export function handleCommand(session: Session, command: Command, nowMs: number): HandledCommand {
-  const result = applyCommand(session.market, session.game, command, sessionStep(session, nowMs));
+/** Apply one player's schema-valid command at the step `nowMs` falls in. The clock it may move is the session's, shared by every player. */
+export function handleCommand(session: Session, playerId: string, command: Command, nowMs: number): HandledCommand {
+  const result = applyCommand(session.market, session.game, playerId, command, sessionStep(session, nowMs));
   if (result.repeat) return { session, receipt: result.receipt, repeat: true };
 
   let clock = session.clock;
@@ -54,10 +59,10 @@ export function handleCommand(session: Session, command: Command, nowMs: number)
   return { session: { ...session, game: result.game, clock }, receipt: result.receipt, repeat: false };
 }
 
-/** Settle up to `nowMs`, then project the public frame for that step. */
-export function frameFor(session: Session, nowMs: number, options: Pick<ProjectOptions, 'history' | 'sections'>): { session: Session; frame: Frame } {
+/** Settle every player up to `nowMs`, then project the named player's public frame for that step. */
+export function frameFor(session: Session, playerId: string, nowMs: number, options: Pick<ProjectOptions, 'history' | 'sections'>): { session: Session; frame: Frame } {
   const game = advanceTo(session.market, session.game, sessionStep(session, nowMs));
   const next = game === session.game ? session : { ...session, game };
-  const frame = projectFrame(next.market, game, game.step, { session: session.id, history: options.history, sections: options.sections ?? 'full' });
+  const frame = projectFrame(next.market, game, playerId, game.step, { session: session.id, history: options.history, sections: options.sections ?? 'full' });
   return { session: next, frame };
 }

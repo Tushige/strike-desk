@@ -1,6 +1,6 @@
 import type { Pace } from '../src/clock';
-import type { CommandResult, GameState } from '../src/game';
-import { applyCommand, newGame } from '../src/game';
+import type { CommandResult, GameState, PlayerState } from '../src/game';
+import { FIRST_PLAYER_ID, applyCommand, newGame, playerOf } from '../src/game';
 import type { Market } from '../src/market';
 import { CONTENT_VERSION, ENGINE_VERSION, boardFor, buildMarket, quoteAt } from '../src/market';
 import { contractCount } from '../src/board';
@@ -11,6 +11,14 @@ export const TEST_IDENTITY = { seed: TEST_SEED, engine: ENGINE_VERSION, content:
 
 export function testMarket(): Market {
   return buildMarket(TEST_IDENTITY);
+}
+
+/** The one player every real game has. Tests of a single player's game act as this player. */
+export const ME = FIRST_PLAYER_ID;
+
+/** The account of the game's one player. */
+export function me(game: GameState): PlayerState {
+  return playerOf(game, ME);
 }
 
 let nextId = 0;
@@ -34,9 +42,9 @@ export function buyCommand(fields: { day: number; contractId: number; spendCents
   };
 }
 
-/** A game whose `start` has been accepted at step 0. */
+/** A one-player game whose `start` has been accepted at step 0. */
 export function startedGame(market: Market, options: { targetsPerCompany?: number; pace?: Pace } = {}): GameState {
-  const result = applyCommand(market, newGame(options), start(options.pace ?? 1), 0);
+  const result = applyCommand(market, newGame(options), ME, start(options.pace ?? 1), 0);
   if (result.receipt.outcome !== 'accepted') throw new Error('start was refused');
   return result.game;
 }
@@ -57,7 +65,7 @@ export function findContract(market: Market, day: number, test: (contractId: num
 }
 
 /** Buy at the server's own price, so the price-moved check passes. */
-export function buyAt(market: Market, game: GameState, step: number, day: number, priceIndex: number, contractId: number, spendCents: number): CommandResult {
+export function buyAt(market: Market, game: GameState, playerId: string, step: number, day: number, priceIndex: number, contractId: number, spendCents: number): CommandResult {
   const seenPriceCents = priceOf(market, day, priceIndex, contractId, game.targetsPerCompany);
-  return applyCommand(market, game, buyCommand({ day, contractId, spendCents, seenPriceCents }), step);
+  return applyCommand(market, game, playerId, buyCommand({ day, contractId, spendCents, seenPriceCents }), step);
 }

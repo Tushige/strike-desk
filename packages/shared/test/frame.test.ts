@@ -11,7 +11,7 @@ import { isTradable } from '../src/pricing';
 import type { Frame } from '../src/protocol';
 import { frameSchema } from '../src/protocol';
 import { seedToMarketCode } from '../src/rng';
-import { TEST_IDENTITY, TEST_SEED, buyCommand, cashOut, findContract, priceOf, start, startedGame, testMarket } from './helpers';
+import { ME, TEST_IDENTITY, TEST_SEED, buyCommand, cashOut, findContract, me, priceOf, start, startedGame, testMarket } from './helpers';
 import { TEST_CAST } from './testCast';
 
 const market = testMarket();
@@ -57,11 +57,11 @@ function playDay(game: GameState, day: number, buyInDay: number, cashOutInDay?: 
   const base = (day - 1) * 900;
   const priceIndex = Math.max(0, buyInDay - 300);
   const contract = findContract(market, day, (id) => id % 5 === day % 5 && isTradable(priceOf(market, day, priceIndex, id)));
-  const command = buyCommand({ day, contractId: contract, spendCents: spendCapCents(game.cashCents), seenPriceCents: priceOf(market, day, priceIndex, contract) });
-  let next = applyCommand(market, game, command, base + buyInDay);
+  const command = buyCommand({ day, contractId: contract, spendCents: spendCapCents(me(game).cashCents), seenPriceCents: priceOf(market, day, priceIndex, contract) });
+  let next = applyCommand(market, game, ME, command, base + buyInDay);
   expect(next.receipt.outcome).toBe('accepted');
   if (cashOutInDay !== undefined) {
-    next = applyCommand(market, next.game, cashOut(`d${day}`), base + cashOutInDay);
+    next = applyCommand(market, next.game, ME, cashOut(`d${day}`), base + cashOutInDay);
     expect(next.receipt.outcome).toBe('accepted');
   }
   return next.game;
@@ -94,7 +94,7 @@ const STEPS: [string, number][] = [
 ];
 
 const project = (source: Market, game: GameState, step: number, history = true, sections?: ProjectOptions['sections']): Frame =>
-  projectFrame(source, game, step, sections === undefined ? { session: 'session-1', history } : { session: 'session-1', history, sections });
+  projectFrame(source, game, ME, step, sections === undefined ? { session: 'session-1', history } : { session: 'session-1', history, sections });
 
 const projectLive = (source: Market, game: GameState, step: number, history = false): Frame => project(source, game, step, history, 'live');
 
@@ -189,7 +189,7 @@ describe('projectFrame', () => {
   });
 
   it('shows a rejected command in the lobby too', () => {
-    const game = applyCommand(market, newGame(), cashOut('d1'), 0).game;
+    const game = applyCommand(market, newGame(), ME, cashOut('d1'), 0).game;
     expect(project(market, game, 0).receipts).toHaveLength(1);
   });
 
@@ -239,13 +239,13 @@ describe('projectFrame', () => {
     expect(position?.valueCents).toBe(priceOf(market, 3, 100, position?.contractId ?? -1) * (position?.quantity ?? NaN));
     expect(position?.realCents ?? NaN).toBeGreaterThanOrEqual(0);
     expect((position?.realCents ?? NaN) + (position?.hopeCents ?? NaN)).toBe(priceOf(market, 3, 100, position?.contractId ?? -1));
-    expect(frame.account.cashCents).toBe(game.cashCents);
-    expect(frame.account.worthCents).toBe(game.cashCents + (position?.valueCents ?? NaN));
+    expect(frame.account.cashCents).toBe(me(game).cashCents);
+    expect(frame.account.worthCents).toBe(me(game).cashCents + (position?.valueCents ?? NaN));
     expect(frame.account.canBuy).toBe(false);
 
     const after = project(market, advanceTo(market, game, 1800 + 800), 1800 + 800);
     expect(after.account.worthCents).toBe(after.account.cashCents);
-    expect(after.account.cashCents).toBe(game.cashCents + (after.positions[2]?.exit?.proceedsCents ?? NaN));
+    expect(after.account.cashCents).toBe(me(game).cashCents + (after.positions[2]?.exit?.proceedsCents ?? NaN));
   });
 
   it('tells a cashed-out ticket what holding on would be worth, from its own day only', () => {
@@ -280,10 +280,10 @@ describe('projectFrame', () => {
 
   it('carries the latest 20 receipts', () => {
     let game = startedGame(market);
-    for (let i = 0; i < 30; i += 1) game = applyCommand(market, game, start(1), 10 + i).game;
+    for (let i = 0; i < 30; i += 1) game = applyCommand(market, game, ME, start(1), 10 + i).game;
     const frame = project(market, game, 40);
     expect(frame.receipts).toHaveLength(20);
-    expect(frame.receipts[19]).toEqual(game.receipts[30]);
+    expect(frame.receipts[19]).toEqual(me(game).receipts[30]);
     expect(frame.rev).toBe(31);
   });
 
@@ -306,8 +306,8 @@ describe('projectFrame, live form', () => {
   ];
 
   it('shows the lobby with every other section empty, even after a refused command', () => {
-    const game = applyCommand(market, newGame(), cashOut('d1'), 0).game;
-    expect(game.receipts).toHaveLength(1);
+    const game = applyCommand(market, newGame(), ME, cashOut('d1'), 0).game;
+    expect(me(game).receipts).toHaveLength(1);
     const frame = projectLive(market, game, 0, true);
     expect(frame).toMatchObject({
       ...EMPTY_SECTIONS,
@@ -328,14 +328,14 @@ describe('projectFrame, live form', () => {
   it.each(MOMENTS)('%s: only the clock, six prices and the account are filled', (_name, step) => {
     // The game holds tickets, receipts and finished days by now; none of it may show.
     const game = gameAt(step);
-    expect(game.receipts.length).toBeGreaterThan(0);
+    expect(me(game).receipts.length).toBeGreaterThan(0);
     const frame = projectLive(market, game, step, true);
     expect(frame).toMatchObject({
       ...EMPTY_SECTIONS,
-      rev: game.rev,
+      rev: me(game).rev,
       step,
       clock: { ...momentAt(step), pace: 1 },
-      account: { cashCents: game.cashCents, worthCents: game.cashCents, capCents: spendCapCents(game.cashCents), canBuy: false },
+      account: { cashCents: me(game).cashCents, worthCents: me(game).cashCents, capCents: spendCapCents(me(game).cashCents), canBuy: false },
       stress: false,
     });
     expect('history' in frame).toBe(false);

@@ -253,6 +253,7 @@ export function createApp(options: AppOptions): App {
       const connection: Connection = {
         socket: frameSocket,
         sessionId: null,
+        playerId: null,
         messages: createWindowCounter(limits.messagesPerWindow, limits.messageWindowMs),
       };
 

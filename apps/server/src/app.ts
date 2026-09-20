@@ -6,6 +6,7 @@ import sirv from 'sirv';
 import { HEALTH_PATH, SAMPLE_INTERVAL_MS, WS_PATH } from '@strike-desk/shared/engine';
 import type { Connection } from './door';
 import { handleClosed, handleInbound } from './door';
+import { originAllowed } from './origin';
 import type { FrameSocket } from './sampler';
 import { sampleSessions } from './sampler';
 import { drawSeed, drawSessionId } from './seed';
@@ -104,6 +105,11 @@ function toText(data: WebSocket.RawData): string {
   return Buffer.from(data).toString();
 }
 
+/** One header value: a repeated header arrives as a list, and the first entry is the one that counts. */
+function firstHeader(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
 function modeFromUrl(url: URL): ConnMode {
   const probe = url.searchParams.get('probe');
   if (probe === 'quiet') return 'quiet';
@@ -182,6 +188,17 @@ export function createApp(options: AppOptions): App {
       socket.destroy();
       return;
     }
+
+    const origin = firstHeader(req.headers.origin);
+    if (!originAllowed({ origin, host: firstHeader(req.headers.host), forwardedHost: firstHeader(req.headers['x-forwarded-host']) })) {
+      // The refused origin and nothing else about the request: enough to see
+      // in the host's log which page was turned away, without putting a
+      // session id or a header set anywhere near it.
+      console.warn('ws origin refused', origin);
+      socket.destroy();
+      return;
+    }
+
     const mode = probeModes ? modeFromUrl(url) : 'normal';
 
     wss.handleUpgrade(req, socket, head, (ws) => {

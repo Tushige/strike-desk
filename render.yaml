@@ -4,7 +4,7 @@ services:
     runtime: node
     region: virginia
     plan: free
-    branch: feature/deploy-pipeline-and-first-live-page
+    branch: main
     autoDeployTrigger: checksPass
     buildCommand: NODE_ENV=development pnpm install --frozen-lockfile && pnpm run build
     startCommand: node apps/server/dist/server.js

@@ -30,6 +30,13 @@ export interface Limits {
   /** How often the housekeeping runs. Housekeeping, not a game timer. */
   sweepIntervalMs: number;
   /**
+   * How long a connection may hold no session. The page says hello the moment
+   * its socket opens, so ten seconds is generous even on a slow link.
+   */
+  helloDeadlineMs: number;
+  /** How often the one shared check for that runs. Housekeeping cadence, not a guard number. */
+  helloCheckIntervalMs: number;
+  /**
    * New games the whole service will take on at once. Building a market
    * costs 2.8 ms of processor time (measured), so 70 arriving inside one
    * 200 ms sampling pass would starve the stream. Counted for the service,
@@ -50,6 +57,8 @@ export const LIMITS: Limits = {
   maxSocketsPerSession: 3,
   sessionTtlMs: 1_800_000,
   sweepIntervalMs: 60_000,
+  helloDeadlineMs: 10_000,
+  helloCheckIntervalMs: 1_000,
   newSessionBurst: 30,
   newSessionRefillPerSecond: 3,
   messagesPerWindow: 20,

@@ -9,11 +9,12 @@ import { createApp } from '../src/app';
 import type { App, AppOptions, BuildVersion } from '../src/app';
 
 /**
- * The real app on an ephemeral port, with time as an input: neither the
- * sampling timer nor the heartbeat timer exists, the clock only moves when a
- * test moves it, and the seeds are fixed. A test calls `sample()` or
- * `heartbeat()` and awaits what follows; nothing here waits for a duration.
- * The only timers are the failure timeouts that stop a broken test hanging.
+ * The real app on an ephemeral port, with time as an input: none of the
+ * sampling, heartbeat or hello-deadline timers exists, the clock only moves
+ * when a test moves it, and the seeds are fixed. A test calls `sample()`,
+ * `heartbeat()` or `helloDeadline()` and awaits what follows; nothing here
+ * waits for a duration. The only timers are the failure timeouts that stop a
+ * broken test hanging.
  */
 
 export const TEST_VERSION: BuildVersion = { commit: 'abc1234', buildTime: '2026-01-02T03:04:05Z' };
@@ -87,6 +88,8 @@ export interface Harness {
   sample(): void;
   /** One heartbeat round at the fake clock's current time. */
   heartbeat(): void;
+  /** One hello-deadline round at the fake clock's current time. */
+  helloDeadline(): void;
   close(): Promise<void>;
 }
 
@@ -266,9 +269,12 @@ export async function startHarness(overrides: Partial<AppOptions> = {}): Promise
   const app = createApp({
     staticDir,
     version: TEST_VERSION,
-    // No timer of any kind: both rounds are driven by hand.
+    // No timer of any kind: every round is driven by hand. The hello check
+    // especially: a real one-second timer reading a clock a test has moved a
+    // minute on would close a quiet socket in the middle of another test.
     heartbeatMs: 0,
     sampleMs: 0,
+    helloCheckMs: 0,
     now: () => clock.now(),
     drawSeed: () => {
       const seed = FIXED_SEEDS[drawn % FIXED_SEEDS.length] ?? 0;
@@ -300,6 +306,7 @@ export async function startHarness(overrides: Partial<AppOptions> = {}): Promise
       connectClient(options.search === undefined ? url : `${url}?${options.search}`, options.socket),
     sample: () => app.sampleOnce(clock.now()),
     heartbeat: () => app.heartbeatOnce(clock.now()),
+    helloDeadline: () => app.helloDeadlineOnce(clock.now()),
     async close() {
       await app.close();
       rmSync(staticDir, { recursive: true, force: true });

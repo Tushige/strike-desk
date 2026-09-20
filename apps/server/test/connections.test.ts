@@ -198,3 +198,136 @@ describe('the number of connections the service will hold', () => {
     expect(LIMITS.maxConnections).toBeGreaterThanOrEqual(LIMITS.maxSessions * LIMITS.maxSocketsPerSession);
   });
 });
+
+describe('a connection that has not been given a session', () => {
+  it('is closed once the deadline has passed, and not a millisecond before', async () => {
+    const running = await boot();
+    const silent = await open(running);
+
+    running.clock.advance(LIMITS.helloDeadlineMs - 1);
+    running.helloDeadline();
+    await roundTrip(silent);
+    expect(silent.socket.readyState).toBe(silent.socket.OPEN);
+
+    running.clock.advance(1);
+    running.helloDeadline();
+    await silent.closed();
+    expect(silent.socket.readyState).toBe(silent.socket.CLOSED);
+  });
+
+  it('is closed when its only hello was refused, and when it sent nothing readable at all', async () => {
+    const running = await boot();
+    const wrongVersion = await open(running);
+    wrongVersion.send({ t: 'hello', v: PROTOCOL_VERSION + 1 });
+    expect(await wrongVersion.nextError()).toEqual({ t: 'error', code: 'versionMismatch' });
+
+    const gibberish = await open(running);
+    gibberish.sendText('{');
+    expect(await gibberish.nextError()).toEqual({ t: 'error', code: 'badMessage' });
+
+    running.clock.advance(LIMITS.helloDeadlineMs);
+    running.helloDeadline();
+    await Promise.all([wrongVersion.closed(), gibberish.closed()]);
+    expect([wrongVersion.socket.readyState, gibberish.socket.readyState]).toEqual([wrongVersion.socket.CLOSED, gibberish.socket.CLOSED]);
+    expect((await counts(running)).sockets).toBe(0);
+  });
+
+  it('frees the place it was holding, so the next upgrade is let in', async () => {
+    const running = await boot({ limits: { maxConnections: 1 } });
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    await open(running);
+    await refusedWith(running.connect());
+
+    const letGo = serverHasLetGo(accepted[0]);
+    running.clock.advance(LIMITS.helloDeadlineMs);
+    running.helloDeadline();
+    await letGo;
+
+    const next = await open(running);
+    next.send(HELLO);
+    expect((await next.nextFrame()).clock.phase).toBe('lobby');
+  });
+});
+
+describe('a connection that holds a session', () => {
+  it('is never closed by the deadline, however late the clock', async () => {
+    const running = await boot();
+    const client = await open(running);
+    client.send(HELLO);
+    const lobby = await client.nextFrame();
+    expect(lobby.clock.phase).toBe('lobby');
+
+    running.clock.advance(LIMITS.helloDeadlineMs);
+    running.helloDeadline();
+    running.clock.advance(LIMITS.helloDeadlineMs * 100);
+    running.helloDeadline();
+
+    await roundTrip(client);
+    expect(client.socket.readyState).toBe(client.socket.OPEN);
+    expect(await counts(running)).toEqual({ sessions: 1, sockets: 1 });
+  });
+
+  it('is left alone even when its hello came in the last moment before the deadline', async () => {
+    const running = await boot();
+    const client = await open(running);
+
+    running.clock.advance(LIMITS.helloDeadlineMs - 1);
+    client.send(HELLO);
+    expect((await client.nextFrame()).clock.phase).toBe('lobby');
+
+    running.clock.advance(LIMITS.helloDeadlineMs * 10);
+    running.helloDeadline();
+    await roundTrip(client);
+    expect(client.socket.readyState).toBe(client.socket.OPEN);
+  });
+});
+
+describe('the measurement modes and the deadline', () => {
+  it('holds no measurement connection to it, while an ordinary one beside them is closed', async () => {
+    const running = await boot({ probeModes: true });
+    const silentProbe = running.connect({ search: 'probe=silent' });
+    const quietProbe = running.connect({ search: 'probe=quiet' });
+    const ordinary = running.connect();
+    await Promise.all([silentProbe.opened(), quietProbe.opened(), ordinary.opened()]);
+
+    running.clock.advance(LIMITS.helloDeadlineMs * 100);
+    running.helloDeadline();
+
+    // The ordinary connection is the witness that the round ran at all.
+    await ordinary.closed();
+    await Promise.all([roundTrip(silentProbe), roundTrip(quietProbe)]);
+    expect([silentProbe.socket.readyState, quietProbe.socket.readyState]).toEqual([silentProbe.socket.OPEN, quietProbe.socket.OPEN]);
+  });
+
+  it('closes a connection asking for a measurement mode like any other when the modes are off', async () => {
+    const running = await boot();
+    const asking = running.connect({ search: 'probe=silent' });
+    await asking.opened();
+
+    running.clock.advance(LIMITS.helloDeadlineMs);
+    running.helloDeadline();
+    await asking.closed();
+    expect(asking.socket.readyState).toBe(asking.socket.CLOSED);
+  });
+});
+
+describe('the hello-deadline timer', () => {
+  it('is made once for the whole service, whatever the number of connections, and not at all when it is turned off', async () => {
+    const spy = vi.spyOn(globalThis, 'setInterval');
+    const running = await boot({ helloCheckMs: LIMITS.helloCheckIntervalMs });
+    const helloTimers = (): number => spy.mock.calls.filter((call) => call[1] === LIMITS.helloCheckIntervalMs).length;
+    expect(helloTimers()).toBe(1);
+
+    // The fake clock never moves here, so the real timer can close nothing.
+    for (let i = 0; i < 5; i += 1) await open(running);
+    expect((await counts(running)).sockets).toBe(5);
+    expect(helloTimers()).toBe(1);
+
+    await running.close();
+    harness = null;
+    spy.mockClear();
+
+    harness = await startHarness();
+    expect(spy.mock.calls.filter((call) => call[1] === LIMITS.helloCheckIntervalMs)).toEqual([]);
+  });
+});

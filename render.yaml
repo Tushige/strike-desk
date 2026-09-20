@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: strike-desk
+    runtime: node
+    region: virginia
+    plan: free
+    branch: feature/deploy-pipeline-and-first-live-page
+    autoDeployTrigger: checksPass
+    buildCommand: NODE_ENV=development pnpm install --frozen-lockfile && pnpm run build
+    startCommand: node apps/server/dist/server.js
+    healthCheckPath: /healthz

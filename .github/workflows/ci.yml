@@ -74,3 +74,35 @@ jobs:
       - run: pnpm run build
       - run: node scripts/check-web-bundle.mjs
       - run: node scripts/smoke.mjs
+
+  # A market is repeatable: the same market number printed twice gives exactly
+  # the same prices, and a market drawn fresh is one nobody has seen. The
+  # script starts no server, opens no socket and reads no running game, so
+  # this job needs no build and no port.
+  determinism:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: The same market number twice prints the same prices
+        run: |
+          pnpm --filter @strike-desk/server exec tsx scripts/prices.ts --market 7NS-URH-ME42 > "$RUNNER_TEMP/same-1.txt"
+          pnpm --filter @strike-desk/server exec tsx scripts/prices.ts --market 7NS-URH-ME42 > "$RUNNER_TEMP/same-2.txt"
+          cmp "$RUNNER_TEMP/same-1.txt" "$RUNNER_TEMP/same-2.txt"
+      - name: A run with no market number prints a market nobody has seen
+        run: |
+          pnpm --filter @strike-desk/server exec tsx scripts/prices.ts > "$RUNNER_TEMP/fresh-1.txt"
+          pnpm --filter @strike-desk/server exec tsx scripts/prices.ts > "$RUNNER_TEMP/fresh-2.txt"
+          if cmp -s "$RUNNER_TEMP/fresh-1.txt" "$RUNNER_TEMP/fresh-2.txt"; then
+            echo "two runs with no market number printed the same market" >&2
+            exit 1
+          fi
+      - name: A printout names the market it is of
+        run: |
+          head -1 "$RUNNER_TEMP/fresh-1.txt" | grep -Eq '^market [2-9A-HJ-NP-Z]{3}-[2-9A-HJ-NP-Z]{3}-[2-9A-HJ-NP-Z]{4} engine '

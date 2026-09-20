@@ -6,5 +6,5 @@
     "outDir": "./node_modules/.cache/tsbuild"
   },
   "references": [{ "path": "../../packages/shared" }],
-  "include": ["src", "test"]
+  "include": ["src", "test", "scripts"]
 }

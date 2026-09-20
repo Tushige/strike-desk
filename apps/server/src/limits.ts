@@ -8,6 +8,13 @@
  */
 export interface Limits {
   /**
+   * Connections held at once, of any kind, greeted or not. The other limits
+   * allow at most 300 sessions of 3 sockets, 900, and the rest is room for
+   * sockets that are still saying hello. A connection costs tens of
+   * kilobytes, so the ceiling here is a few tens of megabytes of the 512.
+   */
+  maxConnections: number;
+  /**
    * Sessions held at once. Measured at 142 KB each: 300 is about 42 MB, some
    * 8% of the free instance's 512 MB.
    */
@@ -22,6 +29,13 @@ export interface Limits {
   sessionTtlMs: number;
   /** How often the housekeeping runs. Housekeeping, not a game timer. */
   sweepIntervalMs: number;
+  /**
+   * How long a connection may hold no session. The page says hello the moment
+   * its socket opens, so ten seconds is generous even on a slow link.
+   */
+  helloDeadlineMs: number;
+  /** How often the one shared check for that runs. Housekeeping cadence, not a guard number. */
+  helloCheckIntervalMs: number;
   /**
    * New games the whole service will take on at once. Building a market
    * costs 2.8 ms of processor time (measured), so 70 arriving inside one
@@ -38,10 +52,13 @@ export interface Limits {
 }
 
 export const LIMITS: Limits = {
+  maxConnections: 1000,
   maxSessions: 300,
   maxSocketsPerSession: 3,
   sessionTtlMs: 1_800_000,
   sweepIntervalMs: 60_000,
+  helloDeadlineMs: 10_000,
+  helloCheckIntervalMs: 1_000,
   newSessionBurst: 30,
   newSessionRefillPerSecond: 3,
   messagesPerWindow: 20,

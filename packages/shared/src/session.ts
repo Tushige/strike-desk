@@ -55,9 +55,9 @@ export function handleCommand(session: Session, command: Command, nowMs: number)
 }
 
 /** Settle up to `nowMs`, then project the public frame for that step. */
-export function frameFor(session: Session, nowMs: number, options: Pick<ProjectOptions, 'history'>): { session: Session; frame: Frame } {
+export function frameFor(session: Session, nowMs: number, options: Pick<ProjectOptions, 'history' | 'sections'>): { session: Session; frame: Frame } {
   const game = advanceTo(session.market, session.game, sessionStep(session, nowMs));
   const next = game === session.game ? session : { ...session, game };
-  const frame = projectFrame(next.market, game, game.step, { session: session.id, history: options.history });
+  const frame = projectFrame(next.market, game, game.step, { session: session.id, history: options.history, sections: options.sections ?? 'full' });
   return { session: next, frame };
 }

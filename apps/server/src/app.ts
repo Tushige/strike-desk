@@ -3,7 +3,13 @@ import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import type { Socket } from 'node:net';
 import WebSocket, { WebSocketServer } from 'ws';
 import sirv from 'sirv';
-import { HEALTH_PATH, WS_PATH } from '@strike-desk/shared';
+import { HEALTH_PATH, SAMPLE_INTERVAL_MS, WS_PATH } from '@strike-desk/shared';
+import type { Connection } from './door';
+import { handleClosed, handleInbound } from './door';
+import type { FrameSocket } from './sampler';
+import { sampleSessions } from './sampler';
+import { drawSeed, drawSessionId } from './seed';
+import { createRegistry } from './sessions';
 
 export interface BuildVersion {
   /** First 7 characters of the commit the build was made from. */
@@ -25,12 +31,26 @@ export interface AppOptions {
   version: BuildVersion;
   /** Milliseconds between heartbeat rounds. Default 20000. Tests pass a small value. */
   heartbeatMs?: number;
+  /**
+   * The clock every session runs on, in milliseconds. It must never go back.
+   * Default `performance.now()`. Tests pass one that only moves when told to.
+   */
+  now?: () => number;
+  /** Milliseconds between sampling passes. Default SAMPLE_INTERVAL_MS. 0 makes no timer: `sampleOnce` is then called by hand. */
+  sampleMs?: number;
+  /** Draws a new game's seed. Default: the crypto source. Tests pass fixed seeds. */
+  drawSeed?: () => number;
 }
 
 export interface App {
   server: Server;
   wss: WebSocketServer;
-  /** Stops the tick timer, closes every client with code 1001, closes both servers. */
+  /**
+   * One sampling pass at `nowMs`: a frame for every session somebody is
+   * watching. The timer calls this; a test calls it directly.
+   */
+  sampleOnce(nowMs: number): void;
+  /** Stops the timers, closes every client with code 1001, closes both servers. */
   close(): Promise<void>;
 }
 
@@ -51,6 +71,14 @@ interface ConnState {
 }
 
 const HB_PAYLOAD = JSON.stringify({ type: 'hb' });
+/** Close code for "the server hit something it did not expect". */
+const CLOSE_INTERNAL_ERROR = 1011;
+
+function toText(data: WebSocket.RawData): string {
+  if (Buffer.isBuffer(data)) return data.toString();
+  if (Array.isArray(data)) return Buffer.concat(data).toString();
+  return Buffer.from(data).toString();
+}
 
 function modeFromUrl(url: URL): ConnMode {
   const probe = url.searchParams.get('probe');
@@ -62,6 +90,12 @@ function modeFromUrl(url: URL): ConnMode {
 export function createApp(options: AppOptions): App {
   const tickMs = options.tickMs ?? 1000;
   const heartbeatMs = options.heartbeatMs ?? 20000;
+  const sampleMs = options.sampleMs ?? SAMPLE_INTERVAL_MS;
+  const now = options.now ?? (() => performance.now());
+
+  const registry = createRegistry({ drawSeed: options.drawSeed ?? drawSeed, drawId: drawSessionId });
+  const door = { registry, now };
+  const samplerStats = { sent: 0, skipped: 0 };
 
   const serveStatic = sirv(options.staticDir, {
     single: true,
@@ -133,11 +167,41 @@ export function createApp(options: AppOptions): App {
       ws.on('pong', () => {
         state.alive = true;
       });
-      ws.on('message', () => {
-        // Inbound client messages are ignored — this phase only pushes.
+      // What the door and the sampler hold: every send still goes through
+      // `sendTo`, so the heartbeat knows when this socket last heard anything.
+      const frameSocket: FrameSocket = {
+        OPEN: ws.OPEN,
+        get readyState() {
+          return ws.readyState;
+        },
+        get bufferedAmount() {
+          return ws.bufferedAmount;
+        },
+        send(text: string) {
+          sendTo(ws, state, text);
+        },
+      };
+      const connection: Connection = { socket: frameSocket, sessionId: null };
+
+      ws.on('message', (data, isBinary) => {
+        // The probe modes only listen.
+        if (mode !== 'normal') return;
+        try {
+          // Binary is never part of the contract: it goes to the door as text that cannot parse.
+          handleInbound(door, connection, isBinary ? '' : toText(data));
+        } catch {
+          // Nothing a client sends may take the process down.
+          ws.close(CLOSE_INTERNAL_ERROR);
+        }
+      });
+      ws.on('error', () => {
+        // `ws` reports a frame over `maxPayload` (and any other protocol
+        // error) here and closes the socket itself. Without a listener the
+        // event would be unhandled.
       });
       ws.on('close', () => {
         connections.delete(ws);
+        handleClosed(door, connection);
       });
 
       if (mode === 'normal') {
@@ -177,9 +241,31 @@ export function createApp(options: AppOptions): App {
     }
   }, heartbeatMs);
 
+  function sampleOnce(nowMs: number): void {
+    sampleSessions(registry, nowMs, samplerStats);
+  }
+
+  // One timer for every session; no game has a timer of its own. A pass is
+  // synchronous today, so passes cannot overlap; the flag keeps a late timer
+  // from piling them up if a pass ever comes to wait on something.
+  let sampling = false;
+  const sampleTimer =
+    sampleMs > 0
+      ? setInterval(() => {
+          if (sampling) return;
+          sampling = true;
+          try {
+            sampleOnce(now());
+          } finally {
+            sampling = false;
+          }
+        }, sampleMs)
+      : null;
+
   async function close(): Promise<void> {
     clearInterval(interval);
     clearInterval(heartbeatTimer);
+    if (sampleTimer !== null) clearInterval(sampleTimer);
     for (const ws of connections.keys()) {
       ws.close(1001);
     }
@@ -187,5 +273,5 @@ export function createApp(options: AppOptions): App {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 
-  return { server, wss, close };
+  return { server, wss, sampleOnce, close };
 }

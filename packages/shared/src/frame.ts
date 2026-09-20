@@ -22,8 +22,17 @@ import { seedToMarketCode } from './rng';
 
 export interface ProjectOptions {
   session: string;
-  /** Include today's price history. */
+  /** Include today's price history. Only the full form carries it. */
   history: boolean;
+  /**
+   * Which sections are filled in.
+   * 'live': rev, step, the clock, six share prices and the account with
+   *         `canBuy` false. `board` is null; quotes, news, positions,
+   *         receipts and days are empty; `history` and `final` are never
+   *         set. No board is built and no ticket is priced.
+   * 'full': every section. The default.
+   */
+  sections?: 'live' | 'full';
 }
 
 function projectPosition(market: Market, game: GameState, position: PositionRecord, step: number): PositionView {
@@ -70,13 +79,16 @@ function projectPosition(market: Market, game: GameState, position: PositionReco
 }
 
 export function projectFrame(market: Market, game: GameState, step: number, options: ProjectOptions): Frame {
+  const live = options.sections === 'live';
   const started = game.pace !== null;
-  const receipts = game.receipts.slice(-FRAME_RECEIPTS);
-  const days = game.dayEndCents.map((endCents, index) => ({
-    day: index + 1,
-    startCents: index === 0 ? STARTING_CASH_CENTS : (game.dayEndCents[index - 1] ?? STARTING_CASH_CENTS),
-    endCents,
-  }));
+  const receipts = live ? [] : game.receipts.slice(-FRAME_RECEIPTS);
+  const days = live
+    ? []
+    : game.dayEndCents.map((endCents, index) => ({
+        day: index + 1,
+        startCents: index === 0 ? STARTING_CASH_CENTS : (game.dayEndCents[index - 1] ?? STARTING_CASH_CENTS),
+        endCents,
+      }));
 
   if (!started) {
     return {
@@ -99,6 +111,28 @@ export function projectFrame(market: Market, game: GameState, step: number, opti
 
   const moment = momentAt(step);
   const data = marketDay(market, moment.day);
+  const prices = data.paths.map((path) => sharePriceCents(path[moment.priceIndex] ?? 0));
+
+  if (live) {
+    // Returns before any board, ticket price, headline or position is touched.
+    return {
+      t: 'frame',
+      session: options.session,
+      rev: game.rev,
+      step,
+      clock: { ...moment, pace: game.pace },
+      prices,
+      board: null,
+      quotes: [],
+      news: [],
+      account: { cashCents: game.cashCents, worthCents: game.cashCents, capCents: spendCapCents(game.cashCents), canBuy: false },
+      positions: [],
+      receipts,
+      days,
+      stress: game.stress,
+    };
+  }
+
   const board = boardFor(market, moment.day, game.targetsPerCompany);
   const bellRung = moment.priceIndex >= OPEN_STEPS;
 
@@ -110,7 +144,17 @@ export function projectFrame(market: Market, game: GameState, step: number, opti
 
   const news: NewsView[] = data.news.map(({ headline, hidden }) => {
     const revealed = moment.priceIndex >= hidden.revealIndex;
-    const view: NewsView = { ...headline, revealed };
+    // Field by field: a field added to the internal headline later never reaches the wire by default.
+    const view: NewsView = {
+      id: headline.id,
+      day: headline.day,
+      companyId: headline.companyId,
+      trust: headline.trust,
+      source: headline.source,
+      title: headline.title,
+      body: headline.body,
+      revealed,
+    };
     if (revealed) view.revealIndex = hidden.revealIndex;
     if (bellRung) view.wasTrue = hidden.wasTrue;
     return view;
@@ -129,7 +173,7 @@ export function projectFrame(market: Market, game: GameState, step: number, opti
     rev: game.rev,
     step,
     clock: { ...moment, pace: game.pace },
-    prices: data.paths.map((path) => sharePriceCents(path[moment.priceIndex] ?? 0)),
+    prices,
     board,
     quotes,
     news,

@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { GAME_STEPS, OPEN_STEPS, bellStep, momentAt } from '../src/clock';
+import type { ProjectOptions } from '../src/frame';
 import { projectFrame } from '../src/frame';
 import type { GameState } from '../src/game';
 import { advanceTo, applyCommand, newGame, spendCapCents } from '../src/game';
 import type { Market } from '../src/market';
+import { marketDay } from '../src/market';
+import { sharePriceCents } from '../src/money';
 import { isTradable } from '../src/pricing';
 import type { Frame } from '../src/protocol';
 import { frameSchema } from '../src/protocol';
@@ -75,9 +78,6 @@ function gameAt(step: number): GameState {
   return advanceTo(market, game, step);
 }
 
-const project = (source: Market, game: GameState, step: number, history = true): Frame =>
-  projectFrame(source, game, step, { session: 'session-1', history });
-
 const STEPS: [string, number][] = [
   ['before the opening bell on day 1', 100],
   ['open, before any reveal', 300 + 60],
@@ -92,13 +92,27 @@ const STEPS: [string, number][] = [
   ['the final screen', GAME_STEPS],
 ];
 
+const project = (source: Market, game: GameState, step: number, history = true, sections?: ProjectOptions['sections']): Frame =>
+  projectFrame(source, game, step, sections === undefined ? { session: 'session-1', history } : { session: 'session-1', history, sections });
+
+const projectLive = (source: Market, game: GameState, step: number, history = false): Frame => project(source, game, step, history, 'live');
+
+const FORMS = ['full', 'live'] as const;
+const STEPS_IN_BOTH_FORMS = FORMS.flatMap((form) => STEPS.map(([name, step]): [(typeof FORMS)[number], string, number] => [form, name, step]));
+
 describe('projectFrame keeps the future secret', () => {
-  it.each(STEPS)('%s: scrambling everything still to come gives the identical frame', (_name, step) => {
+  it.each(STEPS_IN_BOTH_FORMS)('%s form, %s: scrambling everything still to come gives the identical frame', (form, _name, step) => {
     const game = gameAt(step);
     const scrambled = scrambleFuture(market, step);
     // After the last bell nothing is left to scramble.
     if (step < bellStep(5)) expect(scrambled).not.toEqual(market);
-    expect(project(scrambled, game, step)).toEqual(project(market, game, step));
+    expect(project(scrambled, game, step, true, form)).toEqual(project(market, game, step, true, form));
+  });
+
+  it('the scramble really changes what comes next in the live form too', () => {
+    const step = 1800 + 300 + 100;
+    const game = gameAt(step);
+    expect(projectLive(scrambleFuture(market, step), game, step + 1).prices).not.toEqual(projectLive(market, game, step + 1).prices);
   });
 
   it('the scramble really changes what comes next', () => {
@@ -173,11 +187,13 @@ describe('projectFrame', () => {
     expect(project(market, game, 0).receipts).toHaveLength(1);
   });
 
-  it('passes the frame schema at every kind of moment', () => {
-    for (const [, step] of STEPS) {
-      for (const history of [true, false]) {
-        const frame = project(market, gameAt(step), step, history);
-        expect(frameSchema.parse(frame)).toEqual(frame);
+  it('passes the frame schema at every kind of moment, in both forms', () => {
+    for (const form of FORMS) {
+      for (const [, step] of STEPS) {
+        for (const history of [true, false]) {
+          const frame = project(market, gameAt(step), step, history, form);
+          expect(frameSchema.parse(frame)).toEqual(frame);
+        }
       }
     }
   });
@@ -270,5 +286,119 @@ describe('projectFrame', () => {
     const size = (history: boolean) => JSON.stringify(project(market, gameAt(step), step, history)).length;
     expect(size(false)).toBeLessThan(16_000);
     expect(size(true)).toBeLessThan(40_000);
+  });
+});
+
+describe('projectFrame, live form', () => {
+  const EMPTY_SECTIONS = { board: null, quotes: [], news: [], positions: [], receipts: [], days: [] };
+
+  const MOMENTS: [string, number][] = [
+    ['a step before the opening bell', 100],
+    ['an open step', 1800 + 300 + 250],
+    ['a debrief step', 1800 + 850],
+    ['the last step of the game', GAME_STEPS],
+  ];
+
+  it('shows the lobby with every other section empty, even after a refused command', () => {
+    const game = applyCommand(market, newGame(), cashOut('d1'), 0).game;
+    expect(game.receipts).toHaveLength(1);
+    const frame = projectLive(market, game, 0, true);
+    expect(frame).toMatchObject({
+      ...EMPTY_SECTIONS,
+      t: 'frame',
+      session: 'session-1',
+      rev: 1,
+      step: 0,
+      clock: { phase: 'lobby', day: 0, stepsLeft: 0, priceIndex: 0, pace: null },
+      account: { cashCents: 100_000_000, worthCents: 100_000_000, capCents: 50_000_000, canBuy: false },
+      stress: false,
+    });
+    expect(frame.prices).toHaveLength(6);
+    expect('history' in frame).toBe(false);
+    expect('final' in frame).toBe(false);
+    expect(frameSchema.parse(frame)).toEqual(frame);
+  });
+
+  it.each(MOMENTS)('%s: only the clock, six prices and the account are filled', (_name, step) => {
+    // The game holds tickets, receipts and finished days by now; none of it may show.
+    const game = gameAt(step);
+    expect(game.receipts.length).toBeGreaterThan(0);
+    const frame = projectLive(market, game, step, true);
+    expect(frame).toMatchObject({
+      ...EMPTY_SECTIONS,
+      rev: game.rev,
+      step,
+      clock: { ...momentAt(step), pace: 1 },
+      account: { cashCents: game.cashCents, worthCents: game.cashCents, capCents: spendCapCents(game.cashCents), canBuy: false },
+      stress: false,
+    });
+    expect('history' in frame).toBe(false);
+    expect('final' in frame).toBe(false);
+    expect(Object.keys(frame).sort()).toEqual(
+      ['account', 'board', 'clock', 'days', 'news', 'positions', 'prices', 'quotes', 'receipts', 'rev', 'session', 'step', 'stress', 't'],
+    );
+    expect(frameSchema.parse(frame)).toEqual(frame);
+  });
+
+  it('never carries the seed or the market number, not even on the final screen', () => {
+    for (const step of [0, 100, 1800 + 300 + 250, GAME_STEPS - 1, GAME_STEPS]) {
+      const json = JSON.stringify(projectLive(market, gameAt(step), step, true));
+      expect(json).not.toContain(String(TEST_SEED));
+      expect(json).not.toContain(MARKET_CODE);
+      expect(json).not.toContain('seed');
+    }
+  });
+
+  it('every price is a whole number of cents from the one rounding function, at the current point of the path', () => {
+    for (let step = 0; step <= GAME_STEPS; step += 37) {
+      const { day, priceIndex } = momentAt(step);
+      const frame = projectLive(market, advanceTo(market, startedGame(market), step), step);
+      expect(frame.prices).toHaveLength(6);
+      frame.prices.forEach((price, companyId) => {
+        expect(Number.isInteger(price)).toBe(true);
+        expect(price).toBe(sharePriceCents(marketDay(market, day).paths[companyId]?.[priceIndex] ?? NaN));
+      });
+    }
+  });
+
+  it('shows the same prices as the full form', () => {
+    for (const [, step] of STEPS) {
+      const game = gameAt(step);
+      const full = project(market, game, step, false);
+      const live = projectLive(market, game, step);
+      expect(live.prices).toEqual(full.prices);
+      expect(live.clock).toEqual(full.clock);
+      expect(live.rev).toBe(full.rev);
+    }
+  });
+
+  it('is the same for a game that holds tickets and receipts as for one that holds none, cash and rev aside', () => {
+    const step = 1800 + 300 + 100;
+    const busy = projectLive(market, gameAt(step), step);
+    const idle = projectLive(market, advanceTo(market, startedGame(market), step), step);
+    expect(busy.rev).not.toBe(idle.rev);
+    expect(busy.account.cashCents).not.toBe(idle.account.cashCents);
+    const cashBlind = (frame: Frame) => ({ ...frame, rev: 0, account: { canBuy: frame.account.canBuy } });
+    expect(cashBlind(busy)).toEqual(cashBlind(idle));
+  });
+
+  it('builds no board and prices no ticket: it never reads the headlines, which both need', () => {
+    const step = 1800 + 300 + 100;
+    const game = gameAt(step);
+    const sealed = structuredClone(market);
+    sealed.days.forEach((day) => {
+      Object.defineProperty(day, 'news', {
+        get(): never {
+          throw new Error('the headlines were read');
+        },
+      });
+    });
+    expect(() => project(sealed, game, step)).toThrow('the headlines were read');
+    expect(projectLive(sealed, game, step)).toEqual(projectLive(market, game, step));
+  });
+
+  it('stays tiny: under 600 bytes', () => {
+    const step = 1800 + 300 + 400;
+    expect(JSON.stringify(projectLive(market, gameAt(step), step)).length).toBeLessThan(600);
   });
 });

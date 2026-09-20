@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "allowJs": true,
+    "outDir": "./node_modules/.cache/tsbuild-test"
+  },
+  "references": [{ "path": "./tsconfig.json" }],
+  "include": ["test", "eslint.rules.js"]
+}

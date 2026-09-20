@@ -1,0 +1,47 @@
+:root {
+  --color-ink: #14112a;
+  --color-cloud: #f4f1ff;
+  --color-muted: #b3add9;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--color-ink);
+  color: var(--color-cloud);
+  font-family: system-ui, sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+main {
+  text-align: center;
+}
+
+p {
+  color: var(--color-muted);
+}
+
+.tick-value {
+  font-variant-numeric: tabular-nums;
+}
+
+.build-stamp {
+  position: fixed;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}

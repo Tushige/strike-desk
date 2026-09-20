@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "types": [],
+    "outDir": "./node_modules/.cache/tsbuild"
+  },
+  "include": ["src"]
+}

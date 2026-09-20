@@ -1,0 +1,27 @@
+{
+  "name": "strike-desk",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.5.1",
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "build": "node scripts/write-version.mjs && tsc --build && pnpm --filter @strike-desk/web run build && pnpm --filter @strike-desk/server run build",
+    "typecheck": "node scripts/write-version.mjs && tsc --build",
+    "lint": "node scripts/write-version.mjs && eslint .",
+    "test": "vitest run",
+    "start": "node apps/server/dist/server.js",
+    "dev": "node scripts/write-version.mjs && pnpm --parallel --filter @strike-desk/server --filter @strike-desk/web run dev",
+    "smoke": "node scripts/smoke.mjs",
+    "measure:ws": "node scripts/measure-ws-idle.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.6",
+    "eslint": "10.11.0",
+    "globals": "17.12.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.70.0",
+    "vitest": "5.0.1"
+  }
+}

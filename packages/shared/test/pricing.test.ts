@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Side } from '../src/board';
 import { MIN_TICKET_PRICE_CENTS, isTradable, priceTicket } from '../src/pricing';
+import type { Side } from '../src/protocol';
 
 const SIDES: Side[] = ['up', 'down'];
 

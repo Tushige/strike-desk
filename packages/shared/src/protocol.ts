@@ -189,6 +189,35 @@ export const boardSchema = z.object({
   companies: z.array(companyBoardSchema),
 });
 
+/**
+ * The contract id. A frame's `quotes`, `quoteReals` and `quoteHopes` are
+ * indexed by it, so the scheme is part of the wire contract: both sides must
+ * turn a company, a target and a side into the same number. Every company
+ * has the same number of targets, UP and DOWN on each, so ids are dense from
+ * 0 and stay stable for the day.
+ */
+export type Side = z.infer<typeof side>;
+
+export interface ContractRef {
+  companyId: number;
+  targetIndex: number;
+  side: Side;
+}
+
+export function contractId(targetsPerCompany: number, ref: ContractRef): number {
+  return (ref.companyId * targetsPerCompany + ref.targetIndex) * 2 + (ref.side === 'up' ? 0 : 1);
+}
+
+export function decodeContractId(targetsPerCompany: number, id: number): ContractRef {
+  const side: Side = id % 2 === 0 ? 'up' : 'down';
+  const slot = Math.floor(id / 2);
+  return {
+    companyId: Math.floor(slot / targetsPerCompany),
+    targetIndex: slot % targetsPerCompany,
+    side,
+  };
+}
+
 export const positionExitSchema = z.object({
   kind: z.enum(['cashOut', 'bell']),
   step: count,

@@ -1,5 +1,5 @@
 import type { Board } from './board';
-import { DEFAULT_TARGETS_PER_COMPANY, OFFERED_PASSED_MOVES, buildCompanyBoard, decodeContractId } from './board';
+import { DEFAULT_TARGETS_PER_COMPANY, OFFERED_PASSED_MOVES, buildCompanyBoard } from './board';
 import type { Company } from './cast';
 import { CAST, DAY_WOBBLE, MARKET_WOBBLE } from './cast';
 import { DAYS, OPEN_STEPS } from './clock';
@@ -7,6 +7,7 @@ import { exactExp } from './exact';
 import { centsToDollars } from './money';
 import type { TicketValue, Trust } from './pricing';
 import { QUIET_MARKUP, TRUST_RULES, priceTicket } from './pricing';
+import { decodeContractId } from './protocol';
 import { createStream } from './rng';
 
 /**

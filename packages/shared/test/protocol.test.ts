@@ -3,6 +3,8 @@ import {
   boardSchema,
   clientMessageSchema,
   commandSchema,
+  contractId,
+  decodeContractId,
   frameSchema,
   isNewerFrame,
   parseClientMessage,
@@ -165,6 +167,41 @@ describe('server messages', () => {
     }
     expect(parseServerMessage({ ...frame, board: board(offered) })).not.toBeNull();
     expect(parseServerMessage({ ...frame, board: board(company) })).toBeNull();
+  });
+});
+
+describe('the contract id, which is how a frame\'s quotes are indexed', () => {
+  const COMPANIES = 6;
+  const SIDES = ['up', 'down'] as const;
+
+  it.each([21, 209])('%i targets per company: every company, target and side makes one id, the ids are dense from 0, and each decodes back', (targetsPerCompany) => {
+    const ids: number[] = [];
+    for (let companyId = 0; companyId < COMPANIES; companyId += 1) {
+      for (let targetIndex = 0; targetIndex < targetsPerCompany; targetIndex += 1) {
+        for (const side of SIDES) {
+          const ref = { companyId, targetIndex, side };
+          const id = contractId(targetsPerCompany, ref);
+          expect(decodeContractId(targetsPerCompany, id)).toEqual(ref);
+          ids.push(id);
+        }
+      }
+    }
+    const contracts = COMPANIES * targetsPerCompany * 2;
+    expect(ids).toHaveLength(contracts);
+    expect([...ids].sort((a, b) => a - b)).toEqual(Array.from({ length: contracts }, (_unused, id) => id));
+  });
+
+  it('UP on the first target of the first company is 0, and DOWN on the same target is 1', () => {
+    expect(contractId(21, { companyId: 0, targetIndex: 0, side: 'up' })).toBe(0);
+    expect(contractId(21, { companyId: 0, targetIndex: 0, side: 'down' })).toBe(1);
+  });
+
+  it('a company\'s contracts sit together: 42 to a company on the 21-target board, 251 the last', () => {
+    expect(contractId(21, { companyId: 1, targetIndex: 0, side: 'up' })).toBe(42);
+    expect(contractId(21, { companyId: 5, targetIndex: 20, side: 'down' })).toBe(251);
+    expect(decodeContractId(21, 251)).toEqual({ companyId: 5, targetIndex: 20, side: 'down' });
+    expect(decodeContractId(21, 85)).toEqual({ companyId: 2, targetIndex: 0, side: 'down' });
+    expect(decodeContractId(209, 2507)).toEqual({ companyId: 5, targetIndex: 208, side: 'down' });
   });
 });
 

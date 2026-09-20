@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { contractId, decodeContractId, isOffered } from '../src/board';
+import { isOffered } from '../src/board';
 import { GAME_STEPS } from '../src/clock';
 import type { GameState } from '../src/game';
 import { STARTING_CASH_CENTS, advanceTo, applyCommand, breakEvenCents, newGame, spendCapCents, withinTolerance } from '../src/game';
 import { boardFor, buildMarket } from '../src/market';
 import { isTradable } from '../src/pricing';
 import type { Command } from '../src/protocol';
+import { contractId, decodeContractId } from '../src/protocol';
 import { ME, TEST_IDENTITY, buyAt, buyCommand, cashOut, clockCommand, findContract, me, priceOf, start, startedGame, testMarket } from './helpers';
 
 const market = testMarket();

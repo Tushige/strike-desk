@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { decodeContractId } from '../src/board';
+import { contractId, decodeContractId, isOffered } from '../src/board';
 import { GAME_STEPS } from '../src/clock';
 import type { GameState } from '../src/game';
 import { STARTING_CASH_CENTS, advanceTo, applyCommand, breakEvenCents, newGame, spendCapCents, withinTolerance } from '../src/game';
-import { boardFor } from '../src/market';
+import { boardFor, buildMarket } from '../src/market';
 import { isTradable } from '../src/pricing';
 import type { Command } from '../src/protocol';
-import { ME, buyAt, buyCommand, cashOut, clockCommand, findContract, me, priceOf, start, startedGame, testMarket } from './helpers';
+import { ME, TEST_IDENTITY, buyAt, buyCommand, cashOut, clockCommand, findContract, me, priceOf, start, startedGame, testMarket } from './helpers';
 
 const market = testMarket();
 const SPEND = 5_000_000;
@@ -149,6 +149,47 @@ describe('buy', () => {
 
   it('refuses a contract that is not on the board', () => {
     expectRejected(startedGame(market), buyCommand({ day: 1, contractId: 252, spendCents: SPEND, seenPriceCents: PRICE }), STEP, 'unknownContract');
+  });
+
+  it('refuses a contract the board does not offer, by name, and takes no cash', () => {
+    const trimmed = buildMarket(TEST_IDENTITY, { offeredPassedMoves: 0.4 });
+    const passed = contractId(21, { companyId: 0, targetIndex: 0, side: 'up' });
+    expect(isOffered(boardFor(trimmed, 1), passed)).toBe(false);
+    // The same ticket is tradable and is sold on the full board: only the trim refuses it.
+    expect(isTradable(priceOf(trimmed, 1, INDEX, passed))).toBe(true);
+    expect(buyAt(market, startedGame(market), ME, STEP, 1, INDEX, passed, SPEND).receipt.outcome).toBe('accepted');
+
+    const game = startedGame(trimmed);
+    const command = buyCommand({ day: 1, contractId: passed, spendCents: SPEND, seenPriceCents: priceOf(trimmed, 1, INDEX, passed) });
+    const result = applyCommand(trimmed, game, ME, command, STEP);
+    expect(result.receipt).toEqual({ commandId: command.commandId, kind: 'buy', step: STEP, outcome: 'rejected', reason: 'notOffered' });
+    expect(me(result.game).cashCents).toBe(STARTING_CASH_CENTS);
+    expect(me(result.game).positions).toEqual([]);
+    expect(me(result.game).receipts.at(-1)).toBe(result.receipt);
+    // Refused the same way when the ticket is also too dear: not offered is said before anything about money.
+    const tooMuch = buyCommand({ day: 1, contractId: passed, spendCents: STARTING_CASH_CENTS + 1, seenPriceCents: 1 });
+    expect(applyCommand(trimmed, game, ME, tooMuch, STEP).receipt.reason).toBe('notOffered');
+  });
+
+  it('sells an offered contract on a trimmed board exactly as before', () => {
+    const trimmed = buildMarket(TEST_IDENTITY, { offeredPassedMoves: 0.4 });
+    const offered = findContract(trimmed, 1, (id) => isOffered(boardFor(trimmed, 1), id) && isTradable(priceOf(trimmed, 1, INDEX, id)));
+    const onTrimmed = buyAt(trimmed, startedGame(trimmed), ME, STEP, 1, INDEX, offered, SPEND);
+    const onFull = buyAt(market, startedGame(market), ME, STEP, 1, INDEX, offered, SPEND);
+    expect(onTrimmed.receipt).toMatchObject({ outcome: 'accepted', positionId: 'd1' });
+    expect(me(onTrimmed.game).positions).toEqual(me(onFull.game).positions);
+    expect(me(onTrimmed.game).cashCents).toBe(me(onFull.game).cashCents);
+  });
+
+  it('never says not offered on the default board, whichever contract is asked for', () => {
+    const game = startedGame(market);
+    for (let id = 0; id < 252; id += 1) {
+      const command = buyCommand({ day: 1, contractId: id, spendCents: SPEND, seenPriceCents: priceOf(market, 1, INDEX, id) || 100 });
+      expect(applyCommand(market, game, ME, command, STEP).receipt.reason).not.toBe('notOffered');
+    }
+    // An id that is not on the board at all is still an unknown contract, not an unoffered one.
+    const unknown = buyCommand({ day: 1, contractId: 252, spendCents: SPEND, seenPriceCents: PRICE });
+    expect(applyCommand(buildMarket(TEST_IDENTITY, { offeredPassedMoves: 0.4 }), game, ME, unknown, STEP).receipt.reason).toBe('unknownContract');
   });
 
   it('refuses every buy when the stress setting is on', () => {

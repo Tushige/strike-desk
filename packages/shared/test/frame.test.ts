@@ -215,6 +215,21 @@ describe('projectFrame', () => {
     expect(frame.quotes[7]).toBe(priceOf(market, 1, 100, 7));
   });
 
+  it('still carries one quote per contract, and says what is offered, when the board is trimmed', () => {
+    const trimmed = buildMarket(TEST_IDENTITY, { offeredPassedMoves: 0.4 });
+    const full = project(market, startedGame(market), 400, false);
+    const frame = project(trimmed, startedGame(trimmed), 400, false);
+    expect(frame.quotes).toHaveLength(252);
+    expect(frame.quotes).toEqual(full.quotes);
+    expect(full.board?.companies.map((company) => [company.lowestUpIndex, company.highestDownIndex])).toEqual(Array.from({ length: 6 }, () => [0, 20]));
+    for (const company of frame.board?.companies ?? []) {
+      expect(company.lowestUpIndex).toBeGreaterThan(0);
+      expect(company.highestDownIndex).toBeLessThan(20);
+    }
+    expect(frameSchema.parse(frame)).toEqual(frame);
+    expect(frameSchema.parse(full)).toEqual(full);
+  });
+
   it('sends history from the opening price to now, only when asked', () => {
     for (const step of [100, 300, 301, 650, 800, 850, 900, GAME_STEPS]) {
       const frame = project(market, gameAt(step), step, true);

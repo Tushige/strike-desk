@@ -112,6 +112,7 @@ export const rejectReasonSchema = z.enum([
   'tooCheap',
   'spendTooSmall',
   'unknownContract',
+  'notOffered',
   'unknownPosition',
   'alreadyClosed',
   'wrongDay',
@@ -170,6 +171,10 @@ export const companyBoardSchema = z.object({
   targets: z.array(cents),
   simpleUp: z.tuple([count, count, count]),
   simpleDown: z.tuple([count, count, count]),
+  /** UP is offered on target indexes at or above this; 0 when the whole board is offered. */
+  lowestUpIndex: count,
+  /** DOWN is offered on target indexes at or below this; the last index when the whole board is offered. */
+  highestDownIndex: count,
 });
 
 export const boardSchema = z.object({

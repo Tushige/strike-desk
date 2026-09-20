@@ -1,5 +1,5 @@
 import type { Side } from './board';
-import { DEFAULT_TARGETS_PER_COMPANY, decodeContractId } from './board';
+import { DEFAULT_TARGETS_PER_COMPANY, decodeContractId, isOffered } from './board';
 import type { Pace } from './clock';
 import { DAYS, GAME_STEPS, OPEN_STEPS, bellStep, jumpTarget, momentAt } from './clock';
 import type { Market } from './market';
@@ -190,6 +190,7 @@ function buy(market: Market, game: GameState, player: PlayerState, command: Extr
   const board = boardFor(market, moment.day, game.targetsPerCompany);
   const quote = quoteAt(market, moment.day, moment.priceIndex, board, command.contractId);
   if (quote === null) return { reason: 'unknownContract' };
+  if (!isOffered(board, command.contractId)) return { reason: 'notOffered' };
   if (!isTradable(quote.priceCents)) return { reason: 'tooCheap' };
   // Cash first: the cap is never more than the cash, so the other order would hide this reason.
   if (command.spendCents > player.cashCents) return { reason: 'notEnoughCash' };

@@ -1,5 +1,5 @@
 import type { Board } from './board';
-import { DEFAULT_TARGETS_PER_COMPANY, buildCompanyBoard, decodeContractId } from './board';
+import { DEFAULT_TARGETS_PER_COMPANY, OFFERED_PASSED_MOVES, buildCompanyBoard, decodeContractId } from './board';
 import type { Company } from './cast';
 import { CAST, DAY_WOBBLE, MARKET_WOBBLE } from './cast';
 import { DAYS, OPEN_STEPS } from './clock';
@@ -36,6 +36,12 @@ export interface MarketIdentity {
 export interface MarketSettings {
   /** The companies. A company's id is its index. Defaults to the real cast. */
   cast?: readonly Company[];
+  /**
+   * How many expected moves of already-passed targets each board keeps on
+   * offer. Defaults to the full board. It changes what may be bought and
+   * nothing else: no price, no target and no contract id depends on it.
+   */
+  offeredPassedMoves?: number;
 }
 
 /** The half of a headline a player may read from the start of its day. */
@@ -78,6 +84,8 @@ export interface Market {
   identity: MarketIdentity;
   /** The cast this market was built on. */
   cast: readonly Company[];
+  /** What every board of this market is built with. See `MarketSettings`. */
+  offeredPassedMoves: number;
   days: MarketDay[];
 }
 
@@ -160,6 +168,8 @@ export function buildMarket(identity: MarketIdentity, settings: MarketSettings =
   checkIdentity(identity);
   const cast = settings.cast ?? CAST;
   checkCast(cast);
+  const offeredPassedMoves = settings.offeredPassedMoves ?? OFFERED_PASSED_MOVES;
+  if (!Number.isFinite(offeredPassedMoves) || offeredPassedMoves < 0) throw new Error('the offered already-passed moves must be a number at or above zero');
   const days: MarketDay[] = [];
   let openPrices = cast.map((company) => company.startPrice);
   for (let day = 1; day <= DAYS; day += 1) {
@@ -168,7 +178,7 @@ export function buildMarket(identity: MarketIdentity, settings: MarketSettings =
     days.push({ day, paths, news });
     openPrices = paths.map((path) => path[OPEN_STEPS] ?? 0);
   }
-  return { identity, cast, days };
+  return { identity, cast, offeredPassedMoves, days };
 }
 
 export function marketDay(market: Market, day: number): MarketDay {
@@ -206,7 +216,7 @@ export function boardFor(market: Market, day: number, targetsPerCompany = DEFAUL
     board = {
       targetsPerCompany,
       companies: market.cast.map((company) =>
-        buildCompanyBoard(data.paths[company.id]?.[0] ?? company.startPrice, expectedMove(data, company.id), targetsPerCompany),
+        buildCompanyBoard(data.paths[company.id]?.[0] ?? company.startPrice, expectedMove(data, company.id), targetsPerCompany, market.offeredPassedMoves),
       ),
     };
     bySize.set(targetsPerCompany, board);

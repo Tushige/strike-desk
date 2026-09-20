@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  boardSchema,
   clientMessageSchema,
   commandSchema,
   isNewerFrame,
@@ -113,6 +114,28 @@ describe('server messages', () => {
     expect(parseServerMessage({ ...frame, account: { ...frame.account, cashCents: 0.5 } })).toBeNull();
     expect(receiptSchema.safeParse({ ...receipt, outcome: 'rejected', reason: 'becauseISaidSo' }).success).toBe(false);
     expect(receiptSchema.safeParse({ ...receipt, outcome: 'rejected', reason: 'priceMoved' }).success).toBe(true);
+  });
+
+  it('knows the reason for a contract the board does not offer', () => {
+    const refused = { ...receipt, outcome: 'rejected', reason: 'notOffered', positionId: undefined };
+    expect(receiptSchema.safeParse(refused).success).toBe(true);
+    expect(parseServerMessage({ t: 'reply', receipt: { commandId: ID, kind: 'buy', step: 310, outcome: 'rejected', reason: 'notOffered' }, frame })).not.toBeNull();
+  });
+
+  it('a board says what it offers on each side: both fields are required whole numbers from zero', () => {
+    const company = { targets: [9000, 10_000, 11_000], simpleUp: [2, 2, 2], simpleDown: [0, 0, 0] };
+    const offered = { ...company, lowestUpIndex: 1, highestDownIndex: 1 };
+    const board = (companyBoard: object) => ({ targetsPerCompany: 3, companies: [companyBoard] });
+    expect(boardSchema.parse(board(offered))).toEqual(board(offered));
+    expect(boardSchema.safeParse(board(company)).success).toBe(false);
+    expect(boardSchema.safeParse(board({ ...company, lowestUpIndex: 1 })).success).toBe(false);
+    expect(boardSchema.safeParse(board({ ...company, highestDownIndex: 1 })).success).toBe(false);
+    for (const bad of [-1, 0.5, '1', null]) {
+      expect(boardSchema.safeParse(board({ ...offered, lowestUpIndex: bad })).success).toBe(false);
+      expect(boardSchema.safeParse(board({ ...offered, highestDownIndex: bad })).success).toBe(false);
+    }
+    expect(parseServerMessage({ ...frame, board: board(offered) })).not.toBeNull();
+    expect(parseServerMessage({ ...frame, board: board(company) })).toBeNull();
   });
 });
 

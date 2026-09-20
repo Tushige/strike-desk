@@ -60,6 +60,7 @@ export const strikeTheme = themeQuartz.withParams({
   spacing: 6,
   // The panel around the table carries the border and the rounded corners.
   wrapperBorder: false,
+  wrapperBorderRadius: 0,
   borderRadius: 0,
   // Dark scrollbars: the only scrollbar on the page is the one inside the table.
   browserColorScheme: 'dark',

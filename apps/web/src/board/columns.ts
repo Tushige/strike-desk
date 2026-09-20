@@ -56,17 +56,21 @@ const SIDE_CLASS_RULES = {
  */
 const PRICE_CELL_CLASS = ['ag-right-aligned-cell', 'sd-price'];
 
+/*
+ * Widths share out whatever the panel offers. The minimums are what each
+ * column needs at phone width, so all four still fit there side by side.
+ */
 export const COLUMNS: ColDef<ContractRow>[] = [
-  { headerName: 'Company', field: 'company', cellRenderer: CompanyCell, flex: 2, minWidth: 150 },
+  { headerName: 'Company', field: 'company', cellRenderer: CompanyCell, flex: 2, minWidth: 104 },
   {
     headerName: 'Ticket',
     field: 'side',
     valueFormatter: sideText,
     cellClassRules: SIDE_CLASS_RULES,
     flex: 1,
-    minWidth: 92,
+    minWidth: 80,
   },
-  { headerName: 'Target', field: 'targetCents', valueFormatter: money, type: 'rightAligned', flex: 1, minWidth: 96 },
+  { headerName: 'Target', field: 'targetCents', valueFormatter: money, type: 'rightAligned', flex: 1, minWidth: 84 },
   {
     headerName: 'Price',
     colId: 'price',
@@ -79,7 +83,7 @@ export const COLUMNS: ColDef<ContractRow>[] = [
     // fixed for the day or moves on the same tick as the price.
     enableCellChangeFlash: true,
     flex: 1,
-    minWidth: 96,
+    minWidth: 80,
   },
 ];
 

@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
 import { AgGridReact } from 'ag-grid-react';
-import type { GetRowIdParams, GridApi, GridReadyEvent, RowClassParams } from 'ag-grid-community';
+import type { GetRowIdParams, GridApi, GridReadyEvent, OverlayType, RowClassParams } from 'ag-grid-community';
 import type { ContractRow } from '../store/contractRows';
 import { currentRows, registerRowSink, useBoardRows } from '../store/hooks';
 import { COLUMNS, DEFAULT_COL_DEF } from './columns';
@@ -45,6 +45,12 @@ const REDUCED_MOTION =
   typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const FLASH_MS = REDUCED_MOTION ? 0 : 240;
 const FADE_MS = REDUCED_MOTION ? 0 : 360;
+
+/**
+ * Before the first frame the table is simply empty: the grid's own "loading"
+ * and "no rows" messages are words nobody chose for this game.
+ */
+const NO_GRID_MESSAGES: OverlayType[] = ['loading', 'noRows'];
 
 /**
  * A ticket too cheap to trade keeps its place as a dimmed row. The store
@@ -114,6 +120,7 @@ export const ContractBoard = memo(function ContractBoard() {
       suppressModelUpdateAfterUpdateTransaction
       animateRows={false}
       rowClassRules={ROW_CLASS_RULES}
+      suppressOverlays={NO_GRID_MESSAGES}
       cellFlashDuration={FLASH_MS}
       cellFadeDuration={FADE_MS}
     />

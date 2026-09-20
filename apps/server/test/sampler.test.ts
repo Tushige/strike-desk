@@ -3,6 +3,7 @@ import {
   CAST,
   CONTENT_VERSION,
   ENGINE_VERSION,
+  FIRST_PLAYER_ID,
   PROTOCOL_VERSION,
   buildMarket,
   frameSchema,
@@ -304,7 +305,7 @@ describe('offerFrame and sampleSessions', () => {
     const alsoReady = fakeSocket();
     const backedUp = fakeSocket({ bufferedAmount: 4096 });
     const gone = fakeSocket({ open: false });
-    for (const socket of [ready, alsoReady, backedUp, gone]) registry.attach(entry.session.id, socket);
+    for (const socket of [ready, alsoReady, backedUp, gone]) registry.attach(entry.session.id, FIRST_PLAYER_ID, socket);
 
     const stats = { sent: 0, skipped: 0 };
     sampleSessions(registry, 5_000, stats);
@@ -407,8 +408,8 @@ describe('the session registry', () => {
     expect(entry.idleSinceMs).toBe(1_000);
 
     const socket = { OPEN: 1, readyState: 1, bufferedAmount: 0, send: () => undefined };
-    expect(registry.attach('someone-else', socket)).toBe('noSession');
-    expect(registry.attach(entry.session.id, socket)).toBe('attached');
+    expect(registry.attach('someone-else', FIRST_PLAYER_ID, socket)).toBe('noSession');
+    expect(registry.attach(entry.session.id, FIRST_PLAYER_ID, socket)).toBe('attached');
     expect(entry.sockets.size).toBe(1);
     expect(entry.idleSinceMs).toBeNull();
     registry.detach(entry.session.id, socket, 9_000);

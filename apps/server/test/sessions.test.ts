@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PROTOCOL_VERSION } from '@strike-desk/shared/engine';
+import { FIRST_PLAYER_ID, PROTOCOL_VERSION, frameSchema } from '@strike-desk/shared/engine';
 import type { Frame } from '@strike-desk/shared/engine';
-import { LIMITS } from '../src/limits';
+import type { Connection, DoorOptions } from '../src/door';
+import { handleInbound } from '../src/door';
+import { LIMITS, createTokenBucket, createWindowCounter } from '../src/limits';
+import type { FrameSocket } from '../src/sampler';
+import { sampleSessions } from '../src/sampler';
+import { drawSessionId } from '../src/seed';
+import { createRegistry } from '../src/sessions';
 import type { Harness, TestClient } from './harness';
 import { FIXED_SEEDS, startHarness } from './harness';
 
@@ -137,6 +143,80 @@ describe('what makes a session', () => {
 
     expect(await counts(running)).toEqual({ sessions: 0, sockets: 1 });
     expect(sessionsMade).toBe(0);
+  });
+});
+
+describe('the players of a session', () => {
+  /** A door on a real registry and a socket that only records what it is sent: no network, no clock but the one passed in. */
+  function doorAndSockets(): { door: DoorOptions; registry: ReturnType<typeof createRegistry>; connect: () => { connection: Connection; sent: string[] } } {
+    const registry = createRegistry({ drawSeed: () => FIXED_SEEDS[0] ?? 0, drawId: drawSessionId, limits: LIMITS });
+    const door: DoorOptions = { registry, now: () => 1_000, newSessions: createTokenBucket(LIMITS.newSessionBurst, LIMITS.newSessionRefillPerSecond) };
+    const connect = () => {
+      const sent: string[] = [];
+      const socket: FrameSocket = { OPEN: 1, readyState: 1, bufferedAmount: 0, send: (text) => void sent.push(text) };
+      const connection: Connection = { socket, sessionId: null, playerId: null, messages: createWindowCounter(LIMITS.messagesPerWindow, LIMITS.messageWindowMs) };
+      return { connection, sent };
+    };
+    return { door, registry, connect };
+  }
+
+  it('a hello makes a session with exactly one player, and the connection is that player', () => {
+    const { door, registry, connect } = doorAndSockets();
+    const first = connect();
+    expect(first.connection.playerId).toBeNull();
+    handleInbound(door, first.connection, JSON.stringify(HELLO));
+
+    const [entry] = [...registry.entries()];
+    expect(registry.size).toBe(1);
+    expect(entry?.session.game.players.map((player) => player.id)).toEqual([FIRST_PLAYER_ID]);
+    expect(first.connection.playerId).toBe(FIRST_PLAYER_ID);
+    expect([...(entry?.sockets.values() ?? [])]).toEqual([FIRST_PLAYER_ID]);
+
+    // A second tab on the same game is the same player: nothing joins a session as anybody else.
+    const second = connect();
+    handleInbound(door, second.connection, JSON.stringify({ ...HELLO, session: entry?.session.id }));
+    expect(registry.size).toBe(1);
+    expect(entry?.session.game.players.map((player) => player.id)).toEqual([FIRST_PLAYER_ID]);
+    expect(second.connection.playerId).toBe(FIRST_PLAYER_ID);
+    expect([...(entry?.sockets.values() ?? [])]).toEqual([FIRST_PLAYER_ID, FIRST_PLAYER_ID]);
+  });
+
+  it('a player id sent on a hello or a start is refused as unreadable: no message carries one', () => {
+    const { door, registry, connect } = doorAndSockets();
+    const { connection, sent } = connect();
+    handleInbound(door, connection, JSON.stringify({ ...HELLO, player: 'p2' }));
+    handleInbound(door, connection, JSON.stringify({ ...HELLO, playerId: 'p2' }));
+    expect(sent.map((text) => JSON.parse(text) as unknown)).toEqual([{ t: 'error', code: 'badMessage' }, { t: 'error', code: 'badMessage' }]);
+    expect(registry.size).toBe(0);
+
+    handleInbound(door, connection, JSON.stringify(HELLO));
+    handleInbound(door, connection, JSON.stringify({ ...start('start-0001'), playerId: 'p2' }));
+    expect(JSON.parse(sent.at(-1) ?? '') as unknown).toEqual({ t: 'error', code: 'badMessage' });
+    expect([...registry.entries()][0]?.session.game.pace).toBeNull();
+  });
+
+  it('two sockets on one session are sent the identical frame text, and it names no player', () => {
+    const { door, registry, connect } = doorAndSockets();
+    const first = connect();
+    handleInbound(door, first.connection, JSON.stringify(HELLO));
+    const id = first.connection.sessionId;
+    const second = connect();
+    handleInbound(door, second.connection, JSON.stringify({ ...HELLO, session: id }));
+    handleInbound(door, first.connection, JSON.stringify(start('start-0001')));
+
+    const before = { first: first.sent.length, second: second.sent.length };
+    const stats = { sent: 0, skipped: 0 };
+    sampleSessions(registry, 1_000 + PRE_BELL_MS + SAMPLE_MS, stats);
+    expect(stats).toEqual({ sent: 2, skipped: 0 });
+    expect(first.sent).toHaveLength(before.first + 1);
+    expect(second.sent).toHaveLength(before.second + 1);
+
+    const text = first.sent.at(-1) ?? '';
+    expect(second.sent.at(-1)).toBe(text);
+    const frame = frameSchema.parse(JSON.parse(text));
+    expect(frame).toMatchObject({ session: id, rev: 1, clock: { phase: 'open', day: 1, priceIndex: 1 } });
+    expect(text).not.toContain('player');
+    expect(text).not.toContain(`"${FIRST_PLAYER_ID}"`);
   });
 });
 

@@ -1,6 +1,7 @@
 import type { Board } from './board';
-import { DEFAULT_TARGETS_PER_COMPANY, buildCompanyBoard, decodeContractId } from './board';
-import { CAST, COMPANY_COUNT, DAY_WOBBLE, MARKET_WOBBLE } from './cast';
+import { DEFAULT_TARGETS_PER_COMPANY, OFFERED_PASSED_MOVES, buildCompanyBoard, decodeContractId } from './board';
+import type { Company } from './cast';
+import { CAST, DAY_WOBBLE, MARKET_WOBBLE } from './cast';
 import { DAYS, OPEN_STEPS } from './clock';
 import { exactExp } from './exact';
 import { centsToDollars } from './money';
@@ -16,14 +17,31 @@ import { createStream } from './rng';
  */
 
 /** Bump when the model changes: the same seed then means a different market. */
-export const ENGINE_VERSION = 'e1';
+export const ENGINE_VERSION = 'e2';
 /** Bump when headline content changes. */
 export const CONTENT_VERSION = 'c0';
 
+/**
+ * What names a market. The same identity always gives the same market, so
+ * `buildMarket` refuses an engine or content version other than its own:
+ * this code could only build a different market under the same name.
+ */
 export interface MarketIdentity {
   seed: number;
   engine: string;
   content: string;
+}
+
+/** What a market is built on. Everything is optional; the defaults are the real game. */
+export interface MarketSettings {
+  /** The companies. A company's id is its index. Defaults to the real cast. */
+  cast?: readonly Company[];
+  /**
+   * How many expected moves of already-passed targets each board keeps on
+   * offer. Defaults to the full board. It changes what may be bought and
+   * nothing else: no price, no target and no contract id depends on it.
+   */
+  offeredPassedMoves?: number;
 }
 
 /** The half of a headline a player may read from the start of its day. */
@@ -42,7 +60,10 @@ export interface HiddenOutcome {
   /** Point of the day's path at which the whole news move lands: 35% to 70% of the open market. */
   revealIndex: number;
   wasTrue: boolean;
-  /** Signed fraction of the price. */
+  /**
+   * Signed log move: the price is multiplied by the exponential of it, so an
+   * up move and a down move of the same size mirror each other exactly.
+   */
   move: number;
 }
 
@@ -61,19 +82,23 @@ export interface MarketDay {
 
 export interface Market {
   identity: MarketIdentity;
+  /** The cast this market was built on. */
+  cast: readonly Company[];
+  /** What every board of this market is built with. See `MarketSettings`. */
+  offeredPassedMoves: number;
   days: MarketDay[];
 }
 
 const STEP_SCALE = 1 / Math.sqrt(OPEN_STEPS);
 const TRUST_ORDER: readonly Trust[] = [3, 2, 1];
 
-function drawNews(seed: number, day: number, firstId: number): MarketNews[] {
+function drawNews(cast: readonly Company[], seed: number, day: number, firstId: number): MarketNews[] {
   const pickRng = createStream(seed, 'newsPick', day);
   const outcomeRng = createStream(seed, 'newsOutcome', day);
-  const free = CAST.map((company) => company.id);
+  const free = cast.map((company) => company.id);
   return TRUST_ORDER.map((trust, index) => {
     const companyId = free.splice(pickRng.nextInt(free.length), 1)[0] ?? 0;
-    const company = CAST[companyId];
+    const company = cast[companyId];
     const direction = pickRng.nextFloat() < 0.5 ? -1 : 1;
     const rule = TRUST_RULES[trust];
     const wasTrue = outcomeRng.nextFloat() < rule.chanceTrue;
@@ -97,12 +122,12 @@ function drawNews(seed: number, day: number, firstId: number): MarketNews[] {
   });
 }
 
-function drawPaths(seed: number, day: number, openPrices: readonly number[], news: readonly MarketNews[]): number[][] {
-  const marketRng = createStream(seed, 'prices', day, COMPANY_COUNT);
+function drawPaths(cast: readonly Company[], seed: number, day: number, openPrices: readonly number[], news: readonly MarketNews[]): number[][] {
+  const marketRng = createStream(seed, 'marketWide', day);
   const marketShocks: number[] = [];
   for (let k = 0; k < OPEN_STEPS; k += 1) marketShocks.push(marketRng.nextNormal());
 
-  return CAST.map((company) => {
+  return cast.map((company) => {
     const rng = createStream(seed, 'prices', day, company.id);
     const hidden = news.find((item) => item.headline.companyId === company.id)?.hidden;
     const marketSd = company.beta * MARKET_WOBBLE * STEP_SCALE;
@@ -113,23 +138,47 @@ function drawPaths(seed: number, day: number, openPrices: readonly number[], new
     for (let k = 1; k <= OPEN_STEPS; k += 1) {
       const shock = marketSd * (marketShocks[k - 1] ?? 0) + ownSd * rng.nextNormal();
       price *= exactExp(drift + shock);
-      if (hidden !== undefined && k === hidden.revealIndex) price *= 1 + hidden.move;
+      if (hidden !== undefined && k === hidden.revealIndex) price *= exactExp(hidden.move);
       path.push(price);
     }
     return path;
   });
 }
 
-export function buildMarket(identity: MarketIdentity): Market {
+function checkIdentity(identity: MarketIdentity): void {
+  if (identity.engine === ENGINE_VERSION && identity.content === CONTENT_VERSION) return;
+  throw new Error(
+    `cannot build this market: it was made with engine ${identity.engine} and content ${identity.content}, ` +
+      `and this code is engine ${ENGINE_VERSION} and content ${CONTENT_VERSION}`,
+  );
+}
+
+function checkCast(cast: readonly Company[]): void {
+  if (cast.length < TRUST_ORDER.length) throw new Error(`a cast needs at least ${TRUST_ORDER.length} companies: one per headline`);
+  cast.forEach((company, index) => {
+    if (company.id !== index) throw new Error(`company ${company.ticker} must have its place in the cast, ${index}, as its id`);
+    if (!Number.isInteger(company.rivalId) || company.rivalId < 0 || company.rivalId >= cast.length) {
+      throw new Error(`company ${company.ticker} names a rival that is not in the cast`);
+    }
+    if (!Number.isFinite(company.startPrice) || company.startPrice <= 0) throw new Error(`company ${company.ticker} needs a start price above zero`);
+  });
+}
+
+export function buildMarket(identity: MarketIdentity, settings: MarketSettings = {}): Market {
+  checkIdentity(identity);
+  const cast = settings.cast ?? CAST;
+  checkCast(cast);
+  const offeredPassedMoves = settings.offeredPassedMoves ?? OFFERED_PASSED_MOVES;
+  if (!Number.isFinite(offeredPassedMoves) || offeredPassedMoves < 0) throw new Error('the offered already-passed moves must be a number at or above zero');
   const days: MarketDay[] = [];
-  let openPrices = CAST.map((company) => company.startPrice);
+  let openPrices = cast.map((company) => company.startPrice);
   for (let day = 1; day <= DAYS; day += 1) {
-    const news = drawNews(identity.seed, day, (day - 1) * TRUST_ORDER.length);
-    const paths = drawPaths(identity.seed, day, openPrices, news);
+    const news = drawNews(cast, identity.seed, day, (day - 1) * TRUST_ORDER.length);
+    const paths = drawPaths(cast, identity.seed, day, openPrices, news);
     days.push({ day, paths, news });
     openPrices = paths.map((path) => path[OPEN_STEPS] ?? 0);
   }
-  return { identity, days };
+  return { identity, cast, offeredPassedMoves, days };
 }
 
 export function marketDay(market: Market, day: number): MarketDay {
@@ -166,8 +215,8 @@ export function boardFor(market: Market, day: number, targetsPerCompany = DEFAUL
   if (board === undefined) {
     board = {
       targetsPerCompany,
-      companies: CAST.map((company) =>
-        buildCompanyBoard(data.paths[company.id]?.[0] ?? company.startPrice, expectedMove(data, company.id), targetsPerCompany),
+      companies: market.cast.map((company) =>
+        buildCompanyBoard(data.paths[company.id]?.[0] ?? company.startPrice, expectedMove(data, company.id), targetsPerCompany, market.offeredPassedMoves),
       ),
     };
     bySize.set(targetsPerCompany, board);

@@ -13,7 +13,8 @@
     "test": "vitest run",
     "start": "node apps/server/dist/server.js",
     "dev": "node scripts/write-version.mjs && pnpm --parallel --filter @strike-desk/server --filter @strike-desk/web run dev",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "measure:ws": "node scripts/measure-ws-idle.mjs"
   },
   "devDependencies": {
     "@types/node": "24.13.6",

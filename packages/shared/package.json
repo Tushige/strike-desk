@@ -4,7 +4,11 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./paths": "./src/paths.ts"
+    "./paths": "./src/paths.ts",
+    "./protocol": "./src/protocol.ts",
+    "./money": "./src/money.ts",
+    "./time": "./src/clock.ts",
+    "./feed": "./src/feed.ts"
   },
   "dependencies": {
     "zod": "4.6.5"

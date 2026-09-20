@@ -111,7 +111,7 @@ afterEach(async () => {
 });
 
 describe('ws tick', () => {
-  it('ws tick delivers messages increasing by exactly 1, first on connect', async () => {
+  it('ws tick delivers messages increasing by exactly 1', async () => {
     app = createApp({ staticDir, tickMs: 20, version: TEST_VERSION });
     const port = await listen(app);
     const client = collectTicks(`ws://127.0.0.1:${port}/ws`);
@@ -120,10 +120,27 @@ describe('ws tick', () => {
     const ticks = await client.waitForCount(5);
     client.socket.close();
 
-    expect(ticks[0]).toBe(0);
+    // The timer runs from app creation, so the first value is whatever the
+    // counter has reached by the time this client connects, not always 0.
+    expect(Number.isInteger(ticks[0])).toBe(true);
+    expect(ticks[0]).toBeGreaterThanOrEqual(0);
     for (let i = 1; i < ticks.length; i += 1) {
       expect(ticks[i]).toBe((ticks[i - 1] as number) + 1);
     }
+  });
+
+  it('ws tick sends the current value on connect, without waiting for the timer', async () => {
+    // A timer this slow never fires during the test, so the only message
+    // that can arrive is the one sent on connect.
+    app = createApp({ staticDir, tickMs: 60_000, version: TEST_VERSION });
+    const port = await listen(app);
+    const client = collectTicks(`ws://127.0.0.1:${port}/ws`);
+    await client.opened();
+
+    const ticks = await client.waitForCount(1);
+    client.socket.close();
+
+    expect(ticks).toEqual([0]);
   });
 
   it('ws tick with two clients: both sequences agree on order', async () => {

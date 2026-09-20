@@ -1,0 +1,22 @@
+{
+  "name": "strike-desk",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.5.1",
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "build": "tsc --build && pnpm --filter @strike-desk/web run build && pnpm --filter @strike-desk/server run build",
+    "typecheck": "tsc --build",
+    "test": "vitest run",
+    "start": "node apps/server/dist/server.js",
+    "dev": "pnpm --parallel --filter @strike-desk/server --filter @strike-desk/web run dev",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3",
+    "vitest": "5.0.1",
+    "@types/node": "24.13.6"
+  }
+}

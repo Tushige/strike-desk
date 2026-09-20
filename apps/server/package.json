@@ -1,0 +1,19 @@
+{
+  "name": "@strike-desk/server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsx watch src/index.ts"
+  },
+  "dependencies": {
+    "ws": "8.21.3",
+    "sirv": "3.0.2",
+    "@strike-desk/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/ws": "8.18.1",
+    "tsup": "8.5.1",
+    "tsx": "4.23.13"
+  }
+}

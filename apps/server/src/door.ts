@@ -56,8 +56,20 @@ function hello(options: DoorOptions, connection: Connection, message: Hello): vo
     // the client never mistakes the new game's frame for the old game.
     answer(connection, { t: 'error', code: 'noSession' });
   }
-  const entry = known ?? options.registry.create();
-  options.registry.attach(entry.session.id, connection.socket);
+  const entry = known ?? options.registry.create(options.now());
+  if (entry === null) {
+    // Every session the service may hold is in use. This hello gets nothing;
+    // nobody already playing is disturbed.
+    answer(connection, { t: 'error', code: 'serverFull' });
+    return;
+  }
+  const attached = options.registry.attach(entry.session.id, connection.socket);
+  if (attached !== 'attached') {
+    // Too many tabs on one game. The tabs already on it keep it; this one is
+    // simply not added.
+    answer(connection, { t: 'error', code: attached === 'noSession' ? 'noSession' : 'serverFull' });
+    return;
+  }
   connection.sessionId = entry.session.id;
 
   const { session, frame } = frameFor(entry.session, options.now(), { history: false, sections: 'live' });

@@ -10,6 +10,7 @@ import {
   sharePriceCents,
 } from '@strike-desk/shared/engine';
 import type { Frame } from '@strike-desk/shared/engine';
+import { LIMITS } from '../src/limits';
 import type { FrameSocket } from '../src/sampler';
 import { offerFrame, sampleSessions } from '../src/sampler';
 import { drawSessionId } from '../src/seed';
@@ -293,9 +294,12 @@ describe('offerFrame and sampleSessions', () => {
   });
 
   it('one pass: one frame text per session, offered to each of its sockets, counted', () => {
-    const registry = createRegistry({ drawSeed: () => 77, drawId: drawSessionId });
-    const entry = registry.create();
-    const idle = registry.create();
+    // Four sockets on one session, which is one more than the service allows,
+    // because what is being exercised here is the offer to each of them.
+    const registry = createRegistry({ drawSeed: () => 77, drawId: drawSessionId, limits: { ...LIMITS, maxSocketsPerSession: 4 } });
+    const entry = registry.create(0);
+    const idle = registry.create(0);
+    if (entry === null || idle === null) throw new Error('the registry refused a session it has room for');
     const ready = fakeSocket();
     const alsoReady = fakeSocket();
     const backedUp = fakeSocket({ bufferedAmount: 4096 });
@@ -390,29 +394,33 @@ describe('bad input at the door', () => {
 
 describe('the session registry', () => {
   it('makes a session only when asked, and remembers when its last socket left', () => {
-    const registry = createRegistry({ drawSeed: () => 4242424242, drawId: drawSessionId });
+    const registry = createRegistry({ drawSeed: () => 4242424242, drawId: drawSessionId, limits: LIMITS });
     expect(registry.size).toBe(0);
-    const entry = registry.create();
+    const entry = registry.create(1_000);
+    if (entry === null) throw new Error('the registry refused a session it has room for');
     expect(registry.size).toBe(1);
     expect(entry.session.market.identity).toEqual({ seed: 4242424242, engine: ENGINE_VERSION, content: CONTENT_VERSION });
     expect(entry.session.clock).toBeNull();
     expect(registry.get(entry.session.id)).toBe(entry);
     expect(registry.get('someone-else')).toBeUndefined();
+    // Idle from the moment it was made: nobody has ever been connected to it.
+    expect(entry.idleSinceMs).toBe(1_000);
 
     const socket = { OPEN: 1, readyState: 1, bufferedAmount: 0, send: () => undefined };
-    expect(registry.attach('someone-else', socket)).toBe(false);
-    expect(registry.attach(entry.session.id, socket)).toBe(true);
+    expect(registry.attach('someone-else', socket)).toBe('noSession');
+    expect(registry.attach(entry.session.id, socket)).toBe('attached');
     expect(entry.sockets.size).toBe(1);
-    expect(entry.lastSocketClosedMs).toBeNull();
+    expect(entry.idleSinceMs).toBeNull();
     registry.detach(entry.session.id, socket, 9_000);
     expect(entry.sockets.size).toBe(0);
-    expect(entry.lastSocketClosedMs).toBe(9_000);
+    expect(entry.idleSinceMs).toBe(9_000);
     expect([...registry.entries()]).toEqual([entry]);
   });
 
   it('a session with no socket is not sampled', () => {
-    const registry = createRegistry({ drawSeed: () => 77, drawId: drawSessionId });
-    const entry = registry.create();
+    const registry = createRegistry({ drawSeed: () => 77, drawId: drawSessionId, limits: LIMITS });
+    const entry = registry.create(0);
+    if (entry === null) throw new Error('the registry refused a session it has room for');
     const before = entry.session;
     const stats = { sent: 0, skipped: 0 };
     sampleSessions(registry, 1_000, stats);

@@ -153,8 +153,14 @@ async function runChecks(baseUrl) {
     throw new Error('healthz: body did not report ok true');
   }
   const healthKeys = Object.keys(healthBody).sort();
-  if (healthKeys.join(',') !== 'buildTime,commit,ok') {
-    throw new Error(`healthz: expected exactly the keys ok, commit, buildTime (got ${healthKeys.join(', ')})`);
+  if (healthKeys.join(',') !== 'buildTime,commit,ok,sessions,sockets') {
+    throw new Error(`healthz: expected exactly the keys ok, commit, buildTime, sessions, sockets (got ${healthKeys.join(', ')})`);
+  }
+  for (const name of ['sessions', 'sockets']) {
+    const count = healthBody[name];
+    if (!Number.isInteger(count) || count < 0) {
+      throw new Error(`healthz: ${name} is not a count (got ${JSON.stringify(count)})`);
+    }
   }
   if (!SHORT_COMMIT_RE.test(healthBody.commit)) {
     throw new Error(`healthz: commit "${healthBody.commit}" is not 7 hex characters`);

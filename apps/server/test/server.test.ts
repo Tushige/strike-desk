@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { PROTOCOL_VERSION } from '@strike-desk/shared/engine';
 import type { Harness, TestClient } from './harness';
-import { TEST_ASSET_PATH, TEST_VERSION, startHarness } from './harness';
+import { FIXED_SEEDS, TEST_ASSET_PATH, TEST_VERSION, startHarness } from './harness';
 
 /**
  * The service phase 1 built, still standing: the page, the health check, the
@@ -171,18 +171,49 @@ describe('the measurement-only connection modes', () => {
 });
 
 describe('the page and the health check', () => {
-  it('healthz answers 200 with ok, the build commit and the build time, and nothing else', async () => {
+  it('healthz answers 200 with ok, the build commit, the build time and two counts, and nothing else', async () => {
     const running = await boot();
 
     const getRes = await fetch(`${running.baseUrl}/healthz`);
     expect(getRes.status).toBe(200);
     expect(getRes.headers.get('content-type')).toContain('application/json');
     const body: unknown = await getRes.json();
-    expect(body).toEqual({ ok: true, commit: TEST_VERSION.commit, buildTime: TEST_VERSION.buildTime });
-    expect(Object.keys(body as object).sort()).toEqual(['buildTime', 'commit', 'ok']);
+    expect(body).toEqual({ ok: true, commit: TEST_VERSION.commit, buildTime: TEST_VERSION.buildTime, sessions: 0, sockets: 0 });
+    expect(Object.keys(body as object).sort()).toEqual(['buildTime', 'commit', 'ok', 'sessions', 'sockets']);
 
     const postRes = await fetch(`${running.baseUrl}/healthz`, { method: 'POST' });
     expect(postRes.status).toBe(405);
+  });
+
+  it('the two counts rise with each tab and name nothing about any game', async () => {
+    const running = await boot();
+
+    const read = async (): Promise<{ body: unknown; text: string }> => {
+      const res = await fetch(`${running.baseUrl}/healthz`);
+      const text = await res.text();
+      return { body: JSON.parse(text) as unknown, text };
+    };
+
+    expect((await read()).body).toMatchObject({ sessions: 0, sockets: 0 });
+
+    const first = running.connect();
+    await first.opened();
+    first.send(HELLO);
+    const lobby = await first.nextFrame();
+    expect((await read()).body).toMatchObject({ sessions: 1, sockets: 1 });
+
+    await join(running);
+    const afterTwo = await read();
+    expect(afterTwo.body).toMatchObject({ sessions: 2, sockets: 2 });
+    const { sessions, sockets } = afterTwo.body as { sessions: number; sockets: number };
+    for (const count of [sessions, sockets]) {
+      expect(Number.isInteger(count)).toBe(true);
+      expect(count).toBeGreaterThanOrEqual(0);
+    }
+
+    // Two integers and nothing else: no session id, and no seed.
+    expect(afterTwo.text).not.toContain(lobby.session);
+    for (const seed of FIXED_SEEDS) expect(afterTwo.text).not.toContain(String(seed));
   });
 
   it('serves the page and its asset with the right cache headers, and answers 426 on a plain GET of the socket path', async () => {

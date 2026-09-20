@@ -6,6 +6,8 @@ import sirv from 'sirv';
 import { HEALTH_PATH, SAMPLE_INTERVAL_MS, WS_PATH } from '@strike-desk/shared/engine';
 import type { Connection } from './door';
 import { handleClosed, handleInbound } from './door';
+import type { Limits } from './limits';
+import { LIMITS } from './limits';
 import { originAllowed } from './origin';
 import type { FrameSocket } from './sampler';
 import { sampleSessions } from './sampler';
@@ -47,6 +49,10 @@ export interface AppOptions {
    * modes exist for one unfinished host measurement, not for the public host.
    */
   probeModes?: boolean;
+  /** Guard numbers to use in place of the named ones. Tests set a small cap; nothing in production sets any of them. */
+  limits?: Partial<Limits>;
+  /** Milliseconds between housekeeping passes. Default `sweepIntervalMs`. 0 makes no timer: `sweepOnce` is then called by hand. */
+  sweepMs?: number;
 }
 
 export interface App {
@@ -64,6 +70,12 @@ export interface App {
    * this; a test calls it directly.
    */
   heartbeatOnce(nowMs: number): void;
+  /**
+   * One housekeeping pass at `nowMs`: every session that has had no socket
+   * for the whole time-to-live is freed. The timer calls this; a test calls
+   * it directly.
+   */
+  sweepOnce(nowMs: number): void;
   /** Stops the timers, closes every client with code 1001, closes both servers. */
   close(): Promise<void>;
 }
@@ -122,8 +134,10 @@ export function createApp(options: AppOptions): App {
   const sampleMs = options.sampleMs ?? SAMPLE_INTERVAL_MS;
   const now = options.now ?? (() => performance.now());
   const probeModes = options.probeModes ?? false;
+  const limits: Limits = { ...LIMITS, ...options.limits };
+  const sweepMs = options.sweepMs ?? limits.sweepIntervalMs;
 
-  const registry = createRegistry({ drawSeed: options.drawSeed ?? drawSeed, drawId: drawSessionId });
+  const registry = createRegistry({ drawSeed: options.drawSeed ?? drawSeed, drawId: drawSessionId, limits });
   const door = { registry, now };
   const samplerStats = { sent: 0, skipped: 0 };
 
@@ -140,6 +154,8 @@ export function createApp(options: AppOptions): App {
     },
   });
 
+  const connections = new Map<WebSocket, ConnState>();
+
   function handleRequest(req: IncomingMessage, res: ServerResponse): void {
     try {
       if (req.url === HEALTH_PATH) {
@@ -149,7 +165,17 @@ export function createApp(options: AppOptions): App {
           return;
         }
         res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, commit: options.version.commit, buildTime: options.version.buildTime }));
+        // Two counts and nothing more: enough to see "two tabs, two games"
+        // and to watch the sweep work, with no session id and no seed.
+        res.end(
+          JSON.stringify({
+            ok: true,
+            commit: options.version.commit,
+            buildTime: options.version.buildTime,
+            sessions: registry.size,
+            sockets: connections.size,
+          }),
+        );
         return;
       }
 
@@ -173,8 +199,6 @@ export function createApp(options: AppOptions): App {
     maxPayload: 4096,
     perMessageDeflate: false,
   });
-
-  const connections = new Map<WebSocket, ConnState>();
 
   /** Routes every send through here so `lastSendMs` is always accurate. */
   function sendTo(ws: WebSocket, state: ConnState, payload: string): void {
@@ -288,9 +312,18 @@ export function createApp(options: AppOptions): App {
         }, sampleMs)
       : null;
 
+  function sweepOnce(nowMs: number): void {
+    registry.sweepOnce(nowMs);
+  }
+
+  // One housekeeping timer for the whole service, whatever the number of
+  // sessions: no game has a timer of its own.
+  const sweepTimer = sweepMs > 0 ? setInterval(() => sweepOnce(now()), sweepMs) : null;
+
   async function close(): Promise<void> {
     if (heartbeatTimer !== null) clearInterval(heartbeatTimer);
     if (sampleTimer !== null) clearInterval(sampleTimer);
+    if (sweepTimer !== null) clearInterval(sweepTimer);
     for (const ws of connections.keys()) {
       ws.close(1001);
     }
@@ -298,5 +331,5 @@ export function createApp(options: AppOptions): App {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 
-  return { server, wss, sampleOnce, heartbeatOnce, close };
+  return { server, wss, sampleOnce, heartbeatOnce, sweepOnce, close };
 }

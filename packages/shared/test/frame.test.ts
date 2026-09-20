@@ -5,13 +5,14 @@ import { projectFrame } from '../src/frame';
 import type { GameState } from '../src/game';
 import { advanceTo, applyCommand, newGame, spendCapCents } from '../src/game';
 import type { Market } from '../src/market';
-import { marketDay } from '../src/market';
+import { CONTENT_VERSION, ENGINE_VERSION, buildMarket, marketDay } from '../src/market';
 import { sharePriceCents } from '../src/money';
 import { isTradable } from '../src/pricing';
 import type { Frame } from '../src/protocol';
 import { frameSchema } from '../src/protocol';
 import { seedToMarketCode } from '../src/rng';
-import { TEST_SEED, buyCommand, cashOut, findContract, priceOf, start, startedGame, testMarket } from './helpers';
+import { TEST_IDENTITY, TEST_SEED, buyCommand, cashOut, findContract, priceOf, start, startedGame, testMarket } from './helpers';
+import { TEST_CAST } from './testCast';
 
 const market = testMarket();
 const MARKET_CODE = seedToMarketCode(TEST_SEED);
@@ -157,7 +158,7 @@ describe('projectFrame keeps the future secret', () => {
     }
     const last = project(market, gameAt(GAME_STEPS), GAME_STEPS);
     expect(JSON.stringify(last)).not.toContain(String(TEST_SEED));
-    expect(last.final).toEqual({ marketCode: MARKET_CODE, engine: 'e-test', content: 'c-test', finalCents: last.account.cashCents });
+    expect(last.final).toEqual({ marketCode: MARKET_CODE, engine: ENGINE_VERSION, content: CONTENT_VERSION, finalCents: last.account.cashCents });
     expect(project(market, gameAt(GAME_STEPS - 1), GAME_STEPS - 1).final).toBeUndefined();
   });
 });
@@ -180,6 +181,11 @@ describe('projectFrame', () => {
     expect(frame.history).toBeUndefined();
     expect(frame.final).toBeUndefined();
     expect(frameSchema.parse(frame)).toEqual(frame);
+  });
+
+  it('shows the lobby prices of the cast the market was built on', () => {
+    const small = buildMarket(TEST_IDENTITY, { cast: TEST_CAST });
+    expect(project(small, newGame(), 0).prices).toEqual([10_000, 5_000, 2_000, 20_000]);
   });
 
   it('shows a rejected command in the lobby too', () => {

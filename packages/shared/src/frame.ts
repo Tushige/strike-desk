@@ -1,5 +1,4 @@
 import { contractCount } from './board';
-import { CAST } from './cast';
 import { DAYS, GAME_STEPS, OPEN_STEPS, momentAt } from './clock';
 import type { GameState, PositionRecord } from './game';
 import { STARTING_CASH_CENTS, breakEvenCents, spendCapCents } from './game';
@@ -97,7 +96,7 @@ export function projectFrame(market: Market, game: GameState, step: number, opti
       rev: game.rev,
       step: 0,
       clock: { phase: 'lobby', day: 0, stepsLeft: 0, priceIndex: 0, pace: null },
-      prices: CAST.map((company) => sharePriceCents(company.startPrice)),
+      prices: market.cast.map((company) => sharePriceCents(company.startPrice)),
       board: null,
       quotes: [],
       news: [],

@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { Side } from '../src/board';
 import { DEFAULT_TARGETS_PER_COMPANY, buildCompanyBoard, contractCount, contractId, contractTarget, decodeContractId } from '../src/board';
 import { CAST, COMPANY_COUNT } from '../src/cast';
-import { boardFor, buildMarket } from '../src/market';
+import { CONTENT_VERSION, ENGINE_VERSION, boardFor, buildMarket } from '../src/market';
 
-const market = buildMarket({ seed: 4242, engine: 'test', content: 'test' });
+const market = buildMarket({ seed: 4242, engine: ENGINE_VERSION, content: CONTENT_VERSION });
 
 describe('contract ids', () => {
   it.each([21, 209])('round-trip for %i targets per company and fill 0..n-1 exactly once', (targets) => {

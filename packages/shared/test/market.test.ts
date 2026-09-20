@@ -3,10 +3,11 @@ import { CAST, MARKET_WOBBLE } from '../src/cast';
 import { OPEN_STEPS } from '../src/clock';
 import { exactExp } from '../src/exact';
 import type { Market } from '../src/market';
-import { ENGINE_VERSION, boardFor, buildMarket, expectedMove, marketDay, quoteAt, sharePriceAt } from '../src/market';
+import { CONTENT_VERSION, ENGINE_VERSION, boardFor, buildMarket, expectedMove, marketDay, quoteAt, sharePriceAt } from '../src/market';
 import { createStream } from '../src/rng';
+import { TEST_CAST } from './testCast';
 
-const identity = { seed: 777, engine: 'e-test', content: 'c-test' };
+const identity = { seed: 777, engine: ENGINE_VERSION, content: CONTENT_VERSION };
 const market = buildMarket(identity);
 
 describe('buildMarket', () => {
@@ -65,6 +66,67 @@ describe('buildMarket', () => {
     expect(() => marketDay(market, 0)).toThrow();
     expect(() => marketDay(market, 6)).toThrow();
     expect(() => sharePriceAt(market, 1, 501, 0)).toThrow();
+  });
+});
+
+describe('the market identity', () => {
+  it('refuses another engine version, naming both', () => {
+    const refusal = (): unknown => buildMarket({ ...identity, engine: 'e-other' });
+    expect(refusal).toThrow('engine e-other');
+    expect(refusal).toThrow(`engine ${ENGINE_VERSION}`);
+    expect(() => buildMarket({ ...identity, engine: '' })).toThrow();
+  });
+
+  it('refuses another content version, naming both', () => {
+    const refusal = (): unknown => buildMarket({ ...identity, content: 'c-other' });
+    expect(refusal).toThrow('content c-other');
+    expect(refusal).toThrow(`content ${CONTENT_VERSION}`);
+  });
+
+  it('builds with the current versions and keeps the identity it was given', () => {
+    expect(buildMarket(identity).identity).toEqual({ seed: 777, engine: ENGINE_VERSION, content: CONTENT_VERSION });
+  });
+});
+
+describe('a passed-in cast', () => {
+  const small = buildMarket(identity, { cast: TEST_CAST });
+
+  it('gives one path per company, opening day 1 at that cast\'s prices', () => {
+    expect(small.cast).toBe(TEST_CAST);
+    for (const day of small.days) expect(day.paths).toHaveLength(4);
+    expect(small.days[0]?.paths.map((path) => path[0])).toEqual([100, 50, 20, 200]);
+  });
+
+  it('gives each day three headlines about three of its companies', () => {
+    for (const day of small.days) {
+      const about = day.news.map((item) => item.headline.companyId);
+      expect(new Set(about).size).toBe(3);
+      for (const companyId of about) expect(companyId).toBeLessThan(4);
+    }
+  });
+
+  it('builds a board with one entry per company', () => {
+    expect(boardFor(small, 1).companies).toHaveLength(4);
+  });
+
+  it('is the real cast when none is passed in', () => {
+    expect(market.cast).toBe(CAST);
+    expect(buildMarket(identity, {})).toEqual(market);
+    expect(buildMarket(identity, { cast: CAST.map((company) => ({ ...company })) }).days).toEqual(market.days);
+  });
+
+  it('wobbles by 3.5% a day for every stand-in company', () => {
+    for (const company of TEST_CAST) {
+      const marketPart = company.beta * MARKET_WOBBLE;
+      expect(Math.sqrt(marketPart * marketPart + company.ownWobble * company.ownWobble).toPrecision(4)).toBe('0.03500');
+    }
+  });
+
+  it('refuses a cast it could not draw a day from', () => {
+    expect(() => buildMarket(identity, { cast: TEST_CAST.slice(0, 2) })).toThrow();
+    expect(() => buildMarket(identity, { cast: TEST_CAST.map((company) => ({ ...company, id: company.id + 1 })) })).toThrow();
+    expect(() => buildMarket(identity, { cast: TEST_CAST.map((company) => ({ ...company, rivalId: 4 })) })).toThrow();
+    expect(() => buildMarket(identity, { cast: TEST_CAST.map((company) => ({ ...company, startPrice: 0 })) })).toThrow();
   });
 });
 

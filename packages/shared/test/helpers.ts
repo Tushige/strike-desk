@@ -2,12 +2,12 @@ import type { Pace } from '../src/clock';
 import type { CommandResult, GameState } from '../src/game';
 import { applyCommand, newGame } from '../src/game';
 import type { Market } from '../src/market';
-import { boardFor, buildMarket, quoteAt } from '../src/market';
+import { CONTENT_VERSION, ENGINE_VERSION, boardFor, buildMarket, quoteAt } from '../src/market';
 import { contractCount } from '../src/board';
 import type { Command } from '../src/protocol';
 
 export const TEST_SEED = 198765432123456;
-export const TEST_IDENTITY = { seed: TEST_SEED, engine: 'e-test', content: 'c-test' };
+export const TEST_IDENTITY = { seed: TEST_SEED, engine: ENGINE_VERSION, content: CONTENT_VERSION };
 
 export function testMarket(): Market {
   return buildMarket(TEST_IDENTITY);

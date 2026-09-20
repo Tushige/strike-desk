@@ -8,3 +8,4 @@ export * from './board';
 export * from './pricing';
 export * from './protocol';
 export * from './market';
+export * from './game';

@@ -21,25 +21,31 @@ export interface BuildVersion {
 export interface AppOptions {
   /** Absolute path of the built web files (apps/web/dist). */
   staticDir: string;
-  /** Milliseconds between ticks. Default 1000. Tests pass a small value. */
-  tickMs?: number;
   /**
    * Stamped once at build time by scripts/write-version.mjs, never read from
    * the clock or the environment here — a free instance waking from sleep
    * restarts this process without a new build.
    */
   version: BuildVersion;
-  /** Milliseconds between heartbeat rounds. Default 20000. Tests pass a small value. */
+  /** Milliseconds between heartbeat rounds. Default 20000. 0 makes no timer: `heartbeatOnce` is then called by hand. */
   heartbeatMs?: number;
   /**
    * The clock every session runs on, in milliseconds. It must never go back.
    * Default `performance.now()`. Tests pass one that only moves when told to.
+   * Every piece of timekeeping here reads it, the heartbeat included, so one
+   * fake clock drives the whole service.
    */
   now?: () => number;
   /** Milliseconds between sampling passes. Default SAMPLE_INTERVAL_MS. 0 makes no timer: `sampleOnce` is then called by hand. */
   sampleMs?: number;
   /** Draws a new game's seed. Default: the crypto source. Tests pass fixed seeds. */
   drawSeed?: () => number;
+  /**
+   * Honour the `probe` query value on the socket path. Default false: every
+   * connection is then an ordinary one, whatever it asks for. The measurement
+   * modes exist for one unfinished host measurement, not for the public host.
+   */
+  probeModes?: boolean;
 }
 
 export interface App {
@@ -50,29 +56,47 @@ export interface App {
    * watching. The timer calls this; a test calls it directly.
    */
   sampleOnce(nowMs: number): void;
+  /**
+   * One heartbeat round at `nowMs`: every connection is pinged, one that has
+   * been sent nothing for the heartbeat period is sent the heartbeat message,
+   * and one that has missed two pings in a row is dropped. The timer calls
+   * this; a test calls it directly.
+   */
+  heartbeatOnce(nowMs: number): void;
   /** Stops the timers, closes every client with code 1001, closes both servers. */
   close(): Promise<void>;
 }
 
 /**
- * `/ws` (no `probe` value, or an unknown one): normal, receives ticks, is
- * pinged. `/ws?probe=quiet`: no ticks, is pinged and receives the heartbeat
- * message. `/ws?probe=silent`: receives nothing at all and is not pinged —
- * the baseline for the host idle-timeout measurement.
+ * `/ws` (no `probe` value, or an unknown one): ordinary. It is pinged, the
+ * door answers what it sends, and it is sent the heartbeat message whenever
+ * nothing else has gone its way for the heartbeat period.
+ *
+ * The two measurement modes are read only when `probeModes` is on, so the
+ * public host has no way to reach them. `/ws?probe=quiet`: never routed to
+ * the door, pinged, and sees the heartbeat message. `/ws?probe=silent`:
+ * receives nothing at all and is not pinged — the baseline for the host
+ * idle-timeout measurement.
  */
 type ConnMode = 'normal' | 'quiet' | 'silent';
 
 interface ConnState {
   mode: ConnMode;
-  /** `Date.now()` of the last frame sent to this connection. */
+  /** The injected clock's reading when anything was last sent to this connection. */
   lastSendMs: number;
-  /** True once the current round's ping has been answered by a pong. */
-  alive: boolean;
+  /** Pings sent since the last pong came back. */
+  missedPongs: number;
 }
 
 const HB_PAYLOAD = JSON.stringify({ type: 'hb' });
 /** Close code for "the server hit something it did not expect". */
 const CLOSE_INTERNAL_ERROR = 1011;
+/**
+ * How many rounds in a row a connection may fail to answer a ping before it
+ * is dropped. Two, not one: a single slow answer must not cost a player
+ * their connection.
+ */
+const MISSED_PONGS_ALLOWED = 2;
 
 function toText(data: WebSocket.RawData): string {
   if (Buffer.isBuffer(data)) return data.toString();
@@ -88,10 +112,10 @@ function modeFromUrl(url: URL): ConnMode {
 }
 
 export function createApp(options: AppOptions): App {
-  const tickMs = options.tickMs ?? 1000;
   const heartbeatMs = options.heartbeatMs ?? 20000;
   const sampleMs = options.sampleMs ?? SAMPLE_INTERVAL_MS;
   const now = options.now ?? (() => performance.now());
+  const probeModes = options.probeModes ?? false;
 
   const registry = createRegistry({ drawSeed: options.drawSeed ?? drawSeed, drawId: drawSessionId });
   const door = { registry, now };
@@ -149,7 +173,7 @@ export function createApp(options: AppOptions): App {
   /** Routes every send through here so `lastSendMs` is always accurate. */
   function sendTo(ws: WebSocket, state: ConnState, payload: string): void {
     ws.send(payload);
-    state.lastSendMs = Date.now();
+    state.lastSendMs = now();
   }
 
   server.on('upgrade', (req: IncomingMessage, socket: Socket, head: Buffer) => {
@@ -158,14 +182,14 @@ export function createApp(options: AppOptions): App {
       socket.destroy();
       return;
     }
-    const mode = modeFromUrl(url);
+    const mode = probeModes ? modeFromUrl(url) : 'normal';
 
     wss.handleUpgrade(req, socket, head, (ws) => {
-      const state: ConnState = { mode, lastSendMs: Date.now(), alive: true };
+      const state: ConnState = { mode, lastSendMs: now(), missedPongs: 0 };
       connections.set(ws, state);
 
       ws.on('pong', () => {
-        state.alive = true;
+        state.missedPongs = 0;
       });
       // What the door and the sampler hold: every send still goes through
       // `sendTo`, so the heartbeat knows when this socket last heard anything.
@@ -204,42 +228,27 @@ export function createApp(options: AppOptions): App {
         handleClosed(door, connection);
       });
 
-      if (mode === 'normal') {
-        sendTo(ws, state, JSON.stringify({ type: 'tick', tick }));
-      }
-
       wss.emit('connection', ws, req);
     });
   });
 
-  let tick = 0;
-
-  const interval = setInterval(() => {
-    tick += 1;
-    const payload = JSON.stringify({ type: 'tick', tick });
-    for (const [ws, state] of connections) {
-      if (state.mode !== 'normal') continue;
-      if (ws.readyState === ws.OPEN) {
-        sendTo(ws, state, payload);
-      }
-    }
-  }, tickMs);
-
-  const heartbeatTimer = setInterval(() => {
-    const now = Date.now();
+  function heartbeatOnce(nowMs: number): void {
     for (const [ws, state] of connections) {
       if (state.mode === 'silent') continue;
-      if (!state.alive) {
+      state.missedPongs += 1;
+      if (state.missedPongs >= MISSED_PONGS_ALLOWED) {
+        // Two rounds with no answer: the peer is gone, not slow.
         ws.terminate();
         continue;
       }
-      state.alive = false;
       ws.ping();
-      if (now - state.lastSendMs >= heartbeatMs) {
+      if (nowMs - state.lastSendMs >= heartbeatMs) {
         sendTo(ws, state, HB_PAYLOAD);
       }
     }
-  }, heartbeatMs);
+  }
+
+  const heartbeatTimer = heartbeatMs > 0 ? setInterval(() => heartbeatOnce(now()), heartbeatMs) : null;
 
   function sampleOnce(nowMs: number): void {
     sampleSessions(registry, nowMs, samplerStats);
@@ -263,8 +272,7 @@ export function createApp(options: AppOptions): App {
       : null;
 
   async function close(): Promise<void> {
-    clearInterval(interval);
-    clearInterval(heartbeatTimer);
+    if (heartbeatTimer !== null) clearInterval(heartbeatTimer);
     if (sampleTimer !== null) clearInterval(sampleTimer);
     for (const ws of connections.keys()) {
       ws.close(1001);
@@ -273,5 +281,5 @@ export function createApp(options: AppOptions): App {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 
-  return { server, wss, sampleOnce, close };
+  return { server, wss, sampleOnce, heartbeatOnce, close };
 }

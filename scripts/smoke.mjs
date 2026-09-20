@@ -16,20 +16,40 @@ const expectCommit = expectCommitFlagIndex !== -1 ? args[expectCommitFlagIndex +
 
 const SHORT_COMMIT_RE = /^[0-9a-f]{7}$/;
 
+// The wire contract's version number is written out here because this file
+// cannot import TypeScript. Bumping the protocol version must change it.
+const PROTOCOL_VERSION = 1;
+// The fastest pace the game offers, so three frames with a rising step arrive
+// inside a second and this check never waits for the market to open.
+const SMOKE_PACE = 7.5;
+const FRAMES_WANTED = 3;
+const WS_TIMEOUT_MS = 15000;
+const COMPANY_COUNT = 6;
+
 function wsUrlFor(baseUrl) {
   const url = new URL('/ws', baseUrl);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
   return url.toString();
 }
 
-function checkTicks(wsUrl) {
+function dollars(cents) {
+  return (cents / 100).toFixed(2);
+}
+
+/**
+ * Speaks the real protocol: hello, then start, then reads the live stream.
+ * Prints one `prices` line per frame so a person running this by hand can see
+ * six share prices moving, not just a pass or a fail.
+ */
+function checkStream(wsUrl) {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(wsUrl);
-    const ticks = [];
+    let stage = 'lobby';
+    const steps = [];
+
     const timer = setTimeout(() => {
-      socket.close();
-      reject(new Error('ws: timed out waiting for tick messages'));
-    }, 15000);
+      finish(() => reject(new Error(`ws: timed out after ${WS_TIMEOUT_MS}ms in stage "${stage}"`)));
+    }, WS_TIMEOUT_MS);
 
     function finish(fn) {
       clearTimeout(timer);
@@ -41,28 +61,84 @@ function checkTicks(wsUrl) {
       fn();
     }
 
-    socket.addEventListener('message', (event) => {
-      try {
-        const data = JSON.parse(event.data.toString());
-        if (data.type === 'tick' && typeof data.tick === 'number') {
-          ticks.push(data.tick);
-          if (ticks.length >= 3) {
-            for (let i = 1; i < ticks.length; i += 1) {
-              if (ticks[i] !== ticks[i - 1] + 1) {
-                finish(() => reject(new Error(`ws: tick did not increase by exactly 1 (${ticks.join(',')})`)));
-                return;
-              }
-            }
-            finish(resolve);
-          }
-        }
-      } catch {
-        // Ignore malformed frames.
+    function fail(message) {
+      finish(() => reject(new Error(`ws: ${message}`)));
+    }
+
+    /** True when the frame carries six whole-cent share prices. */
+    function pricesAreWholeCents(frame) {
+      if (!Array.isArray(frame.prices) || frame.prices.length !== COMPANY_COUNT) {
+        fail(`expected ${COMPANY_COUNT} prices, got ${JSON.stringify(frame.prices)}`);
+        return false;
       }
+      for (const price of frame.prices) {
+        if (!Number.isInteger(price)) {
+          fail(`a price is not a whole number of cents: ${JSON.stringify(price)}`);
+          return false;
+        }
+      }
+      return true;
+    }
+
+    socket.addEventListener('open', () => {
+      socket.send(JSON.stringify({ t: 'hello', v: PROTOCOL_VERSION }));
+    });
+
+    socket.addEventListener('message', (event) => {
+      let message;
+      try {
+        message = JSON.parse(event.data.toString());
+      } catch {
+        fail('the server sent text that is not JSON');
+        return;
+      }
+      // The heartbeat carries no `t`; it is not part of this check.
+      if (message === null || typeof message !== 'object' || typeof message.t !== 'string') return;
+      if (message.t === 'error') {
+        fail(`the server refused a message: ${message.code}`);
+        return;
+      }
+
+      if (stage === 'lobby') {
+        if (message.t !== 'frame') {
+          fail(`expected a frame in answer to hello, got "${message.t}"`);
+          return;
+        }
+        if (message.clock?.phase !== 'lobby') {
+          fail(`expected the first frame to be the lobby, got "${message.clock?.phase}"`);
+          return;
+        }
+        if (!pricesAreWholeCents(message)) return;
+        stage = 'starting';
+        socket.send(JSON.stringify({ t: 'start', commandId: crypto.randomUUID(), pace: SMOKE_PACE }));
+        return;
+      }
+
+      if (stage === 'starting') {
+        // A sampled lobby frame may still be on its way; the reply is what matters.
+        if (message.t !== 'reply') return;
+        if (message.receipt?.outcome !== 'accepted') {
+          fail(`start was not accepted: ${JSON.stringify(message.receipt)}`);
+          return;
+        }
+        stage = 'streaming';
+        return;
+      }
+
+      if (message.t !== 'frame') return;
+      if (!pricesAreWholeCents(message)) return;
+      const previous = steps.length === 0 ? -1 : steps[steps.length - 1];
+      if (!(message.step > previous)) {
+        fail(`step did not rise: ${previous} then ${message.step}`);
+        return;
+      }
+      steps.push(message.step);
+      console.log(`prices ${message.prices.map(dollars).join(' ')}`);
+      if (steps.length >= FRAMES_WANTED) finish(resolve);
     });
 
     socket.addEventListener('error', () => {
-      finish(() => reject(new Error('ws: connection error')));
+      fail('connection error');
     });
   });
 }
@@ -120,7 +196,7 @@ async function runChecks(baseUrl) {
     throw new Error(`asset: page bundle does not contain the healthz buildTime "${healthBody.buildTime}"`);
   }
 
-  await checkTicks(wsUrlFor(baseUrl));
+  await checkStream(wsUrlFor(baseUrl));
 }
 
 async function waitForFirstAnswer(baseUrl, timeoutMs) {

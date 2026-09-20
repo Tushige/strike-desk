@@ -1,6 +1,6 @@
 import type { Board } from './board';
 import { DEFAULT_TARGETS_PER_COMPANY, buildCompanyBoard, decodeContractId } from './board';
-import { CAST, COMPANY_COUNT, DAY_WOBBLE, MARKET_WOBBLE } from './cast';
+import { CAST, DAY_WOBBLE, MARKET_WOBBLE } from './cast';
 import { DAYS, OPEN_STEPS } from './clock';
 import { exactExp } from './exact';
 import { centsToDollars } from './money';
@@ -16,7 +16,7 @@ import { createStream } from './rng';
  */
 
 /** Bump when the model changes: the same seed then means a different market. */
-export const ENGINE_VERSION = 'e1';
+export const ENGINE_VERSION = 'e2';
 /** Bump when headline content changes. */
 export const CONTENT_VERSION = 'c0';
 
@@ -42,7 +42,10 @@ export interface HiddenOutcome {
   /** Point of the day's path at which the whole news move lands: 35% to 70% of the open market. */
   revealIndex: number;
   wasTrue: boolean;
-  /** Signed fraction of the price. */
+  /**
+   * Signed log move: the price is multiplied by the exponential of it, so an
+   * up move and a down move of the same size mirror each other exactly.
+   */
   move: number;
 }
 
@@ -98,7 +101,7 @@ function drawNews(seed: number, day: number, firstId: number): MarketNews[] {
 }
 
 function drawPaths(seed: number, day: number, openPrices: readonly number[], news: readonly MarketNews[]): number[][] {
-  const marketRng = createStream(seed, 'prices', day, COMPANY_COUNT);
+  const marketRng = createStream(seed, 'marketWide', day);
   const marketShocks: number[] = [];
   for (let k = 0; k < OPEN_STEPS; k += 1) marketShocks.push(marketRng.nextNormal());
 
@@ -113,7 +116,7 @@ function drawPaths(seed: number, day: number, openPrices: readonly number[], new
     for (let k = 1; k <= OPEN_STEPS; k += 1) {
       const shock = marketSd * (marketShocks[k - 1] ?? 0) + ownSd * rng.nextNormal();
       price *= exactExp(drift + shock);
-      if (hidden !== undefined && k === hidden.revealIndex) price *= 1 + hidden.move;
+      if (hidden !== undefined && k === hidden.revealIndex) price *= exactExp(hidden.move);
       path.push(price);
     }
     return path;

@@ -32,6 +32,19 @@ describe('createStream', () => {
     expect(firstValues(0, 'cosmetics')).toEqual(GOLDEN_ZERO);
   });
 
+  it('gives every label a game uses a stream of its own', () => {
+    for (const seed of [SEED, 0, SEED_LIMIT - 1]) {
+      const labels: [StreamName, ...number[]][] = [['cosmetics']];
+      for (let day = 1; day <= 5; day += 1) {
+        labels.push(['marketWide', day], ['newsPick', day], ['newsOutcome', day], ['newsWording', day]);
+        // Six companies today; the seventh index is here so a larger cast could never meet the whole-market stream.
+        for (let companyId = 0; companyId <= 6; companyId += 1) labels.push(['prices', day, companyId]);
+      }
+      const starts = labels.map(([name, ...indexes]) => firstValues(seed, name, ...indexes).slice(0, 4).join(','));
+      expect(new Set(starts).size).toBe(labels.length);
+    }
+  });
+
   it('draws floats in [0, 1), integers in [0, n) and finite normals', () => {
     const rng = createStream(SEED, 'cosmetics');
     let sum = 0;

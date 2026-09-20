@@ -54,6 +54,14 @@ describe('client messages', () => {
     expect(parseClientMessage(message)).toBeNull();
   });
 
+  it('refuses a message that tries to choose the market', () => {
+    // The seed is the server's alone: a browser that asks for one must be
+    // refused by the contract itself, before any handler sees the message.
+    expect(parseClientMessage({ t: 'hello', v: 1, seed: 77 })).toBeNull();
+    expect(parseClientMessage({ ...buy, seed: 77 })).toBeNull();
+    expect(parseClientMessage({ t: 'start', commandId: ID, pace: 1, seed: 77 })).toBeNull();
+  });
+
   it('does not take hello as a command', () => {
     expect(commandSchema.safeParse({ t: 'hello', v: 1 }).success).toBe(false);
     expect(commandSchema.safeParse(buy).success).toBe(true);
@@ -109,6 +117,13 @@ describe('isNewerFrame', () => {
   it('takes a later step at the same rev, and the same step again', () => {
     expect(isNewerFrame(held, { session: 's1', rev: 5, step: 401 })).toBe(true);
     expect(isNewerFrame(held, { session: 's1', rev: 5, step: 400 })).toBe(true);
+  });
+
+  it('an equal frame is accepted', () => {
+    // Same session, same rev, same step: accepted, not dropped. A store that
+    // wants to redraw nothing for an unchanged frame must decide that for
+    // itself; this rule is only about ordering.
+    expect(isNewerFrame(held, { ...held })).toBe(true);
   });
 
   it('refuses an older frame', () => {

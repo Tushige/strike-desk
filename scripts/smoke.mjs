@@ -144,6 +144,20 @@ async function runAgainstDeployedUrl(url) {
   await runChecks(url);
 }
 
+const SHUTDOWN_TIMEOUT_MS = 5000;
+
+function waitForExit(child, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`server did not exit within ${timeoutMs}ms of SIGTERM`));
+    }, timeoutMs);
+    child.once('exit', (code, signal) => {
+      clearTimeout(timer);
+      resolve({ code, signal });
+    });
+  });
+}
+
 async function runAgainstLocalBuild() {
   const serverPath = path.join(repoRoot, 'apps/server/dist/server.js');
   const child = spawn(process.execPath, [serverPath], {
@@ -154,6 +168,10 @@ async function runAgainstLocalBuild() {
 
   let stdoutBuffer = '';
   let stderrBuffer = '';
+  let exited = false;
+  child.once('exit', () => {
+    exited = true;
+  });
 
   try {
     const port = await new Promise((resolve, reject) => {
@@ -179,8 +197,16 @@ async function runAgainstLocalBuild() {
     });
 
     await runChecks(`http://127.0.0.1:${port}`);
-  } finally {
+
     child.kill('SIGTERM');
+    const { code, signal } = await waitForExit(child, SHUTDOWN_TIMEOUT_MS);
+    if (code !== 0) {
+      throw new Error(`server exited with code ${code} (signal ${signal}) after SIGTERM, expected 0`);
+    }
+  } finally {
+    if (!exited) {
+      child.kill('SIGTERM');
+    }
   }
 }
 

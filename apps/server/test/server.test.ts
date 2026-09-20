@@ -207,6 +207,200 @@ describe('healthz', () => {
   });
 });
 
+interface ParsedMessage {
+  type: string;
+  tick?: number;
+}
+
+interface MessageCollector {
+  socket: WebSocket;
+  opened(): Promise<void>;
+  waitForCount(count: number, predicate?: (message: ParsedMessage) => boolean): Promise<ParsedMessage[]>;
+  waitForPings(count: number): Promise<number>;
+  messages(): ParsedMessage[];
+  pingCount(): number;
+}
+
+/**
+ * Like collectTicks, but keeps every parsed message (not only ticks) and
+ * counts protocol-level ping frames, so the heartbeat message and the
+ * ping/terminate cycle can be tested directly.
+ */
+function collectMessages(url: string, wsOptions?: WebSocket.ClientOptions): MessageCollector {
+  const socket = new WebSocket(url, wsOptions);
+  const messages: ParsedMessage[] = [];
+  let pings = 0;
+  let messageWaiter: {
+    count: number;
+    predicate?: (message: ParsedMessage) => boolean;
+    resolve: (values: ParsedMessage[]) => void;
+  } | null = null;
+  let pingWaiter: { count: number; resolve: (count: number) => void } | null = null;
+
+  function matching(predicate?: (message: ParsedMessage) => boolean): ParsedMessage[] {
+    return predicate ? messages.filter(predicate) : messages;
+  }
+
+  socket.on('message', (data) => {
+    try {
+      const parsed = JSON.parse(toText(data)) as ParsedMessage;
+      messages.push(parsed);
+    } catch {
+      return;
+    }
+    if (messageWaiter !== null) {
+      const found = matching(messageWaiter.predicate);
+      if (found.length >= messageWaiter.count) {
+        const { count, predicate, resolve } = messageWaiter;
+        messageWaiter = null;
+        resolve(matching(predicate).slice(0, count));
+      }
+    }
+  });
+
+  socket.on('ping', () => {
+    pings += 1;
+    if (pingWaiter !== null && pings >= pingWaiter.count) {
+      const { resolve } = pingWaiter;
+      pingWaiter = null;
+      resolve(pings);
+    }
+  });
+
+  return {
+    socket,
+    opened() {
+      return new Promise((resolve, reject) => {
+        socket.once('open', () => resolve());
+        socket.once('error', reject);
+      });
+    },
+    waitForCount(count, predicate) {
+      const found = matching(predicate);
+      if (found.length >= count) {
+        return Promise.resolve(found.slice(0, count));
+      }
+      return new Promise((resolve) => {
+        messageWaiter = { count, predicate, resolve };
+      });
+    },
+    waitForPings(count) {
+      if (pings >= count) {
+        return Promise.resolve(pings);
+      }
+      return new Promise((resolve) => {
+        pingWaiter = { count, resolve };
+      });
+    },
+    messages() {
+      return messages;
+    },
+    pingCount() {
+      return pings;
+    },
+  };
+}
+
+describe('heartbeat', () => {
+  it('heartbeat: a quiet connection receives repeated hb messages and no ticks', async () => {
+    app = createApp({ staticDir, tickMs: 20, heartbeatMs: 40, version: TEST_VERSION });
+    const port = await listen(app);
+    const client = collectMessages(`ws://127.0.0.1:${port}/ws?probe=quiet`);
+    await client.opened();
+
+    const hbMessages = await client.waitForCount(2, (message) => message.type === 'hb');
+    client.socket.close();
+
+    expect(hbMessages.length).toBeGreaterThanOrEqual(2);
+    expect(client.messages().some((message) => message.type === 'tick')).toBe(false);
+  }, 10000);
+
+  it('heartbeat: a normal connection receives ticks and no hb messages', async () => {
+    app = createApp({ staticDir, tickMs: 20, heartbeatMs: 40, version: TEST_VERSION });
+    const port = await listen(app);
+    const client = collectMessages(`ws://127.0.0.1:${port}/ws`);
+    await client.opened();
+
+    await client.waitForCount(5, (message) => message.type === 'tick');
+    client.socket.close();
+
+    expect(client.messages().some((message) => message.type === 'hb')).toBe(false);
+  }, 10000);
+
+  it('heartbeat: a silent connection receives nothing and is not pinged, but stays open', async () => {
+    app = createApp({ staticDir, tickMs: 20, heartbeatMs: 40, version: TEST_VERSION });
+    const port = await listen(app);
+    const client = collectMessages(`ws://127.0.0.1:${port}/ws?probe=silent`);
+    await client.opened();
+
+    // Wait several heartbeat rounds so an erroneous send has every chance to
+    // arrive. The assertion below is on absence, not on completing within
+    // this window, so a slower machine only makes the wait more generous —
+    // it can never turn a real send into a false pass.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    expect(client.messages()).toEqual([]);
+    expect(client.pingCount()).toBe(0);
+    expect(client.socket.readyState).toBe(WebSocket.OPEN);
+    client.socket.close();
+  }, 10000);
+});
+
+describe('ping', () => {
+  it('ping: a normal connection is pinged by the server', async () => {
+    app = createApp({ staticDir, tickMs: 20, heartbeatMs: 40, version: TEST_VERSION });
+    const port = await listen(app);
+    const client = collectMessages(`ws://127.0.0.1:${port}/ws`);
+    await client.opened();
+
+    const pings = await client.waitForPings(1);
+    client.socket.close();
+
+    expect(pings).toBeGreaterThanOrEqual(1);
+  }, 10000);
+});
+
+describe('dead peer', () => {
+  it('dead peer: a connection that never answers a ping is terminated', async () => {
+    app = createApp({ staticDir, tickMs: 20, heartbeatMs: 40, version: TEST_VERSION });
+    const port = await listen(app);
+    // autoPong: false — this client never answers the server's protocol
+    // ping, so it must look dead to the heartbeat round.
+    const client = collectMessages(`ws://127.0.0.1:${port}/ws?probe=quiet`, { autoPong: false });
+    await client.opened();
+
+    const closeCode = await new Promise<number>((resolve) => {
+      client.socket.once('close', (code) => resolve(code));
+    });
+
+    // terminate() tears down the raw socket without a close handshake — this
+    // asserts termination happened at all, not on which round it landed.
+    expect(typeof closeCode).toBe('number');
+  }, 10000);
+});
+
+describe('shutdown', () => {
+  it('shutdown: close() resolves and every connection, in every mode, sees close code 1001', async () => {
+    app = createApp({ staticDir, tickMs: 20, heartbeatMs: 40, version: TEST_VERSION });
+    const port = await listen(app);
+    const normal = collectMessages(`ws://127.0.0.1:${port}/ws`);
+    const quiet = collectMessages(`ws://127.0.0.1:${port}/ws?probe=quiet`);
+    const silent = collectMessages(`ws://127.0.0.1:${port}/ws?probe=silent`);
+    await Promise.all([normal.opened(), quiet.opened(), silent.opened()]);
+
+    const closeCodes = Promise.all(
+      [normal, quiet, silent].map(
+        (client) => new Promise<number>((resolve) => client.socket.once('close', (code) => resolve(code))),
+      ),
+    );
+
+    await app.close();
+    closed = true;
+
+    expect(await closeCodes).toEqual([1001, 1001, 1001]);
+  }, 10000);
+});
+
 describe('upgrade not swallowed', () => {
   it('upgrade not swallowed: only /ws completes the handshake, other paths behave correctly', async () => {
     app = createApp({ staticDir, tickMs: 1000, version: TEST_VERSION });

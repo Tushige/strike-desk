@@ -55,7 +55,12 @@ const webSharedImportFence = {
 
 // The modules that hold or move live data stay free of React, so that data
 // lives outside React state and only `store/hooks.ts` connects the two.
-const webDataModules = ['apps/web/src/feed/**/*.ts', 'apps/web/src/store/gameStore.ts', 'apps/web/src/autoStart.ts'];
+const webDataModules = [
+  'apps/web/src/feed/**/*.ts',
+  'apps/web/src/store/gameStore.ts',
+  'apps/web/src/store/contractRows.ts',
+  'apps/web/src/autoStart.ts',
+];
 
 const WEB_SOCKET_MESSAGE =
   "Only 'apps/web/src/feed/wsFeed.ts' opens a socket. Read data through the Feed interface from '@strike-desk/shared/feed' instead.";

@@ -3,6 +3,8 @@ import type { Command, Frame, ServerMessage } from '@strike-desk/shared/protocol
 import type { Feed, FeedEvent } from '@strike-desk/shared/feed';
 import { createGameStore } from '../src/store/gameStore';
 import type { GameStore } from '../src/store/gameStore';
+import { buildRows } from '../src/store/contractRows';
+import type { ContractRow } from '../src/store/contractRows';
 import { autoStart } from '../src/autoStart';
 import { testFrame } from './fakeSocket';
 
@@ -338,5 +340,253 @@ describe('auto-start', () => {
     fake.emit(message(lobbyFrame('s-1')));
 
     expect(fake.sent).toEqual([]);
+  });
+});
+
+// ------------------------------------------------------------------- the board
+
+const TARGETS_PER_COMPANY = 21;
+const CONTRACTS = COMPANIES * TARGETS_PER_COMPANY * 2;
+const DEBRIEF_CLOCK = { phase: 'debrief', day: 1, stepsLeft: 0, priceIndex: 500, pace: 3 } as const;
+const TICKERS = ['RPUP', 'FIZZ', 'JETK', 'MUNC', 'PIXL', 'ZAPP'];
+
+type Board = NonNullable<Frame['board']>;
+
+/** A real-shaped board: six companies, 21 targets each, the whole board offered. */
+function testBoard(shiftCents = 0): Board {
+  return {
+    targetsPerCompany: TARGETS_PER_COMPANY,
+    companies: Array.from({ length: COMPANIES }, (_unused, companyId) => ({
+      targets: Array.from(
+        { length: TARGETS_PER_COMPANY },
+        (_target, index) => 1000 + companyId * 10_000 + index * 100 + shiftCents,
+      ),
+      simpleUp: [2, 5, 8] as [number, number, number],
+      simpleDown: [18, 15, 12] as [number, number, number],
+      lowestUpIndex: 0,
+      highestDownIndex: TARGETS_PER_COMPANY - 1,
+    })),
+  };
+}
+
+/** Distinct, comfortably tradable prices: ticket number N costs 1000 + N cents. */
+function quotes(changes: Readonly<Record<number, number>> = {}): number[] {
+  const all = Array.from({ length: CONTRACTS }, (_unused, id) => 1000 + id);
+  for (const [id, cents] of Object.entries(changes)) all[Number(id)] = cents;
+  return all;
+}
+
+function boardFrame(changes: Partial<Frame> = {}): Frame {
+  return testFrame({ clock: OPEN_CLOCK, board: testBoard(), quotes: quotes(), minTicketCents: 500, ...changes });
+}
+
+interface BoardCounts {
+  companies: number;
+  boardRows: number;
+  /** One entry per call of the row sink, holding the rows it was handed. */
+  sinkCalls: (readonly ContractRow[])[];
+}
+
+function watchBoard(store: GameStore): BoardCounts {
+  const counts: BoardCounts = { companies: 0, boardRows: 0, sinkCalls: [] };
+  store.companies.subscribe(() => {
+    counts.companies += 1;
+  });
+  store.boardRows.subscribe(() => {
+    counts.boardRows += 1;
+  });
+  store.setRowSink((rows) => {
+    counts.sinkCalls.push(rows);
+  });
+  return counts;
+}
+
+describe('building the rows of a board', () => {
+  it('builds 252 rows: company by company, the UP block then the DOWN block, targets ascending', () => {
+    const board = testBoard();
+    const rows = buildRows({
+      board,
+      companies: testFrame().companies,
+      quotes: quotes(),
+      minTicketCents: 500,
+      buyable: true,
+    });
+
+    expect(rows).toHaveLength(252);
+    expect(rows[0]).toEqual({
+      id: '0',
+      contractId: 0,
+      companyId: 0,
+      company: 'RoboPup',
+      ticker: 'RPUP',
+      side: 'up',
+      targetCents: 1000,
+      priceCents: 1000,
+      dimmed: false,
+      dir: 0,
+    });
+
+    const firstCompany = rows.slice(0, 42);
+    expect(firstCompany.slice(0, 21).map((row) => row.side)).toEqual(Array.from({ length: 21 }, () => 'up'));
+    expect(firstCompany.slice(21).map((row) => row.side)).toEqual(Array.from({ length: 21 }, () => 'down'));
+    expect(firstCompany.slice(0, 21).map((row) => row.targetCents)).toEqual(board.companies[0]?.targets);
+    expect(firstCompany.slice(21).map((row) => row.targetCents)).toEqual(board.companies[0]?.targets);
+
+    // Contract ids interleave UP and DOWN, so the default row order is not id order.
+    expect(firstCompany.map((row) => row.contractId)).toEqual([
+      0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 1, 3, 5, 7, 9, 11, 13, 15, 17, 19,
+      21, 23, 25, 27, 29, 31, 33, 35, 37, 39, 41,
+    ]);
+    expect(rows[42]).toMatchObject({ contractId: 42, companyId: 1, company: 'Fizzly', ticker: 'FIZZ', side: 'up' });
+    expect(rows[251]).toMatchObject({ contractId: 251, companyId: 5, ticker: 'ZAPP', side: 'down' });
+
+    expect(rows.map((row) => row.id)).toEqual(rows.map((row) => String(row.contractId)));
+    expect(rows.map((row) => row.priceCents)).toEqual(rows.map((row) => 1000 + row.contractId));
+    expect(rows.every((row) => row.dir === 0)).toBe(true);
+  });
+});
+
+describe('the store and the board', () => {
+  it('builds the whole row set on the first frame with a board and calls no sink', () => {
+    const store = createGameStore();
+    const counts = watchBoard(store);
+
+    store.ingest(boardFrame());
+
+    expect(counts.boardRows).toBe(1);
+    expect(store.boardRows.get()).toHaveLength(252);
+    expect(counts.sinkCalls).toEqual([]);
+  });
+
+  it('tells nobody when the next frame repeats every ticket price', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 1 }));
+    const counts = watchBoard(store);
+
+    store.ingest(boardFrame({ step: 2 }));
+
+    expect(counts.boardRows).toBe(0);
+    expect(counts.sinkCalls).toEqual([]);
+    expect(counts.companies).toBe(0);
+  });
+
+  it('hands the sink only the row whose price moved, as a new object, with its direction', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 1 }));
+    const before = store.boardRows.get().find((row) => row.contractId === 5);
+    const counts = watchBoard(store);
+
+    store.ingest(boardFrame({ step: 2, quotes: quotes({ 5: 9999 }) }));
+
+    expect(counts.boardRows).toBe(0);
+    expect(counts.sinkCalls).toHaveLength(1);
+    const raised = counts.sinkCalls[0] ?? [];
+    expect(raised).toHaveLength(1);
+    expect(raised[0]).toMatchObject({ contractId: 5, priceCents: 9999, dir: 1 });
+    expect(before?.priceCents).toBe(1005);
+    expect(raised[0]).not.toBe(before);
+
+    store.ingest(boardFrame({ step: 3, quotes: quotes({ 5: 2000 }) }));
+
+    expect(counts.sinkCalls).toHaveLength(2);
+    expect(counts.sinkCalls[1]).toHaveLength(1);
+    expect(counts.sinkCalls[1]?.[0]).toMatchObject({ contractId: 5, priceCents: 2000, dir: -1 });
+  });
+
+  it('dims a ticket under the cheapest tradable price only while tickets are buyable', () => {
+    const open = createGameStore();
+    open.ingest(boardFrame({ quotes: quotes({ 7: 400 }) }));
+    expect(open.boardRows.get().filter((row) => row.dimmed).map((row) => row.contractId)).toEqual([7]);
+
+    const closed = createGameStore();
+    closed.ingest(boardFrame({ clock: DEBRIEF_CLOCK, quotes: quotes({ 7: 400 }) }));
+    expect(closed.boardRows.get().some((row) => row.dimmed)).toBe(false);
+    expect(closed.boardRows.get().find((row) => row.contractId === 7)?.priceCents).toBe(400);
+  });
+
+  it('sends the rows that stop being dimmed at the closing bell, each with no direction', () => {
+    const store = createGameStore();
+    const underFloor = quotes({ 7: 400, 19: 100 });
+    store.ingest(boardFrame({ step: 1, quotes: underFloor }));
+    const counts = watchBoard(store);
+
+    store.ingest(boardFrame({ step: 2, clock: DEBRIEF_CLOCK, quotes: underFloor }));
+
+    expect(counts.boardRows).toBe(0);
+    expect(counts.sinkCalls).toHaveLength(1);
+    const settled = counts.sinkCalls[0] ?? [];
+    expect(settled.map((row) => row.contractId)).toEqual([7, 19]);
+    expect(settled.every((row) => row.dir === 0 && !row.dimmed)).toBe(true);
+  });
+
+  it('replaces the row set for another day, and for another session, without calling the sink', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 1 }));
+    const counts = watchBoard(store);
+
+    store.ingest(boardFrame({ step: 2, board: testBoard(500), clock: { ...OPEN_CLOCK, day: 2 } }));
+
+    expect(counts.boardRows).toBe(1);
+    expect(counts.sinkCalls).toEqual([]);
+    expect(store.boardRows.get()[0]?.targetCents).toBe(1500);
+
+    store.ingest(boardFrame({ session: 's-2', step: 0 }));
+
+    expect(counts.boardRows).toBe(2);
+    expect(counts.sinkCalls).toEqual([]);
+    expect(store.boardRows.get()[0]?.targetCents).toBe(1000);
+  });
+
+  it('holds no rows while there is no board', () => {
+    const store = createGameStore();
+    expect(store.boardRows.get()).toEqual([]);
+
+    store.ingest(testFrame());
+    expect(store.boardRows.get()).toEqual([]);
+
+    store.ingest(boardFrame({ step: 1 }));
+    store.ingest(testFrame({ session: 's-2' }));
+    expect(store.boardRows.get()).toEqual([]);
+  });
+
+  it('gives the latest row for every contract, in the default order', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 1 }));
+    store.ingest(boardFrame({ step: 2, quotes: quotes({ 5: 9999 }) }));
+
+    const latest = store.currentRows();
+    expect(latest).toHaveLength(252);
+    expect(latest.map((row) => row.contractId)).toEqual(store.boardRows.get().map((row) => row.contractId));
+    expect(latest.find((row) => row.contractId === 5)?.priceCents).toBe(9999);
+    expect(store.boardRows.get().find((row) => row.contractId === 5)?.priceCents).toBe(1005);
+  });
+
+  it('takes the company names from the frame and repeats them to nobody', () => {
+    const store = createGameStore();
+    const counts = watchBoard(store);
+
+    store.ingest(testFrame({ step: 1 }));
+    const held = store.companies.get();
+    expect(held.map((company) => company.ticker)).toEqual(TICKERS);
+    expect(held.map((company) => company.name)).toEqual([
+      'RoboPup',
+      'Fizzly',
+      'JetKicks',
+      'MoonMunch',
+      'PixelPals',
+      'ZapCharge',
+    ]);
+    expect(counts.companies).toBe(1);
+
+    store.ingest(testFrame({ step: 2 }));
+    store.ingest(testFrame({ step: 3 }));
+
+    expect(counts.companies).toBe(1);
+    expect(store.companies.get()).toBe(held);
+
+    store.ingest(testFrame({ step: 4, companies: [...held.slice(0, 5), { ticker: 'ZAPP', name: 'ZapCharger' }] }));
+
+    expect(counts.companies).toBe(2);
+    expect(store.companies.get()[5]?.name).toBe('ZapCharger');
   });
 });

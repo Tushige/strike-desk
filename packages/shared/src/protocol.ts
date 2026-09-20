@@ -167,6 +167,13 @@ export const newsViewSchema = z.object({
 });
 export type NewsView = z.infer<typeof newsViewSchema>;
 
+/** What a player may read of one company: never its wobble, its rival or its start price. */
+export const companyViewSchema = z.object({
+  ticker: z.string(),
+  name: z.string(),
+});
+export type CompanyView = z.infer<typeof companyViewSchema>;
+
 export const companyBoardSchema = z.object({
   targets: z.array(cents),
   simpleUp: z.tuple([count, count, count]),
@@ -249,12 +256,20 @@ export const frameSchema = z.object({
   rev: count,
   step: count,
   clock: clockViewSchema,
+  /** The companies' tickers and names, by company id. */
+  companies: z.array(companyViewSchema),
   /** Share prices in cents, by company id. */
   prices: z.array(cents),
+  /** The cheapest ticket price that can be bought, in cents. A ticket under it shows as too cheap to trade. */
+  minTicketCents: cents,
   /** Today's board; null in the lobby. */
   board: boardSchema.nullable(),
   /** Ticket prices in cents, by contract id. Empty in the lobby. */
   quotes: z.array(cents),
+  /** Real value of each ticket in cents, by contract id, same length as `quotes`. Real plus hope is the price. */
+  quoteReals: z.array(cents),
+  /** Hope value of each ticket in cents, by contract id, same length as `quotes`. Real plus hope is the price. */
+  quoteHopes: z.array(cents),
   /** Today's headlines. */
   news: z.array(newsViewSchema),
   account: accountViewSchema,

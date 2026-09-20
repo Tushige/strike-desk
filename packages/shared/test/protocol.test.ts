@@ -3,6 +3,7 @@ import {
   boardSchema,
   clientMessageSchema,
   commandSchema,
+  frameSchema,
   isNewerFrame,
   parseClientMessage,
   parseServerMessage,
@@ -87,8 +88,15 @@ describe('server messages', () => {
     step: 0,
     clock: { phase: 'lobby', day: 0, stepsLeft: 0, priceIndex: 0, pace: null },
     prices: [8400, 4200, 12000, 2800, 6500, 15000],
+    companies: [
+      { ticker: 'RPUP', name: 'RoboPup' },
+      { ticker: 'FIZZ', name: 'Fizzly' },
+    ],
+    minTicketCents: 500,
     board: null,
     quotes: [],
+    quoteReals: [],
+    quoteHopes: [],
     news: [],
     account: { cashCents: 100_000_000, worthCents: 100_000_000, capCents: 50_000_000, canBuy: false },
     positions: [],
@@ -96,6 +104,27 @@ describe('server messages', () => {
     days: [],
     stress: false,
   };
+
+  it('a frame needs the names, the cheapest tradable price and both parts of every ticket price', () => {
+    expect(frameSchema.parse(frame)).toEqual(frame);
+    for (const field of ['companies', 'minTicketCents', 'quoteReals', 'quoteHopes']) {
+      const without: Record<string, unknown> = { ...frame };
+      delete without[field];
+      expect({ field, parses: frameSchema.safeParse(without).success }).toEqual({ field, parses: false });
+      expect({ field, parses: parseServerMessage(without) !== null }).toEqual({ field, parses: false });
+    }
+    const filled = { ...frame, quotes: [1200, 0], quoteReals: [700, 0], quoteHopes: [500, 0] };
+    expect(frameSchema.parse(filled)).toEqual(filled);
+  });
+
+  it('refuses a company without a name or a ticker, and ticket money that is not whole cents', () => {
+    expect(frameSchema.safeParse({ ...frame, companies: [{ ticker: 'RPUP' }] }).success).toBe(false);
+    expect(frameSchema.safeParse({ ...frame, companies: [{ name: 'RoboPup' }] }).success).toBe(false);
+    expect(frameSchema.safeParse({ ...frame, companies: [{ ticker: 7, name: 'RoboPup' }] }).success).toBe(false);
+    expect(frameSchema.safeParse({ ...frame, minTicketCents: 499.5 }).success).toBe(false);
+    expect(frameSchema.safeParse({ ...frame, quoteReals: [0.5] }).success).toBe(false);
+    expect(frameSchema.safeParse({ ...frame, quoteHopes: ['500'] }).success).toBe(false);
+  });
 
   it('accepts a frame, a reply, a quotes batch and an error', () => {
     expect(parseServerMessage(frame)).toEqual(frame);

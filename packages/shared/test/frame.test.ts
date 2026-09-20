@@ -5,9 +5,9 @@ import { projectFrame } from '../src/frame';
 import type { GameState } from '../src/game';
 import { advanceTo, applyCommand, newGame, spendCapCents } from '../src/game';
 import type { Market } from '../src/market';
-import { CONTENT_VERSION, ENGINE_VERSION, buildMarket, marketDay } from '../src/market';
+import { CONTENT_VERSION, ENGINE_VERSION, boardFor, buildMarket, marketDay, quoteAt } from '../src/market';
 import { sharePriceCents } from '../src/money';
-import { isTradable } from '../src/pricing';
+import { MIN_TICKET_PRICE_CENTS, isTradable } from '../src/pricing';
 import type { Frame } from '../src/protocol';
 import { frameSchema } from '../src/protocol';
 import { seedToMarketCode } from '../src/rng';
@@ -83,6 +83,7 @@ const STEPS: [string, number][] = [
   ['before the opening bell on day 1', 100],
   ['open, before any reveal', 300 + 60],
   ['open, holding a ticket, before any reveal', 1800 + 300 + 100],
+  ['open, with two reveals landed and one still to come', 1800 + 300 + 190],
   ['open, between reveals', 1800 + 300 + 250],
   ['open, after every reveal', 1800 + 300 + 400],
   ['the last open step', 1800 + 799],
@@ -108,6 +109,13 @@ describe('projectFrame keeps the future secret', () => {
     // After the last bell nothing is left to scramble.
     if (step < bellStep(5)) expect(scrambled).not.toEqual(market);
     expect(project(scrambled, game, step, true, form)).toEqual(project(market, game, step, true, form));
+  });
+
+  it('one of the moments really has reveals on both sides of it', () => {
+    const { day, priceIndex } = momentAt(1800 + 300 + 190);
+    const landed = marketDay(market, day).news.map((item) => item.hidden.revealIndex <= priceIndex);
+    expect(landed.filter(Boolean)).toHaveLength(2);
+    expect(landed).toHaveLength(3);
   });
 
   it('the scramble really changes what comes next in the live form too', () => {
@@ -174,6 +182,8 @@ describe('projectFrame', () => {
       clock: { phase: 'lobby', day: 0, pace: null },
       board: null,
       quotes: [],
+      quoteReals: [],
+      quoteHopes: [],
       news: [],
       positions: [],
       account: { cashCents: 100_000_000, worthCents: 100_000_000, canBuy: false },
@@ -283,6 +293,9 @@ describe('projectFrame', () => {
     expect(frame.account.canBuy).toBe(false);
     expect(frame.stress).toBe(true);
     expect(frame.quotes).toHaveLength(2508);
+    const liveStress = projectLive(market, stress, 400);
+    expect(liveStress.board?.targetsPerCompany).toBe(209);
+    expect([liveStress.quotes.length, liveStress.quoteReals.length, liveStress.quoteHopes.length]).toEqual([2508, 2508, 2508]);
   });
 
   it('lists one result per finished day', () => {
@@ -310,8 +323,119 @@ describe('projectFrame', () => {
   });
 });
 
+/** The six companies of the real cast as a player may see them. Written out: the frame must carry exactly this and no more. */
+const REAL_NAMES = [
+  { ticker: 'RPUP', name: 'RoboPup' },
+  { ticker: 'FIZZ', name: 'Fizzly' },
+  { ticker: 'JETK', name: 'JetKicks' },
+  { ticker: 'MUNC', name: 'MoonMunch' },
+  { ticker: 'PIXL', name: 'PixelPals' },
+  { ticker: 'ZAPP', name: 'ZapCharge' },
+];
+
+describe('projectFrame, the names and the cheapest tradable price', () => {
+  const everyMoment = (): [string, GameState, number][] => [
+    ['the lobby', newGame(), 0],
+    ...STEPS.map(([name, step]): [string, GameState, number] => [name, gameAt(step), step]),
+  ];
+
+  it.each(FORMS)('%s form: one entry per company in id order, at every moment, the lobby included', (form) => {
+    for (const [name, game, step] of everyMoment()) {
+      expect({ name, companies: project(market, game, step, false, form).companies }).toEqual({ name, companies: REAL_NAMES });
+    }
+  });
+
+  it.each(FORMS)('%s form: a company entry has a ticker and a name and no other key', (form) => {
+    for (const [name, game, step] of everyMoment()) {
+      const { companies } = project(market, game, step, false, form);
+      expect(companies).toHaveLength(6);
+      for (const company of companies) expect({ name, keys: Object.keys(company).sort() }).toEqual({ name, keys: ['name', 'ticker'] });
+    }
+  });
+
+  it('names the cast the market was built on', () => {
+    const small = buildMarket(TEST_IDENTITY, { cast: TEST_CAST });
+    const expected = [
+      { ticker: 'TSTA', name: 'Test Alpha' },
+      { ticker: 'TSTB', name: 'Test Bravo' },
+      { ticker: 'TSTC', name: 'Test Charlie' },
+      { ticker: 'TSTD', name: 'Test Delta' },
+    ];
+    expect(project(small, newGame(), 0).companies).toEqual(expected);
+    expect(projectLive(small, startedGame(small), 400).companies).toEqual(expected);
+  });
+
+  it.each(FORMS)('%s form: carries the cheapest tradable price at every moment, the lobby included', (form) => {
+    for (const [name, game, step] of everyMoment()) {
+      expect({ name, minTicketCents: project(market, game, step, false, form).minTicketCents }).toEqual({ name, minTicketCents: MIN_TICKET_PRICE_CENTS });
+    }
+  });
+});
+
+describe('projectFrame, each ticket price with its real value and its hope value', () => {
+  it.each(STEPS_IN_BOTH_FORMS)('%s form, %s: 252 of each, from the one pricing call at the current point of the path', (form, _name, step) => {
+    const { day, priceIndex } = momentAt(step);
+    const frame = project(market, gameAt(step), step, false, form);
+    const board = boardFor(market, day, 21);
+    expect(frame.quotes).toHaveLength(252);
+    expect(frame.quoteReals).toHaveLength(252);
+    expect(frame.quoteHopes).toHaveLength(252);
+    for (let id = 0; id < 252; id += 1) {
+      const value = quoteAt(market, day, priceIndex, board, id);
+      expect({ id, price: frame.quotes[id], real: frame.quoteReals[id], hope: frame.quoteHopes[id] }).toEqual({
+        id,
+        price: value?.priceCents,
+        real: value?.realCents,
+        hope: value?.hopeCents,
+      });
+    }
+  });
+
+  it.each(STEPS_IN_BOTH_FORMS)('%s form, %s: real plus hope is the price on every contract, all three whole cents from zero', (form, _name, step) => {
+    const frame = project(market, gameAt(step), step, false, form);
+    frame.quotes.forEach((price, id) => {
+      const real = frame.quoteReals[id] ?? NaN;
+      const hope = frame.quoteHopes[id] ?? NaN;
+      expect({ id, sum: real + hope }).toEqual({ id, sum: price });
+      for (const cents of [price, real, hope]) expect(Number.isInteger(cents) && cents >= 0).toBe(true);
+    });
+  });
+
+  it.each(FORMS)('%s form: at the bell no hope is left, and before it some is', (form) => {
+    for (const step of [1800 + 800, 1800 + 850, GAME_STEPS]) {
+      expect(momentAt(step).priceIndex).toBe(OPEN_STEPS);
+      const frame = project(market, gameAt(step), step, false, form);
+      expect(frame.quoteHopes).toEqual(Array.from({ length: 252 }, () => 0));
+      expect(frame.quoteReals).toEqual(frame.quotes);
+    }
+    const open = project(market, gameAt(1800 + 300 + 250), 1800 + 300 + 250, false, form);
+    expect(open.quoteHopes.some((hope) => hope > 0)).toBe(true);
+    expect(open.quoteReals.some((real) => real > 0)).toBe(true);
+  });
+});
+
 describe('projectFrame, live form', () => {
-  const EMPTY_SECTIONS = { board: null, quotes: [], news: [], positions: [], receipts: [], days: [] };
+  const EMPTY_SECTIONS = { news: [], positions: [], receipts: [], days: [] };
+  const LIVE_KEYS = [
+    'account',
+    'board',
+    'clock',
+    'companies',
+    'days',
+    'minTicketCents',
+    'news',
+    'positions',
+    'prices',
+    'quoteHopes',
+    'quoteReals',
+    'quotes',
+    'receipts',
+    'rev',
+    'session',
+    'step',
+    'stress',
+    't',
+  ];
 
   const MOMENTS: [string, number][] = [
     ['a step before the opening bell', 100],
@@ -320,12 +444,16 @@ describe('projectFrame, live form', () => {
     ['the last step of the game', GAME_STEPS],
   ];
 
-  it('shows the lobby with every other section empty, even after a refused command', () => {
+  it('shows the lobby with no board and no ticket price, and every other section empty, even after a refused command', () => {
     const game = applyCommand(market, newGame(), ME, cashOut('d1'), 0).game;
     expect(me(game).receipts).toHaveLength(1);
     const frame = projectLive(market, game, 0, true);
     expect(frame).toMatchObject({
       ...EMPTY_SECTIONS,
+      board: null,
+      quotes: [],
+      quoteReals: [],
+      quoteHopes: [],
       t: 'frame',
       session: 'session-1',
       rev: 1,
@@ -337,10 +465,11 @@ describe('projectFrame, live form', () => {
     expect(frame.prices).toHaveLength(6);
     expect('history' in frame).toBe(false);
     expect('final' in frame).toBe(false);
+    expect(Object.keys(frame).sort()).toEqual(LIVE_KEYS);
     expect(frameSchema.parse(frame)).toEqual(frame);
   });
 
-  it.each(MOMENTS)('%s: only the clock, six prices and the account are filled', (_name, step) => {
+  it.each(MOMENTS)('%s: the clock, six prices, the names, the board, the ticket prices and the account are filled, and nothing else', (_name, step) => {
     // The game holds tickets, receipts and finished days by now; none of it may show.
     const game = gameAt(step);
     expect(me(game).receipts.length).toBeGreaterThan(0);
@@ -355,10 +484,28 @@ describe('projectFrame, live form', () => {
     });
     expect('history' in frame).toBe(false);
     expect('final' in frame).toBe(false);
-    expect(Object.keys(frame).sort()).toEqual(
-      ['account', 'board', 'clock', 'days', 'news', 'positions', 'prices', 'quotes', 'receipts', 'rev', 'session', 'step', 'stress', 't'],
-    );
+    expect(Object.keys(frame).sort()).toEqual(LIVE_KEYS);
     expect(frameSchema.parse(frame)).toEqual(frame);
+  });
+
+  it.each(STEPS)('%s: carries the day\'s board exactly as built, nothing trimmed', (_name, step) => {
+    const frame = projectLive(market, gameAt(step), step);
+    expect(frame.board).toEqual(boardFor(market, momentAt(step).day, 21));
+    expect(frame.board?.targetsPerCompany).toBe(21);
+    expect(frame.board?.companies.map((company) => company.targets.length)).toEqual([21, 21, 21, 21, 21, 21]);
+    expect(frame.board?.companies.map((company) => [company.lowestUpIndex, company.highestDownIndex])).toEqual(Array.from({ length: 6 }, () => [0, 20]));
+  });
+
+  it('shows the same board and the same ticket prices as the full form', () => {
+    for (const [, step] of STEPS) {
+      const game = gameAt(step);
+      const full = project(market, game, step, false);
+      const live = projectLive(market, game, step);
+      expect(live.board).toEqual(full.board);
+      expect(live.quotes).toEqual(full.quotes);
+      expect(live.quoteReals).toEqual(full.quoteReals);
+      expect(live.quoteHopes).toEqual(full.quoteHopes);
+    }
   });
 
   it('never carries the seed or the market number, not even on the final screen', () => {
@@ -403,23 +550,63 @@ describe('projectFrame, live form', () => {
     expect(cashBlind(busy)).toEqual(cashBlind(idle));
   });
 
-  it('builds no board and prices no ticket: it never reads the headlines, which both need', () => {
-    const step = 1800 + 300 + 100;
-    const game = gameAt(step);
-    const sealed = structuredClone(market);
-    sealed.days.forEach((day) => {
-      Object.defineProperty(day, 'news', {
-        get(): never {
-          throw new Error('the headlines were read');
-        },
+  /**
+   * A copy of the market in which reading anything a live frame has no
+   * business with throws: a price past `step`'s point of the path, any other
+   * day, a headline's wording, and what a headline did to the price. The
+   * reveal moment stays readable: pricing reads it, and the scramble case is
+   * what proves the result does not depend on it while it is still to come.
+   */
+  function sealFuture(source: Market, step: number): Market {
+    const sealed = structuredClone(source);
+    const { day, priceIndex } = momentAt(step);
+    const refuse = (what: string) => ({
+      get(): never {
+        throw new Error(`${what} was read`);
+      },
+    });
+    sealed.days.forEach((marketDayData) => {
+      if (marketDayData.day !== day) {
+        Object.defineProperty(marketDayData, 'paths', refuse('another day\'s prices'));
+        Object.defineProperty(marketDayData, 'news', refuse('another day\'s headlines'));
+        return;
+      }
+      marketDayData.paths = marketDayData.paths.map(
+        (path) =>
+          new Proxy(path, {
+            get(target, key, receiver): unknown {
+              if (typeof key === 'string' && /^\d+$/.test(key) && Number(key) > priceIndex) throw new Error('a price still to come was read');
+              return Reflect.get(target, key, receiver);
+            },
+          }),
+      );
+      marketDayData.news.forEach((item) => {
+        Object.defineProperty(item.hidden, 'move', refuse('a headline\'s move'));
+        Object.defineProperty(item.hidden, 'wasTrue', refuse('a headline\'s outcome'));
+        Object.defineProperty(item.headline, 'title', refuse('a headline\'s wording'));
+        Object.defineProperty(item.headline, 'body', refuse('a headline\'s wording'));
+        Object.defineProperty(item.headline, 'source', refuse('a headline\'s wording'));
       });
     });
-    expect(() => project(sealed, game, step)).toThrow('the headlines were read');
-    expect(projectLive(sealed, game, step)).toEqual(projectLive(market, game, step));
+    return sealed;
+  }
+
+  it.each(STEPS)('%s: reads no price still to come, no other day, no headline wording and no outcome', (_name, step) => {
+    const game = gameAt(step);
+    expect(projectLive(sealFuture(market, step), game, step)).toEqual(projectLive(market, game, step));
   });
 
-  it('stays tiny: under 600 bytes', () => {
+  it('the seal really refuses: the full form reads the wording, and one step on reads the next price', () => {
+    const step = 1800 + 300 + 100;
+    const game = gameAt(step);
+    const sealed = sealFuture(market, step);
+    expect(() => project(sealed, game, step, false)).toThrow('a headline\'s wording was read');
+    expect(() => projectLive(sealed, game, step + 1)).toThrow('a price still to come was read');
+  });
+
+  it('stays small: under 8 KB with the board and 252 ticket prices, and under 1 KB in the lobby', () => {
     const step = 1800 + 300 + 400;
-    expect(JSON.stringify(projectLive(market, gameAt(step), step)).length).toBeLessThan(600);
+    expect(JSON.stringify(projectLive(market, gameAt(step), step)).length).toBeLessThan(8_000);
+    expect(JSON.stringify(projectLive(market, newGame(), 0)).length).toBeLessThan(1_000);
   });
 });

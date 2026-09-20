@@ -163,19 +163,34 @@ export function createFakeStorage(initial: Record<string, string> = {}): FakeSto
 }
 
 /**
- * A live-form frame, exactly as the server sends one: the clock, six whole
- * cent prices and the starting account, with every other section empty.
+ * A live-form lobby frame, exactly as the server sends one: the clock, the
+ * six names, six whole cent prices, the cheapest tradable price and the
+ * starting account, with every other section empty. A test that passes
+ * `quotes` gets matching real and hope values: all hope, unless it passes
+ * its own.
  */
 export function testFrame(changes: Partial<Frame> = {}): Frame {
+  const quotes = changes.quotes ?? [];
   return {
     t: 'frame',
     session: 's-1',
     rev: 0,
     step: 0,
     clock: { phase: 'lobby', day: 0, stepsLeft: 0, priceIndex: 0, pace: null },
+    companies: [
+      { ticker: 'RPUP', name: 'RoboPup' },
+      { ticker: 'FIZZ', name: 'Fizzly' },
+      { ticker: 'JETK', name: 'JetKicks' },
+      { ticker: 'MUNC', name: 'MoonMunch' },
+      { ticker: 'PIXL', name: 'PixelPals' },
+      { ticker: 'ZAPP', name: 'ZapCharge' },
+    ],
     prices: [8400, 4200, 12000, 2800, 6500, 15000],
+    minTicketCents: 500,
     board: null,
-    quotes: [],
+    quotes,
+    quoteReals: quotes.map(() => 0),
+    quoteHopes: [...quotes],
     news: [],
     account: { cashCents: 100_000_000, worthCents: 100_000_000, capCents: 50_000_000, canBuy: false },
     positions: [],

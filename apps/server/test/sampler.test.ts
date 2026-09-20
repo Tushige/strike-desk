@@ -5,9 +5,11 @@ import {
   ENGINE_VERSION,
   FIRST_PLAYER_ID,
   PROTOCOL_VERSION,
+  boardFor,
   buildMarket,
   frameSchema,
   marketDay,
+  quoteAt,
   sharePriceCents,
 } from '@strike-desk/shared/engine';
 import type { Frame } from '@strike-desk/shared/engine';
@@ -53,8 +55,25 @@ async function sampleFrame(from: Harness, client: TestClient): Promise<Frame> {
   return client.nextFrame();
 }
 
+/**
+ * Thin: the lobby has no board and no ticket price; a started game has the
+ * whole board and 252 ticket prices, each with its real and hope value. At
+ * every moment everything else is empty.
+ */
 function expectThin(frame: Frame): void {
-  expect(frame).toMatchObject({ board: null, quotes: [], news: [], positions: [], receipts: [], days: [], stress: false });
+  expect(frame).toMatchObject({ news: [], positions: [], receipts: [], days: [], stress: false });
+  if (frame.clock.phase === 'lobby') {
+    expect(frame).toMatchObject({ board: null, quotes: [], quoteReals: [], quoteHopes: [] });
+  } else {
+    expect(frame.board?.targetsPerCompany).toBe(21);
+    expect(frame.board?.companies.map((company) => company.targets.length)).toEqual([21, 21, 21, 21, 21, 21]);
+    expect([frame.quotes.length, frame.quoteReals.length, frame.quoteHopes.length]).toEqual([252, 252, 252]);
+    frame.quotes.forEach((price, id) => {
+      expect(Number.isInteger(price) && price >= 0).toBe(true);
+      expect({ id, sum: (frame.quoteReals[id] ?? NaN) + (frame.quoteHopes[id] ?? NaN) }).toEqual({ id, sum: price });
+    });
+  }
+  expect(frame.companies.map((company) => Object.keys(company).sort())).toEqual(Array.from({ length: 6 }, () => ['name', 'ticker']));
   expect(frame.account).toEqual({ cashCents: 100_000_000, worthCents: 100_000_000, capCents: 50_000_000, canBuy: false });
   expect('history' in frame).toBe(false);
   expect('final' in frame).toBe(false);
@@ -66,6 +85,13 @@ function expectThin(frame: Frame): void {
 function pricesAt(seed: number, day: number, priceIndex: number): number[] {
   const market = buildMarket({ seed, engine: ENGINE_VERSION, content: CONTENT_VERSION });
   return marketDay(market, day).paths.map((path) => sharePriceCents(path[priceIndex] ?? NaN));
+}
+
+/** The market's own ticket prices at one point of a day, by contract id. */
+function ticketPricesAt(seed: number, day: number, priceIndex: number): number[] {
+  const market = buildMarket({ seed, engine: ENGINE_VERSION, content: CONTENT_VERSION });
+  const board = boardFor(market, day);
+  return Array.from({ length: 252 }, (_unused, id) => quoteAt(market, day, priceIndex, board, id)?.priceCents ?? NaN);
 }
 
 describe('hello and start', () => {
@@ -150,7 +176,7 @@ describe('the sampler', () => {
     expect((await sampleFrame(running, client)).step).toBe(15);
   });
 
-  it('once the bell has opened the market, the six prices are the market\'s own, in whole cents', async () => {
+  it('once the bell has opened the market, the six prices and the 252 ticket prices are the market\'s own, in whole cents', async () => {
     const running = await boot();
     const { client } = await join(running);
     client.send(start('start-0001'));
@@ -161,6 +187,7 @@ describe('the sampler', () => {
     const stillShut = await sampleFrame(running, client);
     expect(stillShut.clock).toMatchObject({ phase: 'preBell', priceIndex: 0 });
     expect(stillShut.prices).toEqual(pricesAt(seed, 1, 0));
+    expect(stillShut.quotes).toEqual(ticketPricesAt(seed, 1, 0));
 
     running.clock.advance(SAMPLE_MS * 2);
     const justOpen = await sampleFrame(running, client);
@@ -173,6 +200,8 @@ describe('the sampler', () => {
     expect(later.step).toBe(400);
     expect(later.prices).toEqual(pricesAt(seed, 1, 100));
     expect(later.prices).not.toEqual(justOpen.prices);
+    expect(later.quotes).toEqual(ticketPricesAt(seed, 1, 100));
+    expect(later.quotes).not.toEqual(stillShut.quotes);
     expect(later.rev).toBe(1);
     expectThin(later);
   });

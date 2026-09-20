@@ -7,7 +7,7 @@ import { HEALTH_PATH, SAMPLE_INTERVAL_MS, WS_PATH } from '@strike-desk/shared/en
 import type { Connection } from './door';
 import { handleClosed, handleInbound } from './door';
 import type { Limits } from './limits';
-import { LIMITS } from './limits';
+import { LIMITS, createTokenBucket, createWindowCounter } from './limits';
 import { originAllowed } from './origin';
 import type { FrameSocket } from './sampler';
 import { sampleSessions } from './sampler';
@@ -138,7 +138,11 @@ export function createApp(options: AppOptions): App {
   const sweepMs = options.sweepMs ?? limits.sweepIntervalMs;
 
   const registry = createRegistry({ drawSeed: options.drawSeed ?? drawSeed, drawId: drawSessionId, limits });
-  const door = { registry, now };
+  // One budget for the whole service. Per address would be the wrong shape
+  // here: a classroom shares one address, and behind a proxy every visitor
+  // appears to come from the same one.
+  const newSessions = createTokenBucket(limits.newSessionBurst, limits.newSessionRefillPerSecond);
+  const door = { registry, now, newSessions };
   const samplerStats = { sent: 0, skipped: 0 };
 
   const serveStatic = sirv(options.staticDir, {
@@ -246,7 +250,11 @@ export function createApp(options: AppOptions): App {
           sendTo(ws, state, text);
         },
       };
-      const connection: Connection = { socket: frameSocket, sessionId: null };
+      const connection: Connection = {
+        socket: frameSocket,
+        sessionId: null,
+        messages: createWindowCounter(limits.messagesPerWindow, limits.messageWindowMs),
+      };
 
       ws.on('message', (data, isBinary) => {
         // The probe modes only listen.

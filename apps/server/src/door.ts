@@ -1,5 +1,6 @@
 import type { Hello, ServerMessage, StartCommand } from '@strike-desk/shared/engine';
 import { PROTOCOL_VERSION, frameFor, handleCommand, parseClientMessage } from '@strike-desk/shared/engine';
+import type { TokenBucket, WindowCounter } from './limits';
 import type { FrameSocket } from './sampler';
 import type { SessionRegistry } from './sessions';
 
@@ -14,12 +15,16 @@ export interface Connection {
   socket: FrameSocket;
   /** Null until a hello has been answered. */
   sessionId: string | null;
+  /** This socket's own message budget. One chatty socket cannot spend another's. */
+  messages: WindowCounter;
 }
 
 export interface DoorOptions {
   registry: SessionRegistry;
   /** The same clock the sampler runs on. */
   now: () => number;
+  /** One budget for the whole service, spent only when a new game is about to be built. */
+  newSessions: TokenBucket;
 }
 
 /** An answer to a message is always sent, even to a socket the sampler would skip. */
@@ -55,6 +60,12 @@ function hello(options: DoorOptions, connection: Connection, message: Hello): vo
     // The named game is gone. Say so first, then carry on with a new one, so
     // the client never mistakes the new game's frame for the old game.
     answer(connection, { t: 'error', code: 'noSession' });
+  }
+  // Rejoining a game costs nothing: only building a new one is budgeted, and
+  // only the service's own budget can refuse it.
+  if (known === undefined && !options.newSessions.take(options.now())) {
+    answer(connection, { t: 'error', code: 'serverFull' });
+    return;
   }
   const entry = known ?? options.registry.create(options.now());
   if (entry === null) {
@@ -92,6 +103,13 @@ function start(options: DoorOptions, connection: Connection, command: StartComma
 }
 
 export function handleInbound(options: DoorOptions, connection: Connection, text: string): void {
+  // Counted before the text is even read, so a script cannot make the service
+  // parse for it. A page sends two messages in a whole game.
+  if (!connection.messages.hit(options.now())) {
+    answer(connection, { t: 'error', code: 'tooManyCommands' });
+    return;
+  }
+
   let raw: unknown;
   try {
     raw = JSON.parse(text);

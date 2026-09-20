@@ -19,8 +19,8 @@ const CLOSE_TOO_LARGE = 1009;
 
 let harness: Harness | null = null;
 
-async function boot(): Promise<Harness> {
-  harness = await startHarness();
+async function boot(overrides: Parameters<typeof startHarness>[0] = {}): Promise<Harness> {
+  harness = await startHarness(overrides);
   return harness;
 }
 
@@ -98,7 +98,11 @@ describe('a malformed message is refused and the service carries on', () => {
   });
 
   it('two hundred malformed messages in a row leave the service answering', async () => {
-    const running = await boot();
+    // The service refuses a socket that sends more than twenty in ten seconds
+    // (proved in limits.test.ts). That guard is lifted here on purpose: what
+    // is being exercised is the door itself, which must refuse two hundred
+    // unreadable messages one by one without the service faltering.
+    const running = await boot({ limits: { messagesPerWindow: 1000 } });
     const client = running.connect();
     await client.opened();
 

@@ -1,5 +1,5 @@
-import type { Hello, ServerMessage, StartCommand } from '@strike-desk/shared';
-import { PROTOCOL_VERSION, frameFor, handleCommand, parseClientMessage } from '@strike-desk/shared';
+import type { Hello, ServerMessage, StartCommand } from '@strike-desk/shared/engine';
+import { PROTOCOL_VERSION, frameFor, handleCommand, parseClientMessage } from '@strike-desk/shared/engine';
 import type { FrameSocket } from './sampler';
 import type { SessionRegistry } from './sessions';
 

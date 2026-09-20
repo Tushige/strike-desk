@@ -1,4 +1,4 @@
-import { frameFor } from '@strike-desk/shared';
+import { frameFor } from '@strike-desk/shared/engine';
 import type { SessionRegistry } from './sessions';
 
 /** The part of a WebSocket the sampler needs. */

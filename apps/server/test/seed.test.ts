@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PROTOCOL_VERSION, SEED_LIMIT, isValidSeed } from '@strike-desk/shared';
+import { PROTOCOL_VERSION, SEED_LIMIT, isValidSeed } from '@strike-desk/shared/engine';
 import { drawSeed, drawSessionId } from '../src/seed';
 import type { Harness } from './harness';
 import { FIXED_SEEDS, startHarness } from './harness';

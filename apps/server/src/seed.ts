@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { isValidSeed } from '@strike-desk/shared';
+import { isValidSeed } from '@strike-desk/shared/engine';
 
 /**
  * A new game's master seed: uniform over the whole 48-bit seed range, from

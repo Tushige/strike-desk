@@ -1,5 +1,5 @@
-import type { Session } from '@strike-desk/shared';
-import { CONTENT_VERSION, ENGINE_VERSION, createSession } from '@strike-desk/shared';
+import type { Session } from '@strike-desk/shared/engine';
+import { CONTENT_VERSION, ENGINE_VERSION, createSession } from '@strike-desk/shared/engine';
 import type { FrameSocket } from './sampler';
 
 /**

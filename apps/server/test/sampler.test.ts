@@ -8,8 +8,8 @@ import {
   frameSchema,
   marketDay,
   sharePriceCents,
-} from '@strike-desk/shared';
-import type { Frame } from '@strike-desk/shared';
+} from '@strike-desk/shared/engine';
+import type { Frame } from '@strike-desk/shared/engine';
 import type { FrameSocket } from '../src/sampler';
 import { offerFrame, sampleSessions } from '../src/sampler';
 import { drawSessionId } from '../src/seed';

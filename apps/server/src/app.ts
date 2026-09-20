@@ -3,7 +3,7 @@ import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import type { Socket } from 'node:net';
 import WebSocket, { WebSocketServer } from 'ws';
 import sirv from 'sirv';
-import { HEALTH_PATH, SAMPLE_INTERVAL_MS, WS_PATH } from '@strike-desk/shared';
+import { HEALTH_PATH, SAMPLE_INTERVAL_MS, WS_PATH } from '@strike-desk/shared/engine';
 import type { Connection } from './door';
 import { handleClosed, handleInbound } from './door';
 import type { FrameSocket } from './sampler';

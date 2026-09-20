@@ -8,8 +8,8 @@ import {
   STEP_MS,
   frameSchema,
   seedToMarketCode,
-} from '@strike-desk/shared';
-import type { BuyCommand, CashOutCommand, ClockCommand, Frame } from '@strike-desk/shared';
+} from '@strike-desk/shared/engine';
+import type { BuyCommand, CashOutCommand, ClockCommand, Frame } from '@strike-desk/shared/engine';
 import type { Harness } from './harness';
 import { FIXED_SEEDS, startHarness } from './harness';
 

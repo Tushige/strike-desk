@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
-import { PROTOCOL_VERSION } from '@strike-desk/shared';
+import { PROTOCOL_VERSION } from '@strike-desk/shared/engine';
 import type { Harness, TestClient } from './harness';
 import { TEST_ASSET_PATH, TEST_VERSION, startHarness } from './harness';
 

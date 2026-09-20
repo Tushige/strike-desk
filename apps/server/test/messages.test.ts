@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { PROTOCOL_VERSION } from '@strike-desk/shared';
+import { PROTOCOL_VERSION } from '@strike-desk/shared/engine';
 import type { Harness } from './harness';
 import { startHarness } from './harness';
 

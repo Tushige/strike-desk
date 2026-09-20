@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import WebSocket from 'ws';
-import type { Frame, Reply, ServerError, ServerMessage } from '@strike-desk/shared';
-import { parseServerMessage } from '@strike-desk/shared';
+import type { Frame, Reply, ServerError, ServerMessage } from '@strike-desk/shared/engine';
+import { parseServerMessage } from '@strike-desk/shared/engine';
 import { createApp } from '../src/app';
 import type { App, AppOptions, BuildVersion } from '../src/app';
 

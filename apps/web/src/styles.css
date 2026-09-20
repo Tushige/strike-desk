@@ -1,7 +1,24 @@
+/*
+ * The one place a colour is written down. Everything else, the table's theme
+ * included, refers to these by name.
+ */
 :root {
-  --color-ink: #14112a;
-  --color-cloud: #f4f1ff;
-  --color-muted: #b3add9;
+  --background: #18131f;
+  --foreground: #f4edf9;
+  --card: #211b2c;
+  --card-foreground: #f4edf9;
+  --muted: #30283b;
+  --muted-foreground: #b1a5c0;
+  --accent: #3d304b;
+  --accent-foreground: #f4edf9;
+  --border: #3b3147;
+  --ring: #cdb0ff;
+  --radius: 0.75rem;
+  --up: #55e2b3;
+  --down: #ff8c88;
+  --gold: #ffe08a;
+
+  color-scheme: dark;
 }
 
 * {
@@ -14,26 +31,36 @@ body {
   height: 100%;
 }
 
+/* One screen: the page never scrolls, the table scrolls inside itself. */
 body {
-  background: var(--color-ink);
-  color: var(--color-cloud);
-  font-family: system-ui, sans-serif;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
+  display: block;
+  height: 100dvh;
   overflow: hidden;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: system-ui, sans-serif;
 }
 
 main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  height: 100dvh;
+  padding: 1rem;
+}
+
+h1 {
+  flex: 0 0 auto;
+  margin: 0;
   text-align: center;
 }
 
 p {
-  color: var(--color-muted);
+  color: var(--muted-foreground);
 }
 
 table {
+  flex: 0 0 auto;
   border-collapse: collapse;
   margin: 0 auto;
 }
@@ -50,7 +77,7 @@ th {
 }
 
 .ticker {
-  color: var(--color-muted);
+  color: var(--muted-foreground);
 }
 
 .price {
@@ -59,11 +86,25 @@ th {
   white-space: nowrap;
 }
 
+/*
+ * The table fills whatever height is left. Without `min-height: 0` a flex
+ * child refuses to be shorter than its content, and 252 rows would push the
+ * page taller instead of scrolling inside the table.
+ */
+.board {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.sd-ticker {
+  color: var(--muted-foreground);
+}
+
 .build-stamp {
   position: fixed;
   right: 0.75rem;
   bottom: 0.75rem;
   margin: 0;
   font-size: 0.75rem;
-  color: var(--color-muted);
+  color: var(--muted-foreground);
 }

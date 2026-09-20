@@ -9,9 +9,17 @@ on:
 permissions:
   contents: read
 
+# One run per branch: pushing again cancels the run still in flight. Note the
+# consequence on main — two merges in quick succession cancel the first
+# commit's run, so that commit never deploys and the second one does.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   typecheck:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -24,6 +32,7 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -36,6 +45,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -45,3 +55,22 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm run test
+
+  # Builds the deployable service and checks the artefact itself: the browser
+  # bundle must hold no engine text, and the built service must answer the
+  # real protocol end to end. The smoke check runs against this job's own
+  # build on a local port, never against the deployed site.
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - run: node scripts/check-web-bundle.mjs
+      - run: node scripts/smoke.mjs

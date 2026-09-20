@@ -44,7 +44,14 @@ const probes: Probe[] = [
     ruleId: 'no-restricted-properties',
   })),
   { name: 'Date.now', code: 'void Date.now;', ruleId: 'no-restricted-properties' },
+  { name: 'Date.parse', code: "void Date.parse('x');", ruleId: 'no-restricted-properties' },
+  { name: 'new Date()', code: 'void new Date();', ruleId: 'no-restricted-syntax' },
+  { name: 'performance', code: 'void performance;', ruleId: 'no-restricted-globals' },
+  { name: 'crypto', code: 'void crypto;', ruleId: 'no-restricted-globals' },
+  { name: 'toLocaleString', code: 'void (1).toLocaleString();', ruleId: 'no-restricted-syntax' },
   { name: '** operator', code: 'void (2 ** 3);', ruleId: 'no-restricted-syntax' },
+  // One line, like every other probe, so the line-index scheme below holds.
+  { name: '**= operator', code: 'let probePower = 2; probePower **= 3;', ruleId: 'no-restricted-syntax' },
   {
     name: 'any type',
     code: '((probeArg: any) => probeArg)(1);',
@@ -108,6 +115,17 @@ describe('shared package lint fences', () => {
       const fenceMessages = messages.filter((message) => message.ruleId === 'no-restricted-properties');
 
       expect(fenceMessages).toHaveLength(0);
+    },
+    LINT_TIMEOUT_MS,
+  );
+
+  it(
+    'lint fences: does not flag new Date() outside shared, where the fence is not scoped',
+    async () => {
+      const lines = ['void new Date();', "void Date.parse('x');", 'void (1).toLocaleString();'];
+
+      expect(await linesReported(lines, serverProbePath, 'no-restricted-syntax')).toEqual([]);
+      expect(await linesReported(lines, serverProbePath, 'no-restricted-properties')).toEqual([]);
     },
     LINT_TIMEOUT_MS,
   );

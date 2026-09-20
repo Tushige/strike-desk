@@ -14,6 +14,7 @@
     "start": "node apps/server/dist/server.js",
     "dev": "node scripts/write-version.mjs && pnpm --parallel --filter @strike-desk/server --filter @strike-desk/web run dev",
     "smoke": "node scripts/smoke.mjs",
+    "check:bundle": "node scripts/check-web-bundle.mjs",
     "measure:ws": "node scripts/measure-ws-idle.mjs"
   },
   "devDependencies": {

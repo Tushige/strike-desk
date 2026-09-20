@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { HEALTH_PATH, WS_PATH } from '@strike-desk/shared';
+import { HEALTH_PATH, WS_PATH } from '@strike-desk/shared/paths';
 
 export default defineConfig({
   plugins: [react()],

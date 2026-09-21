@@ -50,6 +50,16 @@ function shownHope(params: ValueGetterParams<ContractRow, number | null>): numbe
   return row === undefined || row.dimmed ? null : row.hopeCents;
 }
 
+function shownBreakEven(params: ValueGetterParams<ContractRow, number | null>): number | null {
+  const row = params.data;
+  return row === undefined || row.dimmed ? null : row.breakEvenCents;
+}
+
+function shownCost(params: ValueGetterParams<ContractRow, number | null>): number | null {
+  const row = params.data;
+  return row === undefined || row.dimmed ? null : row.costCents;
+}
+
 type Cell = CellClassParams<ContractRow>;
 
 /**
@@ -84,8 +94,8 @@ const VALUE_CELL_CLASS = ['ag-right-aligned-cell', 'sd-value'];
 
 /*
  * Widths share out whatever the panel offers. The minimums are what each
- * column needs to stay readable; six columns fit side by side from laptop
- * width up, and below that the table scrolls sideways inside its own panel,
+ * column needs to stay readable; the table scrolls sideways inside its own panel
+ * when they cannot all fit,
  * never the page.
  */
 export const COLUMNS: ColDef<ContractRow>[] = [
@@ -121,6 +131,26 @@ export const COLUMNS: ColDef<ContractRow>[] = [
     flex: 1,
     minWidth: 80,
   },
+  {
+    headerName: 'Break-even',
+    field: 'breakEvenCents',
+    valueGetter: shownBreakEven,
+    cellRenderer: ValueCell,
+    type: 'rightAligned',
+    cellClass: VALUE_CELL_CLASS,
+    flex: 1,
+    minWidth: 88,
+  },
+  {
+    headerName: 'Cost & most you can lose',
+    field: 'costCents',
+    valueGetter: shownCost,
+    cellRenderer: ValueCell,
+    type: 'rightAligned',
+    cellClass: VALUE_CELL_CLASS,
+    flex: 1,
+    minWidth: 174,
+  },
   // The price, told in its two parts. Neither flashes: the price is the one
   // number the eye should be pulled to, and these two are what the player
   // reads once they have landed on it.
@@ -147,12 +177,10 @@ export const COLUMNS: ColDef<ContractRow>[] = [
 ];
 
 /**
- * The rows stay in the order they arrive in: company, then the UP tickets,
- * then the DOWN tickets, targets rising. Nothing here lets the player
- * reorder, filter or reshape the table.
+ * Headers compare raw text or numbers; native controls own external filtering.
  */
 export const DEFAULT_COL_DEF: ColDef<ContractRow> = {
-  sortable: false,
+  sortable: true,
   filter: false,
   suppressMovable: true,
   resizable: false,

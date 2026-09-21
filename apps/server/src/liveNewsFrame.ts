@@ -1,5 +1,12 @@
-import { frameFor } from '@strike-desk/shared/engine';
-import type { Frame, NewsView, Session } from '@strike-desk/shared/engine';
+import { frameFor, quoteDraft } from '@strike-desk/shared/engine';
+import type { DraftRequest, Frame, NewsView, Session } from '@strike-desk/shared/engine';
+
+/** Decorate one connection's picture using its own already-projected prices. */
+export function withDraft(frame: Frame, request: DraftRequest | undefined): Frame {
+  if (request === undefined || frame.board === null) return frame;
+  const draft = quoteDraft(request, frame.board, frame.quotes);
+  return draft === null ? frame : { ...frame, draft };
+}
 
 /** Public news beside the live board, without enabling account or trade sections. */
 export function liveNewsFrameFor(session: Session, playerId: string, nowMs: number): { session: Session; frame: Frame } {

@@ -13,7 +13,8 @@ import { createNewsStore } from '../src/news/newsStore';
 vi.mock('../src/boot', async () => {
   const { createGameStore } = await import('../src/store/gameStore');
   const { createNewsStore } = await import('../src/news/newsStore');
-  return { store: createGameStore(), newsStore: createNewsStore() };
+  const { createComparisonStore } = await import('../src/comparison/comparisonStore');
+  return { store: createGameStore(), newsStore: createNewsStore(), comparisonStore: createComparisonStore(() => true) };
 });
 
 afterEach(cleanup);

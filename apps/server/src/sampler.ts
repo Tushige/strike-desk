@@ -1,4 +1,4 @@
-import { liveNewsFrameFor } from './liveNewsFrame';
+import { liveNewsFrameFor, withDraft } from './liveNewsFrame';
 import type { Frame, QuotesMessage } from '@strike-desk/shared/engine';
 import type { SessionRegistry, StressStream } from './sessions';
 
@@ -102,7 +102,7 @@ function stressSample(
   frame: Frame,
   nowMs: number,
   stressFullFrameMs: number,
-): { text: string | null; stream: StressStream } {
+): { text: string | null; stream: StressStream; whole: boolean } {
   const sent = {
     quotes: frame.quotes,
     quoteReals: frame.quoteReals,
@@ -117,12 +117,12 @@ function stressSample(
   // pass is about to send could never fire. A null stream is the first pass of
   // this session, where there is nothing to send a difference against.
   if (stream === null || wholeFrameDue(stream, frame, nowMs, stressFullFrameMs)) {
-    return { text: JSON.stringify(frame), stream: { ...sent, lastWholeFrameMs: nowMs } };
+    return { text: JSON.stringify(frame), stream: { ...sent, lastWholeFrameMs: nowMs }, whole: true };
   }
 
   const changes = quoteChangesBetween(stream, frame);
   // An unchanged board must not cost five messages a second.
-  if (changes.length === 0) return { text: null, stream };
+  if (changes.length === 0) return { text: null, stream, whole: false };
   const message: QuotesMessage = {
     t: 'quotes',
     session: frame.session,
@@ -133,7 +133,7 @@ function stressSample(
     prices: frame.prices,
     changes,
   };
-  return { text: JSON.stringify(message), stream: { ...sent, lastWholeFrameMs: stream.lastWholeFrameMs } };
+  return { text: JSON.stringify(message), stream: { ...sent, lastWholeFrameMs: stream.lastWholeFrameMs }, whole: false };
 }
 
 /**
@@ -141,8 +141,8 @@ function stressSample(
  * holds depends only on the session, the player it is for and `nowMs`, and
  * turning `nowMs` into a step is the shared code's business: nothing here does
  * arithmetic on time. A session is advanced once a pass, and a frame is
- * projected and turned into text once per player somebody is watching as,
- * however many sockets that player has.
+ * projected once per player somebody is watching as. Draftless sockets share
+ * its text; a connection's preview decorates only its own whole picture.
  *
  * An ordinary session is sent the whole picture every pass. A switched-on one
  * is sent only the tickets that changed, with the whole picture every
@@ -151,10 +151,10 @@ function stressSample(
 export function sampleSessions(registry: SessionRegistry, nowMs: number, stats: SamplerStats, stressFullFrameMs: number): void {
   for (const entry of registry.entries()) {
     if (entry.sockets.size === 0) continue;
-    const texts = new Map<string, string | null>();
+    const samples = new Map<string, { text: string | null; whole: Frame | null }>();
     for (const [socket, playerId] of entry.sockets) {
-      let text = texts.get(playerId);
-      if (text === undefined) {
+      let sample = samples.get(playerId);
+      if (sample === undefined) {
         // The first of these advances the session; after it `entry.session` is already at this step.
         const { session, frame } = liveNewsFrameFor(entry.session, playerId, nowMs);
         registry.replace(session.id, session);
@@ -165,13 +165,18 @@ export function sampleSessions(registry: SessionRegistry, nowMs: number, stats: 
           // backed-up socket would cost every other client the rest of the
           // batches; the periodic whole picture is that client's way back.
           entry.stressStream = sampled.stream;
-          text = sampled.text;
+          sample = { text: sampled.text, whole: sampled.whole ? frame : null };
         } else {
-          text = JSON.stringify(frame);
+          sample = { text: JSON.stringify(frame), whole: frame };
         }
-        texts.set(playerId, text);
+        samples.set(playerId, sample);
       }
+      let text = sample.text;
       if (text === null) continue;
+      const request = entry.drafts.get(socket);
+      if (request !== undefined && sample.whole !== null && socket.readyState === socket.OPEN && socket.bufferedAmount === 0) {
+        text = JSON.stringify(withDraft(sample.whole, request));
+      }
       const outcome = offerFrame(socket, text);
       if (outcome === 'sent') stats.sent += 1;
       else if (outcome === 'skipped') stats.skipped += 1;

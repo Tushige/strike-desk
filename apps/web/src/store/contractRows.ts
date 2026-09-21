@@ -24,6 +24,9 @@ export interface ContractRow {
   side: Side;
   targetCents: number;
   priceCents: number;
+  breakEvenCents: number;
+  /** The server's cost at the current chosen spend, or unavailable. */
+  costCents: number | null;
   /**
    * The two parts of the price, exactly as the server sends them: how far the
    * share price is past the target right now, and what the time still to run
@@ -47,6 +50,8 @@ export interface RowInput {
   /** The real and hope parts of every quote, by contract id, as the frame sends them. */
   quoteReals: readonly number[];
   quoteHopes: readonly number[];
+  quoteBreakEvens: readonly number[];
+  costs?: readonly number[];
   minTicketCents: number;
   /** True while tickets can be bought, which is the only time a row is dimmed. */
   buyable: boolean;
@@ -92,6 +97,8 @@ function makeRow(
     side,
     targetCents,
     priceCents,
+    breakEvenCents: input.quoteBreakEvens[id] ?? 0,
+    costCents: input.costs?.[id] ?? null,
     realCents: input.quoteReals[id] ?? 0,
     hopeCents: input.quoteHopes[id] ?? 0,
     dimmed: input.buyable && priceCents < input.minTicketCents,
@@ -110,7 +117,7 @@ export function buildRows(input: RowInput): ContractRow[] {
 
 /**
  * The rows this frame changed: a new object for every contract whose price,
- * real value, hope value or dimmed state differs from the row held for it,
+ * real value, hope value, break-even or dimmed state differs from the row held for it,
  * and nothing at all for the rest. A held row is never modified, because the
  * table tells an update from a repeat by the object's identity.
  *
@@ -133,7 +140,9 @@ export function changedRows(heldById: readonly (ContractRow | undefined)[], inpu
       priceCents === held.priceCents &&
       dimmed === held.dimmed &&
       (input.quoteReals[id] ?? 0) === held.realCents &&
-      (input.quoteHopes[id] ?? 0) === held.hopeCents
+      (input.quoteHopes[id] ?? 0) === held.hopeCents &&
+      (input.quoteBreakEvens[id] ?? 0) === held.breakEvenCents &&
+      (input.costs?.[id] ?? null) === held.costCents
     ) {
       return;
     }
@@ -163,18 +172,17 @@ export interface QuoteChangeOptions {
  * a new object rather than a changed one, because the table tells an update
  * from a repeat by identity, and a direction only for a price that really
  * moved, because only a price may flash.
- *
- * The break-even in the fifth slot is taken and not used. The wire carries it
- * so a stress table shows the same columns the game's table will, and no
- * column reads it yet; the page could not work it out in any case, because it
- * computes no money.
  */
 export function applyQuoteChange(held: ContractRow, change: QuoteChange, options: QuoteChangeOptions): ContractRow | null {
-  const [, priceCents, realCents, hopeCents] = change;
+  const [, priceCents, realCents, hopeCents, breakEvenCents] = change;
   const dimmed = options.buyable && priceCents < options.minTicketCents;
-  if (priceCents === held.priceCents && dimmed === held.dimmed && realCents === held.realCents && hopeCents === held.hopeCents) {
+  if (
+    priceCents === held.priceCents && dimmed === held.dimmed && realCents === held.realCents &&
+    hopeCents === held.hopeCents && breakEvenCents === held.breakEvenCents
+  ) {
     return null;
   }
   const dir = priceCents > held.priceCents ? 1 : priceCents < held.priceCents ? -1 : 0;
-  return { ...held, priceCents, realCents, hopeCents, dimmed, dir };
+  return { ...held, priceCents, realCents, hopeCents, breakEvenCents, dimmed, dir,
+    costCents: priceCents === held.priceCents ? held.costCents : null };
 }

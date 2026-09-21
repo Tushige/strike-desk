@@ -25,19 +25,22 @@ const LABEL = 'Contracts';
  */
 const isDimmed = (row: ContractRow): boolean => row.dimmed;
 
-/** Nothing on this screen acts on a chosen ticket yet, so choosing one does nothing. */
-const onSelect = (): void => {};
-
-export const ContractBoard = memo(function ContractBoard() {
+export const ContractBoard = memo(function ContractBoard({ selectedId, onSelect, filter, isHighlighted }: {
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  filter: ((row: ContractRow) => boolean) | null;
+  isHighlighted: (row: ContractRow) => boolean;
+}) {
   return (
     <LiveGrid<ContractRow>
       source={boardRowSource}
       columns={COLUMNS}
       defaultColDef={DEFAULT_COL_DEF}
       label={LABEL}
-      selectedId={null}
+      selectedId={selectedId}
       onSelect={onSelect}
-      filter={null}
+      filter={filter}
+      isHighlighted={isHighlighted}
       isDimmed={isDimmed}
       stale={false}
     />

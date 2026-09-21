@@ -6,7 +6,7 @@ import { createDraftPacer } from './draftPacer';
 import { createLatestState, createTicketHandlers } from './handlers';
 import { breakEvenStopIndex, buyBlocker, cashOutBlocker, commandKindOf, initialTicketState, quoteEchoes, retryAllowed, stopAt, ticketReducer } from './machine';
 import type { CommandKind, TicketNotice, TicketSnapshot, TicketState } from './machine';
-import type { OpenTicket, OrderTicketProps, SimpleChoice, TicketAccount, TicketContract, TicketDraft, TicketQuote } from './ports';
+import type { OpenTicket, OrderTicketProps, SimpleChoice, TicketAccount, TicketContract, TicketDraft, TicketPreviewProps, TicketQuote } from './ports';
 import {
   ACCEPTED_WORDS,
   BLOCKER_WORDS,
@@ -214,10 +214,11 @@ function Spends({
  * state: it is remembered by place for as long as the same draft is quoted,
  * and starts again on the break-even for another.
  */
-function WhatIf({ quote }: { quote: TicketQuote }): ReactElement | null {
+function WhatIf({ quote }: { quote: TicketQuote | null }): ReactElement | null {
   const inputId = useId();
-  const draftKey = `${String(quote.contractId)}:${String(quote.spendCents)}`;
   const [picked, setPicked] = useState<{ draftKey: string; index: number } | null>(null);
+  if (quote === null) return null;
+  const draftKey = `${String(quote.contractId)}:${String(quote.spendCents)}`;
 
   const index = picked !== null && picked.draftKey === draftKey && stopAt(quote, picked.index) !== null ? picked.index : breakEvenStopIndex(quote);
   const stop = stopAt(quote, index);
@@ -272,7 +273,6 @@ function QuoteNumbers({ quote, side }: { quote: TicketQuote; side: Side }): Reac
           <Figure label={LIMIT_LABEL}>{formatCents(quote.limitPriceCents)}</Figure>
         </div>
       </dl>
-      <WhatIf quote={quote} />
     </>
   );
 }
@@ -376,6 +376,7 @@ export function TicketView({ state, snapshot, choices, spendChoices, retryOffere
             {contract !== null && quoteEchoes(state, quote) && quote.spendCents !== null ? (
               <div className={`grid gap-3 ${dimmed}`}>
                 <QuoteNumbers quote={quote} side={contract.side} />
+                <WhatIf quote={quote} />
               </div>
             ) : null}
           </>
@@ -417,7 +418,7 @@ export function TicketView({ state, snapshot, choices, spendChoices, retryOffere
   );
 }
 
-export const OrderTicket = memo(function OrderTicket(props: OrderTicketProps): ReactElement {
+const TradingTicket = memo(function TradingTicket(props: OrderTicketProps): ReactElement {
   const quote = useSyncExternalStore(props.quote.subscribe, props.quote.get, props.quote.get);
   const account = useSyncExternalStore(props.account.subscribe, props.account.get, props.account.get);
   const position = useSyncExternalStore(props.position.subscribe, props.position.get, props.position.get);
@@ -500,4 +501,49 @@ export const OrderTicket = memo(function OrderTicket(props: OrderTicketProps): R
       onRetry={handlers.onRetry}
     />
   );
+});
+
+function PreviewTicket(props: TicketPreviewProps): ReactElement {
+  const inputId = useId();
+  const errorId = useId();
+  const quote = useSyncExternalStore(props.quote.subscribe, props.quote.get, props.quote.get);
+  const account = useSyncExternalStore(props.account.subscribe, props.account.get, props.account.get);
+  const contractId = props.contract?.contractId ?? null;
+  const { spendCents } = props.spendEditor;
+  const latestReport = useRef(props.onDraftChange);
+  useEffect(() => { latestReport.current = props.onDraftChange; }, [props.onDraftChange]);
+  const [pacer] = useState(() => createDraftPacer({ report: (draft) => { latestReport.current(draft); } }));
+  useEffect(() => () => { pacer.cancel(); }, [pacer]);
+  useEffect(() => { pacer.change({ contractId, spendCents }); }, [pacer, contractId, spendCents]);
+  const matching = quote !== null && quote.contractId === contractId && quote.spendCents === spendCents && spendCents !== null ? quote : null;
+
+  return (
+    <section aria-label={PANEL_TITLE} className="flex max-h-full w-full max-w-sm flex-col rounded-lg border border-border bg-card text-card-foreground">
+      <div className="flex items-center justify-between gap-3 px-4 pt-3.5 pb-2">
+        <h3 className={`m-0 font-normal ${LABEL}`}>{PANEL_TITLE}</h3>
+        {props.line === 'live' ? null : <p className="m-0 rounded-sm border border-border px-1.5 py-0.5 text-xs text-gold">{LINE_WORDS[props.line]}</p>}
+      </div>
+      <div className="grid min-h-0 gap-3 overflow-y-auto px-4 pb-3">
+        {props.contract === null ? <p className="m-0 text-sm text-muted-foreground">{NOTHING_PICKED}</p> : <TicketHead ticket={props.contract} />}
+        <Choices choices={props.choices} chosenId={contractId} locked={false} onPick={props.onPick} />
+        <div className="grid gap-1.5">
+          <label htmlFor={inputId} className={LABEL}>{SPEND_LABEL}</label>
+          <input id={inputId} type="text" inputMode="decimal" autoComplete="off" value={props.spendEditor.value}
+            className={`min-w-0 rounded-md border border-border bg-background px-2.5 py-2 text-sm tabular-nums ${FOCUS}`}
+            aria-invalid={props.spendEditor.error !== null} aria-describedby={props.spendEditor.error === null ? undefined : errorId}
+            onChange={(event) => { props.spendEditor.onChange(event.currentTarget.value); }} />
+          {props.spendEditor.error === null ? null : <p id={errorId} className="m-0 text-xs text-down">{props.spendEditor.error}</p>}
+        </div>
+        <div className={`grid gap-3 ${props.line === 'live' ? '' : 'opacity-60'}`}>
+          {matching !== null && props.contract !== null ? <QuoteNumbers quote={matching} side={props.contract.side} /> : null}
+          <WhatIf key={`${String(contractId)}:${String(spendCents)}`} quote={matching} />
+        </div>
+        <AccountLine account={account} />
+      </div>
+    </section>
+  );
+}
+
+export const OrderTicket = memo(function OrderTicket(props: OrderTicketProps | TicketPreviewProps): ReactElement {
+  return props.mode === 'preview' ? <PreviewTicket key={props.day} {...props} /> : <TradingTicket {...props} />;
 });

@@ -161,6 +161,29 @@ describe('the connection against the stand-in server', () => {
     expect(made.server.tickets()).toBe(1);
   });
 
+  it('the command never arrived, and the press is too old by the time the line is back: it waits, and nothing is bought', async () => {
+    const made = rig(resendWhileFresh({ maxAgeMs: 5000, now: () => Date.now() }));
+    goLive(made);
+    // Silent first, so the reconnect gets no frame until traffic resumes.
+    made.server.silent(true);
+    made.server.dropNextCommand();
+    const result = watch(made.connection.submit(BUY));
+    made.server.cut();
+
+    // 6,000 ms pass: the wait ran and the socket opened long ago, and no frame has come.
+    vi.advanceTimersByTime(6000);
+    expect(made.connection.state.get().phase).toBe('reconnecting');
+
+    made.server.silent(false);
+    vi.advanceTimersByTime(200);
+
+    // The first frame after the reconnect asked, and a press 6,200 ms old is not fresh.
+    expect(made.connection.state.get().phase).toBe('resumed');
+    expect(made.connection.pending.get().map((one) => [one.status, one.sends])).toEqual([['checking', 1]]);
+    expect(await result.outcome()).toBe('still pending');
+    expect(made.server.tickets()).toBe(0);
+  });
+
   it('answers a repeated id with the first receipt and buys nothing more', async () => {
     const made = rig(resendNever);
     goLive(made);

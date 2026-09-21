@@ -73,6 +73,9 @@ const SIDE_CLASS_RULES = {
  */
 const PRICE_CELL_CLASS = ['ag-right-aligned-cell', 'sd-price'];
 
+/** The target does not move, but its digits line up with the ones that do. */
+const TARGET_CELL_CLASS = ['ag-right-aligned-cell', 'sd-target'];
+
 /**
  * The two parts are read, not scanned for movement: quieter than the price,
  * and with digits of one width so the column does not shuffle as they move.
@@ -95,7 +98,15 @@ export const COLUMNS: ColDef<ContractRow>[] = [
     flex: 1,
     minWidth: 80,
   },
-  { headerName: 'Target', field: 'targetCents', valueFormatter: money, type: 'rightAligned', flex: 1, minWidth: 84 },
+  {
+    headerName: 'Target',
+    field: 'targetCents',
+    valueFormatter: money,
+    type: 'rightAligned',
+    cellClass: TARGET_CELL_CLASS,
+    flex: 1,
+    minWidth: 84,
+  },
   {
     headerName: 'Price',
     colId: 'price',

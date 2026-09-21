@@ -21,8 +21,13 @@ export const DEFAULT_TARGETS_PER_COMPANY = 21;
 export const BOARD_SPAN_MOVES = 2;
 /** How many expected moves of already-passed targets stay on offer. The board's full span: every contract is offered. */
 export const OFFERED_PASSED_MOVES = BOARD_SPAN_MOVES;
-/** Close, Far, Moonshot: distance from the opening price, in expected moves. */
-export const SIMPLE_CHOICE_MOVES = [0.35, 0.9, 1.6] as const;
+/**
+ * Close, Far, Moonshot: distance from the opening price, in expected moves.
+ * The three are chosen to sit on the board's own grid points, which are 0.2
+ * expected moves apart at 21 targets, so nothing is ever a tie between two
+ * targets, and Far is exactly one expected move away on both sides.
+ */
+export const SIMPLE_CHOICE_MOVES = [0.4, 1, 1.6] as const;
 export type SimpleChoice = 'close' | 'far' | 'moonshot';
 export const SIMPLE_CHOICES: readonly SimpleChoice[] = ['close', 'far', 'moonshot'];
 
@@ -67,17 +72,23 @@ export function isOffered(board: Board, id: number): boolean {
   return ref.side === 'up' ? ref.targetIndex >= company.lowestUpIndex : ref.targetIndex <= company.highestDownIndex;
 }
 
-function nearestIndex(targets: readonly Cents[], wantedCents: number): number {
-  let best = 0;
-  let bestGap = Infinity;
-  targets.forEach((target, index) => {
-    const gap = Math.abs(target - wantedCents);
-    if (gap < bestGap) {
-      best = index;
-      bestGap = gap;
-    }
-  });
-  return best;
+/**
+ * Where Close, Far and Moonshot sit on a board of this size. The money is the
+ * middle of the board and the targets are evenly spaced, so a distance in
+ * expected moves is a whole number of targets: 2, 5 and 8 at 21 targets. UP
+ * counts that many targets up from the money and DOWN the same number down,
+ * whatever the prices are. On a board with no middle target each side rounds
+ * away from the money, and an index never leaves the board.
+ */
+function simpleChoiceIndexes(targetsPerCompany: number, sign: 1 | -1): [number, number, number] {
+  const lastIndex = Math.max(0, targetsPerCompany - 1);
+  const moneyIndex = lastIndex / 2;
+  const [close, far, moonshot] = SIMPLE_CHOICE_MOVES.map((moves) => {
+    const offset = Math.round((moves * lastIndex) / (2 * BOARD_SPAN_MOVES));
+    const index = sign === 1 ? Math.ceil(moneyIndex + offset) : Math.floor(moneyIndex - offset);
+    return Math.min(lastIndex, Math.max(0, index));
+  }) as [number, number, number];
+  return [close, far, moonshot];
 }
 
 /**
@@ -97,17 +108,13 @@ export function buildCompanyBoard(openPrice: number, expectedMove: number, targe
     const fraction = targetsPerCompany === 1 ? 0.5 : i / (targetsPerCompany - 1);
     targets.push(sharePriceCents(low + (high - low) * fraction));
   }
-  const pick = (sign: 1 | -1): [number, number, number] => {
-    const [close, far, moonshot] = SIMPLE_CHOICE_MOVES.map((moves) =>
-      nearestIndex(targets, sharePriceCents(openPrice * (1 + sign * moves * expectedMove))),
-    ) as [number, number, number];
-    return [close, far, moonshot];
-  };
+  const simpleUp = simpleChoiceIndexes(targetsPerCompany, 1);
+  const simpleDown = simpleChoiceIndexes(targetsPerCompany, -1);
   const lastIndex = targets.length - 1;
   // At or past the full span nothing is compared: a one-cent rounding difference
   // at the edge of the grid can never drop a contract from the full board.
   if (offeredPassedMoves >= BOARD_SPAN_MOVES) {
-    return { targets, simpleUp: pick(1), simpleDown: pick(-1), lowestUpIndex: 0, highestDownIndex: lastIndex };
+    return { targets, simpleUp, simpleDown, lowestUpIndex: 0, highestDownIndex: lastIndex };
   }
   // The same rounding function and the same shape of expression as the targets themselves.
   const lowestUpCents = sharePriceCents(openPrice * (1 - offeredPassedMoves * expectedMove));
@@ -116,8 +123,8 @@ export function buildCompanyBoard(openPrice: number, expectedMove: number, targe
   const lastAtOrBelow = targets.findLastIndex((target) => target <= highestDownCents);
   return {
     targets,
-    simpleUp: pick(1),
-    simpleDown: pick(-1),
+    simpleUp,
+    simpleDown,
     lowestUpIndex: firstAtOrAbove === -1 ? lastIndex : firstAtOrAbove,
     highestDownIndex: lastAtOrBelow === -1 ? 0 : lastAtOrBelow,
   };

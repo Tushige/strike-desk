@@ -27,6 +27,22 @@ function valueAtBellCents(atCents: Cents, targetCents: Cents, side: Side): Cents
   return priceTicket({ price: centsToDollars(atCents), target: centsToDollars(targetCents), side, varianceLeft: 0, markup: 1 }).priceCents;
 }
 
+/**
+ * The board's average gap between neighbouring targets, in whole cents: top
+ * target minus bottom target, over the number of gaps, half a cent rounding
+ * up. The average and not any one gap, because targets are rounded to the
+ * cent and so neighbouring gaps differ by a cent: the average is one number
+ * for a company's board, the same for UP and DOWN, so the two sides mirror
+ * exactly. Whole numbers throughout, so the half is exact. Null on a board
+ * with a single target, which has no gap.
+ */
+function averageGapCents(targets: readonly Cents[]): Cents | null {
+  const gaps = targets.length - 1;
+  if (gaps < 1) return null;
+  const spanCents = (targets[gaps] ?? 0) - (targets[0] ?? 0);
+  return Math.floor((2 * spanCents + gaps) / (2 * gaps));
+}
+
 function quoteTicket(contractId: number, spendCents: Cents | null, board: NonNullable<Frame['board']>, quotes: readonly number[]): DraftTicket | null {
   const priceCents = quotes[contractId];
   if (priceCents === undefined) return null;
@@ -39,9 +55,14 @@ function quoteTicket(contractId: number, spendCents: Cents | null, board: NonNul
   const costCents = totalCents(priceCents, quantity);
   const breakEven = breakEvenCents(targetCents, priceCents, side);
 
+  // The stops: every target of the board, the break-even, and one gap past the
+  // break-even (above it for UP, below it for DOWN, never below a share price
+  // of zero), so that no table ends on "at best you get your money back".
   let whatIf: WhatIfPoint[] = [];
   if (quantity > 0) {
-    const stops = [...new Set([...targets, breakEven])].sort((a, b) => a - b);
+    const gapCents = averageGapCents(targets);
+    const pastBreakEven = gapCents === null ? [] : [Math.max(0, side === 'up' ? breakEven + gapCents : breakEven - gapCents)];
+    const stops = [...new Set([...targets, breakEven, ...pastBreakEven])].sort((a, b) => a - b);
     whatIf = stops.map((atCents) => ({
       atCents,
       profitCents: totalCents(valueAtBellCents(atCents, targetCents, side), quantity) - costCents,

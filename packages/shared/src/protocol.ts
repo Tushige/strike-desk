@@ -353,9 +353,13 @@ export const draftTicketSchema = z.object({
   /** The same number as `quoteBreakEvens[contractId]` in this frame. */
   breakEvenCents: cents,
   /**
-   * One stop per target of this company's board plus one at the break-even,
-   * ascending, no stop twice. The page looks a stop up; it multiplies
-   * nothing. Empty while `quantity` is 0.
+   * One stop per target of this company's board, one at the break-even, and
+   * one a gap past the break-even (above it for UP, below it for DOWN, never
+   * below zero), so every table shows a profit somewhere. The gap is the
+   * board's average distance between neighbouring targets in whole cents; a
+   * board with a single target has none and gets no such stop. Ascending, no
+   * stop twice. The page looks a stop up; it multiplies nothing. Empty while
+   * `quantity` is 0.
    */
   whatIf: z.array(whatIfPointSchema),
 });

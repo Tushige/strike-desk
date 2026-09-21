@@ -241,6 +241,8 @@ const LOOPBACK_ANSWERS_AFTER_MS = 40;
 /** Five frames a second. */
 const LOOPBACK_FRAME_EVERY_MS = 200;
 const LOOPBACK_SESSION = 'lab-1';
+/** As many receipts as a real frame carries. */
+const LOOPBACK_FRAME_RECEIPTS = 20;
 
 export interface LoopbackOptions {
   schedule: TransportSeam['schedule'];
@@ -255,6 +257,19 @@ export interface LoopbackTransport {
   cut(): void;
   /** While on, the server sends nothing at all, and the sockets stay open. */
   silent(on: boolean): void;
+  /** The next command is taken, and whatever it buys is bought, but its reply is never sent. */
+  loseNextReply(): void;
+  /** The next command is handed to the socket and goes no further: the server never hears of it. */
+  dropNextCommand(): void;
+  /** How many tickets the server holds: one per buy it accepted, however often that buy arrived. */
+  tickets(): number;
+  /** Every text a socket was handed, oldest first, with which socket it was (1 for the first). */
+  log(): readonly LoopbackLogEntry[];
+}
+
+export interface LoopbackLogEntry {
+  socket: number;
+  text: string;
 }
 
 export function createLoopbackTransport(options: LoopbackOptions): LoopbackTransport {
@@ -279,10 +294,57 @@ export function createLoopbackTransport(options: LoopbackOptions): LoopbackTrans
     return current === socket && socket.readyState === SOCKET_OPEN;
   }
 
+  /** What the server remembers of a command: the first answer it gave, kept for good. */
+  const receipts = new Map<string, Record<string, unknown>>();
+  let bought = 0;
+  let rev = 0;
+  let replyToLose = false;
+  let commandToDrop = false;
+  const handed: LoopbackLogEntry[] = [];
+  const socketNumbers = new Map<FakeSocket, number>();
+
+  /** A day of trading that never ends: made up, and only so that a buy of day 1 is a buy of today. */
+  const LOOPBACK_CLOCK = { phase: 'open', day: 1, stepsLeft: 100, priceIndex: 0, pace: 3 };
+
+  /** A frame as the server would send one now: its latest receipts ride on every one. */
+  function frameNow(): Record<string, unknown> {
+    step += 1;
+    const latest = [...receipts.values()].slice(-LOOPBACK_FRAME_RECEIPTS);
+    const text = fakeFrameText({ session: LOOPBACK_SESSION, rev, step, clock: LOOPBACK_CLOCK, receipts: latest });
+    return JSON.parse(text) as Record<string, unknown>;
+  }
+
   function sendFrame(socket: FakeSocket): void {
     if (quiet || !isUp(socket)) return;
-    step += 1;
-    socket.fireMessage(fakeFrameText({ session: LOOPBACK_SESSION, step }));
+    socket.fireMessage(JSON.stringify(frameNow()));
+  }
+
+  /**
+   * One command, the way a server with safe retries takes it: an id seen
+   * before gets its first answer back and nothing else happens. Only a buy
+   * seen for the first time buys a ticket.
+   */
+  function serverTakesCommand(socket: FakeSocket, kind: string, commandId: string): void {
+    let receipt = receipts.get(commandId);
+    if (receipt === undefined) {
+      rev += 1;
+      receipt = { commandId, kind, step, outcome: 'accepted' };
+      if (kind === 'buy') {
+        bought += 1;
+        receipt.positionId = `p-${String(bought)}`;
+      }
+      receipts.set(commandId, receipt);
+    }
+    if (replyToLose) {
+      // Taken, stored, and the answer lost on the way back.
+      replyToLose = false;
+      return;
+    }
+    const answered = receipt;
+    schedule(() => {
+      if (quiet || !isUp(socket)) return;
+      socket.fireMessage(JSON.stringify({ t: 'reply', receipt: answered, frame: frameNow() }));
+    }, LOOPBACK_ANSWERS_AFTER_MS);
   }
 
   function keepSending(socket: FakeSocket): void {
@@ -306,7 +368,15 @@ export function createLoopbackTransport(options: LoopbackOptions): LoopbackTrans
       schedule(() => {
         sendFrame(socket);
       }, LOOPBACK_ANSWERS_AFTER_MS);
+      return;
     }
+    if (typeof message.t !== 'string' || !('commandId' in message) || typeof message.commandId !== 'string') return;
+    if (commandToDrop) {
+      // Handed to the socket and gone: the server never hears of it.
+      commandToDrop = false;
+      return;
+    }
+    serverTakesCommand(socket, message.t, message.commandId);
   }
 
   const seam: TransportSeam = {
@@ -314,10 +384,13 @@ export function createLoopbackTransport(options: LoopbackOptions): LoopbackTrans
     createSocket(url: string) {
       const socket = createFakeSocket(url);
       const handOver = socket.send.bind(socket);
+      socketNumbers.set(socket, socketNumbers.size + 1);
       socket.send = (text: string) => {
         const carried = socket.sent.length;
         handOver(text);
-        if (socket.sent.length > carried) serverTakes(socket, text);
+        if (socket.sent.length === carried) return;
+        handed.push({ socket: socketNumbers.get(socket) ?? 0, text });
+        serverTakes(socket, text);
       };
       current = socket;
       schedule(() => {
@@ -345,5 +418,13 @@ export function createLoopbackTransport(options: LoopbackOptions): LoopbackTrans
     silent(on: boolean) {
       quiet = on;
     },
+    loseNextReply() {
+      replyToLose = true;
+    },
+    dropNextCommand() {
+      commandToDrop = true;
+    },
+    tickets: () => bought,
+    log: () => handed,
   };
 }

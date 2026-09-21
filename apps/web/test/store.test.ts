@@ -239,9 +239,12 @@ function fakeFeed(): FakeFeed {
   const feed: Feed = {
     connect: () => undefined,
     close: () => undefined,
-    send: (command: Command) => {
-      sent.push(command);
+    send: (message) => {
+      // Commands only: anything else a feed may carry has no command id.
+      if ('commandId' in message) sent.push(message);
+      return true;
     },
+    simulateDrop: () => undefined,
     subscribe: (listener: (event: FeedEvent) => void) => {
       listeners.add(listener);
       return () => {
@@ -263,7 +266,7 @@ function lobbyFrame(session: string, step = 0): Frame {
 }
 
 function message(frame: Frame): FeedEvent {
-  return { type: 'message', message: frame };
+  return { type: 'message', message: frame, receivedAt: 0 };
 }
 
 describe('auto-start', () => {

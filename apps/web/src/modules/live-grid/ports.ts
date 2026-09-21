@@ -37,8 +37,14 @@ export interface GridRow {
 
 /**
  * Where the grid's rows come from. It lives outside React. Its four members
- * are plain functions, not methods: each may be handed on by itself, for
- * example to `useSyncExternalStore`.
+ * are plain functions, not methods: each may be handed on by itself.
+ *
+ * `rows` is the one snapshot fit for `useSyncExternalStore`, paired with
+ * `subscribe`: it is cached, and changes identity only when the set is
+ * replaced. `latest` is not a snapshot, and the note on it says why.
+ *
+ * A table sets itself up in this order: register the sink with `onChanged`
+ * first, read `latest()` second.
  */
 export interface RowSource<Row extends GridRow> {
   /**
@@ -65,6 +71,15 @@ export interface RowSource<Row extends GridRow> {
    * row that has not changed is the same object as before. The table calls it
    * once after mounting and once after each replacement, so that no row is
    * left showing a value that has passed.
+   *
+   * The table registers its sink with `onChanged` first and calls this
+   * second: the other order drops any change that lands between the two,
+   * while this order at worst hands the same batch over twice, which leaves
+   * the same values in place.
+   *
+   * A fresh array on every call; only the row objects inside it are shared.
+   * Read it once and hand the rows to the grid. Never pass it to
+   * `useSyncExternalStore`: an uncached snapshot renders forever.
    */
   readonly latest: () => readonly Row[];
 }

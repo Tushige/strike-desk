@@ -1,6 +1,7 @@
 import { useMemo, useSyncExternalStore } from 'react';
 import { PACES } from '@strike-desk/shared/time';
 import { PhaseScreen, TopBar, controlWords } from '../modules/desk/index';
+import { REJECT_WORDS } from '../modules/order-ticket/index';
 import { ComparisonDesk } from '../comparison/ComparisonDesk';
 import type { ComparisonStore } from '../comparison/comparisonStore';
 import { Strip } from '../board/Strip';
@@ -48,7 +49,17 @@ export function GameDesk({ loop, game, comparison, news }: GameDeskProps) {
       <GameTopBar loop={loop} />
       <p className="m-0 text-xs text-muted-foreground">{controlWords.preview}</p>
       <div className="min-h-0 flex-1">{phase}</div>
-      <div role="status" aria-live="polite" className="text-sm text-muted-foreground">{controls.checking ? controlWords.checking : null}</div>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <div role="status" aria-live="polite" className="text-sm text-muted-foreground">
+          {controls.checking ? controlWords.checking : controls.reason === null ? null : REJECT_WORDS[controls.reason]}
+        </div>
+        {controls.retryAllowed ? <>
+          <span className="text-xs text-muted-foreground">{controlWords.retryHint}</span>
+          <button type="button" onClick={loop.retry} className="rounded-md border border-border bg-card px-4 py-2 text-sm text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+            {controlWords.retry}
+          </button>
+        </> : null}
+      </div>
     </div>
   );
 }

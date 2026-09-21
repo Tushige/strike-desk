@@ -148,3 +148,79 @@ it.each([
     lines.close();
   }
 }, 45000);
+
+it.each(['before delivery', 'after acceptance'] as const)('recovers an opening bell lost %s through the real mounted desk', async (loss) => {
+  vi.resetModules(); window.history.replaceState(null, '', '/');
+  const child = spawn('pnpm', ['--filter', '@strike-desk/server', 'exec', 'tsx', 'test/news-app.ts'], { stdio: 'pipe' });
+  const lines = createInterface({ input: child.stdout });
+  let errors = '';
+  child.stderr.on('data', (chunk: Buffer) => { errors += chunk.toString(); });
+  const ready = new Promise<string>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`service readiness timeout: ${errors}`)), 30000);
+    lines.on('line', (line) => {
+      if (!line.startsWith('{')) return;
+      const message: unknown = JSON.parse(line);
+      if (typeof message === 'object' && message !== null && 'url' in message && typeof message.url === 'string') {
+        clearTimeout(timer); resolve(message.url);
+      }
+    });
+    child.once('exit', () => { clearTimeout(timer); reject(new Error(`service exited: ${errors}`)); });
+  });
+  let feed: ReturnType<typeof createWsFeed> | undefined;
+  let lose = true;
+  const outbound: Outbound[] = [];
+  const messages: ServerMessage[] = [];
+  try {
+    const url = await ready;
+    vi.doMock('../src/feed/wsFeed', () => ({ createWsFeed: (options: WsFeedOptions) => {
+      const live = createWsFeed({ ...options, url, random: () => 0.5, createSocket: (address) => new Socket(address, { origin: window.location.origin }) });
+      feed = live;
+      live.subscribe((event) => { if (event.type === 'message') messages.push(event.message); });
+      return {
+        ...live,
+        send: (message: Outbound) => {
+          outbound.push(message);
+          if (lose && loss === 'before delivery' && message.t === 'openBell') return true;
+          return live.send(message);
+        },
+        subscribe: (listener: Parameters<typeof live.subscribe>[0]) => live.subscribe((event) => {
+          if (lose && loss === 'after acceptance' && event.type === 'message' && event.message.t === 'reply' && event.message.receipt.kind === 'openBell') return;
+          listener(event);
+        }),
+      };
+    } }));
+    const { default: App } = await import('../src/App');
+    const view = render(createElement(App));
+    fireEvent.click(await view.findByRole('button', { name: 'Start fast (3x)' }));
+    const bell = await view.findByRole('button', { name: 'Ring the opening bell' });
+    fireEvent.click(bell);
+    expect(view.getByText('Checking...')).toBeTruthy();
+    expect((bell as HTMLButtonElement).disabled).toBe(true);
+    if (loss === 'after acceptance') await waitFor(() => expect(messages.some((message) => message.t === 'reply' && message.receipt.kind === 'openBell')).toBe(true));
+    const first = outbound.find((message) => message.t === 'openBell');
+    await act(async () => {
+      feed?.simulateDrop(); lose = false;
+      await waitFor(() => expect(messages.filter((message) => message.t === 'frame')).toHaveLength(2), { timeout: 5000 });
+    });
+    expect(outbound.filter((message) => message.t === 'openBell')).toHaveLength(1);
+    if (loss === 'before delivery') {
+      const retry = await view.findByRole('button', { name: 'Retry safely' });
+      expect(view.getByText('Send the same request again. It will not happen twice.')).toBeTruthy();
+      expect((view.getByRole('button', { name: 'Ring the opening bell' }) as HTMLButtonElement).disabled).toBe(true);
+      fireEvent.click(retry);
+      expect(outbound.filter((message) => message.t === 'openBell')).toEqual([first, first]);
+    } else expect(view.queryByRole('button', { name: 'Retry safely' })).toBeNull();
+    await view.findByRole('heading', { name: 'Day 1: the market is open' });
+    expect(view.queryByText('Checking...')).toBeNull();
+    const current = messages.at(-1);
+    const frame = current?.t === 'reply' ? current.frame : current?.t === 'frame' ? current : null;
+    expect(frame?.rev).toBe(2);
+    expect(frame?.receipts.filter((receipt) => receipt.kind === 'openBell')).toHaveLength(1);
+  } finally {
+    cleanup(); feed?.close(); child.stdin.end('close\n');
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => { child.kill(); resolve(); }, 5000);
+      child.once('exit', () => { clearTimeout(timer); resolve(); });
+    }); lines.close();
+  }
+}, 45000);

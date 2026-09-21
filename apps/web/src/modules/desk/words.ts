@@ -141,4 +141,6 @@ export const stripWords = {
 export const controlWords = {
   preview: 'Ticket preview only. Buying and cashing out are not available.',
   checking: 'Checking...',
+  retry: 'Retry safely',
+  retryHint: 'Send the same request again. It will not happen twice.',
 } as const;

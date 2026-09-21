@@ -5,6 +5,8 @@ import { CAST, DAY_WOBBLE, MARKET_WOBBLE } from './cast';
 import { DAYS, OPEN_STEPS } from './clock';
 import { exactExp } from './exact';
 import { centsToDollars } from './money';
+import type { HeadlineSlot } from './news';
+import { writeHeadlines } from './news';
 import type { TicketValue, Trust } from './pricing';
 import { QUIET_MARKUP, TRUST_RULES, priceTicket } from './pricing';
 import type { Side } from './protocol';
@@ -101,45 +103,39 @@ export interface Market {
 const STEP_SCALE = 1 / Math.sqrt(OPEN_STEPS);
 const TRUST_ORDER: readonly Trust[] = [3, 2, 1];
 
-function drawNews(cast: readonly Company[], seed: number, day: number, firstId: number): MarketNews[] {
+/** One headline as the market decides it, before a word is written: the half a writer may see, and the half nobody may. */
+interface DrawnNews {
+  slot: HeadlineSlot;
+  hidden: HiddenOutcome;
+}
+
+function drawNews(cast: readonly Company[], seed: number, day: number, firstId: number): DrawnNews[] {
   const pickRng = createStream(seed, 'newsPick', day);
   const outcomeRng = createStream(seed, 'newsOutcome', day);
   const free = cast.map((company) => company.id);
   return TRUST_ORDER.map((trust, index) => {
     const companyId = free.splice(pickRng.nextInt(free.length), 1)[0] ?? 0;
-    const company = cast[companyId];
     const direction = pickRng.nextFloat() < 0.5 ? -1 : 1;
     const rule = TRUST_RULES[trust];
     const wasTrue = outcomeRng.nextFloat() < rule.chanceTrue;
     const x = outcomeRng.nextFloat();
     const move = wasTrue ? direction * rule.move * (0.6 + 1.4 * x * x) : -direction * rule.move * (0.4 + 0.6 * x);
     const revealIndex = Math.floor(OPEN_STEPS * (0.35 + 0.35 * outcomeRng.nextFloat()));
-    // Stand-in wording until the reviewed headline pool replaces it.
-    const name = company?.name ?? '';
     return {
-      headline: {
-        id: firstId + index,
-        day,
-        companyId,
-        trust,
-        source: trust === 3 ? 'Company statement' : trust === 2 ? 'A store manager says' : 'Someone online says',
-        title: direction > 0 ? `Good news for ${name}?` : `Trouble at ${name}?`,
-        body: direction > 0 ? `${name} may be about to have a very good day.` : `${name} may be about to have a very bad day.`,
-        direction: direction > 0 ? 'up' : 'down',
-      },
+      slot: { id: firstId + index, day, companyId, trust, direction: direction > 0 ? 'up' : 'down' },
       hidden: { revealIndex, wasTrue, move },
     };
   });
 }
 
-function drawPaths(cast: readonly Company[], seed: number, day: number, openPrices: readonly number[], news: readonly MarketNews[]): number[][] {
+function drawPaths(cast: readonly Company[], seed: number, day: number, openPrices: readonly number[], news: readonly DrawnNews[]): number[][] {
   const marketRng = createStream(seed, 'marketWide', day);
   const marketShocks: number[] = [];
   for (let k = 0; k < OPEN_STEPS; k += 1) marketShocks.push(marketRng.nextNormal());
 
   return cast.map((company) => {
     const rng = createStream(seed, 'prices', day, company.id);
-    const hidden = news.find((item) => item.headline.companyId === company.id)?.hidden;
+    const hidden = news.find((item) => item.slot.companyId === company.id)?.hidden;
     const marketSd = company.beta * MARKET_WOBBLE * STEP_SCALE;
     const ownSd = company.ownWobble * STEP_SCALE;
     const drift = -0.5 * (marketSd * marketSd + ownSd * ownSd);
@@ -180,14 +176,40 @@ export function buildMarket(identity: MarketIdentity, settings: MarketSettings =
   checkCast(cast);
   const offeredPassedMoves = settings.offeredPassedMoves ?? OFFERED_PASSED_MOVES;
   if (!Number.isFinite(offeredPassedMoves) || offeredPassedMoves < 0) throw new Error('the offered already-passed moves must be a number at or above zero');
-  const days: MarketDay[] = [];
+  const drawn: { day: number; paths: number[][]; news: DrawnNews[] }[] = [];
   let openPrices = cast.map((company) => company.startPrice);
   for (let day = 1; day <= DAYS; day += 1) {
     const news = drawNews(cast, identity.seed, day, (day - 1) * TRUST_ORDER.length);
     const paths = drawPaths(cast, identity.seed, day, openPrices, news);
-    days.push({ day, paths, news });
+    drawn.push({ day, paths, news });
     openPrices = paths.map((path) => path[OPEN_STEPS] ?? 0);
   }
+
+  // The words come last and through one call. The writer is handed the public
+  // half of every headline and a stream of its own: never an outcome, a reveal
+  // moment or the seed, so no wording can give one away or move a price.
+  const slots = drawn.flatMap((entry) => entry.news.map((item) => item.slot));
+  const words = writeHeadlines(slots, cast, createStream(identity.seed, 'newsWording'));
+  if (words.length !== slots.length) throw new Error(`the news writer returned ${words.length} headlines for ${slots.length} slots`);
+  const days: MarketDay[] = drawn.map(({ day, paths, news }) => ({
+    day,
+    paths,
+    news: news.map(({ slot, hidden }) => {
+      const said = words[slots.indexOf(slot)];
+      if (said === undefined) throw new Error(`the news writer left headline ${slot.id} without words`);
+      const headline: Headline = {
+        id: slot.id,
+        day: slot.day,
+        companyId: slot.companyId,
+        trust: slot.trust,
+        source: said.source,
+        title: said.title,
+        body: said.body,
+        direction: slot.direction,
+      };
+      return { headline, hidden };
+    }),
+  }));
   return { identity, cast, offeredPassedMoves, days };
 }
 

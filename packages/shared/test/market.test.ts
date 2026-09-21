@@ -218,8 +218,8 @@ describe('the whole-market shocks', () => {
 });
 
 describe('the engine version', () => {
-  it('is e2', () => {
-    expect(ENGINE_VERSION).toBe('e2');
+  it('is e3', () => {
+    expect(ENGINE_VERSION).toBe('e3');
   });
 });
 

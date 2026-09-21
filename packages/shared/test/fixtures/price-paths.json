@@ -2,7 +2,7 @@
   "note": "Pinned prices of one market on the stand-in cast. Regenerate with: WRITE_FIXTURES=1 pnpm vitest run packages/shared/test/fixtures.test.ts If the fixtures test fails and the price model was not meant to change, do not regenerate: find what changed. If the model was meant to change, bump the engine version in the same commit as the regenerated file. Adding the lead-in price series before day 1 will change every path, and this file will be regenerated once more then; that is expected.",
   "marketCode": "7NS-URH-ME42",
   "seed": 198765432123456,
-  "engine": "e2",
+  "engine": "e3",
   "content": "c0",
   "digest": "c5ebb14257488f9972477f448bb035135fe1600ce236eb257603441a2126d3d3",
   "samples": [

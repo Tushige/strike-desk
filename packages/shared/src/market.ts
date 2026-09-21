@@ -18,7 +18,7 @@ import { createStream } from './rng';
  */
 
 /** Bump when the model changes: the same seed then means a different market. */
-export const ENGINE_VERSION = 'e2';
+export const ENGINE_VERSION = 'e3';
 /** Bump when headline content changes. */
 export const CONTENT_VERSION = 'c0';
 

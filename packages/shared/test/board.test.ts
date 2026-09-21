@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Board } from '../src/board';
-import { BOARD_SPAN_MOVES, DEFAULT_TARGETS_PER_COMPANY, OFFERED_PASSED_MOVES, buildCompanyBoard, contractCount, contractTarget, isOffered } from '../src/board';
+import { BOARD_SPAN_MOVES, DEFAULT_TARGETS_PER_COMPANY, OFFERED_PASSED_MOVES, SIMPLE_CHOICE_MOVES, buildCompanyBoard, contractCount, contractTarget, isOffered } from '../src/board';
 import { CAST, COMPANY_COUNT } from '../src/cast';
 import { CONTENT_VERSION, ENGINE_VERSION, boardFor, buildMarket, quoteAt } from '../src/market';
 import type { Side } from '../src/protocol';
@@ -8,6 +8,7 @@ import { contractId, decodeContractId } from '../src/protocol';
 
 const IDENTITY = { seed: 4242, engine: ENGINE_VERSION, content: CONTENT_VERSION };
 const market = buildMarket(IDENTITY);
+const SEEDS = [4242, 77, 198765432123456];
 
 describe('contract ids', () => {
   it.each([21, 209])('round-trip for %i targets per company and fill 0..n-1 exactly once', (targets) => {
@@ -74,6 +75,67 @@ describe('the day board', () => {
           expect(down[2]).toBeLessThan(down[1] ?? NaN);
         }
       }
+    }
+  });
+
+  it('names the simple choices as 0.4, 1 and 1.6 expected moves from the opening price', () => {
+    expect(SIMPLE_CHOICE_MOVES).toEqual([0.4, 1, 1.6]);
+  });
+
+  it('puts Far exactly one expected move away on both sides: $100 braced for 5% gives $105 and $95', () => {
+    const board = buildCompanyBoard(100, 0.05, 21);
+    expect(board.simpleUp.map((index) => board.targets[index])).toEqual([10_200, 10_500, 10_800]);
+    expect(board.simpleDown.map((index) => board.targets[index])).toEqual([9800, 9500, 9200]);
+  });
+
+  it('puts Close, Far and Moonshot 2, 5 and 8 targets from the money for every company, seed and day', () => {
+    for (const seed of SEEDS) {
+      const each = buildMarket({ ...IDENTITY, seed });
+      for (let day = 1; day <= 5; day += 1) {
+        const board = boardFor(each, day);
+        expect(board.companies).toHaveLength(COMPANY_COUNT);
+        board.companies.forEach((company, companyId) => {
+          expect(company.simpleUp).toEqual([12, 15, 18]);
+          expect(company.simpleDown).toEqual([8, 5, 2]);
+          for (const index of company.simpleUp) expect(isOffered(board, contractId(21, { companyId, targetIndex: index, side: 'up' }))).toBe(true);
+          for (const index of company.simpleDown) expect(isOffered(board, contractId(21, { companyId, targetIndex: index, side: 'down' }))).toBe(true);
+        });
+      }
+    }
+  });
+
+  it('works the same distances out on a finer board: 21, 52 and 83 targets from the money at 209', () => {
+    for (const seed of SEEDS) {
+      const each = buildMarket({ ...IDENTITY, seed });
+      for (let day = 1; day <= 5; day += 1) {
+        for (const company of boardFor(each, day, 209).companies) {
+          expect(company.simpleUp).toEqual([125, 156, 187]);
+          expect(company.simpleDown).toEqual([83, 52, 21]);
+        }
+      }
+    }
+  });
+
+  it('keeps every simple choice on the board and on its own side of the money, whatever the board size', () => {
+    for (let targets = 1; targets <= 40; targets += 1) {
+      const board = buildCompanyBoard(84, 0.035, targets);
+      const money = (targets - 1) / 2;
+      let previousUp = money;
+      let previousDown = money;
+      board.simpleUp.forEach((up, choice) => {
+        const down = board.simpleDown[choice] ?? NaN;
+        for (const index of [up, down]) {
+          expect(Number.isInteger(index)).toBe(true);
+          expect(index).toBeGreaterThanOrEqual(0);
+          expect(index).toBeLessThanOrEqual(targets - 1);
+        }
+        expect(up).toBeGreaterThanOrEqual(previousUp);
+        expect(down).toBeLessThanOrEqual(previousDown);
+        // The same distance from the money on both sides.
+        expect(up - money).toBe(money - down);
+        previousUp = up;
+        previousDown = down;
+      });
     }
   });
 

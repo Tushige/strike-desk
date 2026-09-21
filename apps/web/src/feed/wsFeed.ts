@@ -1,6 +1,6 @@
-import type { Command, Frame, Hello, ServerMessage } from '@strike-desk/shared/protocol';
+import type { Frame, Hello, ServerMessage } from '@strike-desk/shared/protocol';
 import { PROTOCOL_VERSION } from '@strike-desk/shared/protocol';
-import type { Feed, FeedEvent, FeedStatus } from '@strike-desk/shared/feed';
+import type { Feed, FeedEvent, FeedStatus, Outbound } from '@strike-desk/shared/feed';
 import { decode } from './decode';
 
 /**
@@ -49,6 +49,12 @@ export interface WsFeedOptions {
   storage?: SessionStore | null;
   schedule?: (run: () => void, ms: number) => () => void;
   random?: () => number;
+  /** The clock every message is stamped with. The page's own, unless a test hands one in. */
+  now?: () => number;
+}
+
+function pageClock(): number {
+  return performance.now();
 }
 
 function browserSocket(url: string): SocketLike {
@@ -75,6 +81,7 @@ export function createWsFeed(options: WsFeedOptions): Feed {
   const createSocket = options.createSocket ?? browserSocket;
   const schedule = options.schedule ?? afterDelay;
   const random = options.random ?? Math.random;
+  const now = options.now ?? pageClock;
   const storage = options.storage ?? null;
 
   const listeners = new Set<(event: FeedEvent) => void>();
@@ -112,8 +119,23 @@ export function createWsFeed(options: WsFeedOptions): Feed {
     }
   }
 
+  // Every listener gets the event, whatever the ones before it did. The
+  // first error is kept and thrown once all of them have run, so a broken
+  // listener is still loud and never costs another its event.
   function emit(event: FeedEvent): void {
-    for (const listener of [...listeners]) listener(event);
+    let failed = false;
+    let firstError: unknown;
+    for (const listener of [...listeners]) {
+      try {
+        listener(event);
+      } catch (error) {
+        if (!failed) {
+          failed = true;
+          firstError = error;
+        }
+      }
+    }
+    if (failed) throw firstError;
   }
 
   function setStatus(next: FeedStatus): void {
@@ -131,6 +153,8 @@ export function createWsFeed(options: WsFeedOptions): Feed {
   }
 
   function received(from: SocketLike, data: unknown): void {
+    // Read before anything else, so parsing time never counts as travel time.
+    const receivedAt = now();
     if (socket !== from) return;
     const message = decode(data);
     if (message === null) return;
@@ -144,15 +168,17 @@ export function createWsFeed(options: WsFeedOptions): Feed {
     }
     if (message.t === 'error' && message.code === 'noSession') forgetSession();
 
-    emit({ type: 'message', message });
+    emit({ type: 'message', message, receivedAt });
   }
 
   function dropped(from: SocketLike): void {
     // A socket we have already given up on: its close is not a reason to retry.
     if (socket !== from) return;
     socket = null;
-    setStatus('reconnecting');
+    // The retry is booked before anyone is told, so a listener that throws
+    // cannot cost the page its reconnect.
     scheduleRetry();
+    setStatus('reconnecting');
   }
 
   function scheduleRetry(): void {
@@ -175,8 +201,10 @@ export function createWsFeed(options: WsFeedOptions): Feed {
     socket = next;
     next.addEventListener('open', () => {
       if (socket !== next) return;
-      setStatus('live');
+      // Hello goes out before anyone is told, so it is the first text on
+      // every socket whatever a listener does, throwing included.
       sendHello(next);
+      setStatus('live');
     });
     next.addEventListener('message', (event) => {
       received(next, event.data);
@@ -202,9 +230,25 @@ export function createWsFeed(options: WsFeedOptions): Feed {
     setStatus('closed');
   }
 
-  function send(command: Command): void {
+  function send(message: Outbound): boolean {
+    if (status !== 'live' || socket === null) return false;
+    try {
+      socket.send(JSON.stringify(message));
+      return true;
+    } catch {
+      // A socket that closed between two events throws here. Not sent.
+      return false;
+    }
+  }
+
+  function simulateDrop(): void {
     if (status !== 'live' || socket === null) return;
-    socket.send(JSON.stringify(command));
+    const going = socket;
+    // Treated as gone now: a real socket raises its close event later, a
+    // fake one never does, and either way that event finds a socket the
+    // feed has already given up on and is ignored.
+    going.close();
+    dropped(going);
   }
 
   function subscribe(listener: (event: FeedEvent) => void): () => void {
@@ -214,5 +258,5 @@ export function createWsFeed(options: WsFeedOptions): Feed {
     };
   }
 
-  return { connect, close, send, subscribe };
+  return { connect, close, send, simulateDrop, subscribe };
 }

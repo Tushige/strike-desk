@@ -118,21 +118,36 @@ function fromHere(client: TestClient): () => ServerMessage[] {
       });
 }
 
-/** The four ticket-price arrays, with every batch since `from` applied in order. */
-function replay(from: Frame, batches: readonly QuotesMessage[]): Pick<Frame, 'quotes' | 'quoteReals' | 'quoteHopes' | 'quoteBreakEvens'> {
-  const quotes = [...from.quotes];
-  const quoteReals = [...from.quoteReals];
-  const quoteHopes = [...from.quoteHopes];
-  const quoteBreakEvens = [...from.quoteBreakEvens];
-  for (const message of batches) {
+type QuoteArrays = Pick<Frame, 'quotes' | 'quoteReals' | 'quoteHopes' | 'quoteBreakEvens'>;
+
+const arraysOf = (frame: Frame): QuoteArrays => ({
+  quotes: [...frame.quotes],
+  quoteReals: [...frame.quoteReals],
+  quoteHopes: [...frame.quoteHopes],
+  quoteBreakEvens: [...frame.quoteBreakEvens],
+});
+
+/**
+ * What a page holds after a starting frame and everything that followed it:
+ * a whole picture replaces the four arrays, a batch merges into them, and
+ * anything else is not about ticket prices.
+ */
+function replay(from: Frame, stream: readonly ServerMessage[]): QuoteArrays {
+  let held = arraysOf(from);
+  for (const message of stream) {
+    if (isFrame(message)) {
+      held = arraysOf(message);
+      continue;
+    }
+    if (!isBatch(message)) continue;
     for (const [id, priceCents, realCents, hopeCents, breakEvenCents] of message.changes) {
-      quotes[id] = priceCents;
-      quoteReals[id] = realCents;
-      quoteHopes[id] = hopeCents;
-      quoteBreakEvens[id] = breakEvenCents;
+      held.quotes[id] = priceCents;
+      held.quoteReals[id] = realCents;
+      held.quoteHopes[id] = hopeCents;
+      held.quoteBreakEvens[id] = breakEvenCents;
     }
   }
-  return { quotes, quoteReals, quoteHopes, quoteBreakEvens };
+  return held;
 }
 
 describe('a granted board size', () => {
@@ -601,6 +616,51 @@ describe('what a batch is never allowed to carry on its own', () => {
     expect(stream.map((message) => message.t)).toEqual(['frame']);
     expect(reply.frame.rev).toBe(2);
     expect(stream[0]?.rev).toBe(reply.frame.rev);
+  });
+
+  it('brings the whole picture to a session a socket has just joined', async () => {
+    const running = await boot(TRIGGERS_ONLY);
+    const { client: playing } = await join(running, { board: STRESS_SIZE });
+    // Pace 3 is what the page sends. It matters here: a step is 200/3 ms, so
+    // a hello between two sampling passes lands on a step of its own.
+    playing.send(start('start-0001', 3));
+    const reply = await playing.nextReply();
+    expect(reply.receipt.outcome).toBe('accepted');
+
+    // Well inside day 1's open market, where the prices really move.
+    running.clock.advance(30_000);
+    running.sample();
+    const opening = await playing.nextFrame();
+    expect(opening.clock.phase).toBe('open');
+
+    // A page reload, or any reconnect naming the stored game: the door
+    // answers the joining socket out of band, with a whole picture of its own
+    // moment, which is not the moment the sampler last sent.
+    running.clock.advance(100);
+    const joiner = running.connect();
+    await joiner.opened();
+    joiner.send({ ...HELLO, session: reply.frame.session, board: STRESS_SIZE });
+    const joined = await joiner.nextFrame();
+    expect(joined.session).toBe(reply.frame.session);
+
+    const sinceJoin = fromHere(joiner);
+    const sincePlaying = fromHere(playing);
+    running.clock.advance(100);
+    running.sample();
+    await roundTrip(joiner);
+    await roundTrip(playing);
+
+    const arrived = sinceJoin();
+    // The scenario is only worth anything if the three moments are three
+    // different steps: asserted, so this can never pass by lining up.
+    expect(opening.step).toBeLessThan(joined.step);
+    expect(joined.step).toBeLessThan(arrived[0]?.t === 'frame' || arrived[0]?.t === 'quotes' ? arrived[0].step : 0);
+
+    // A batch here would be worked out against arrays this socket never held,
+    // leaving it showing prices no frame ever carried.
+    expect(arrived.map((message) => message.t)).toEqual(['frame']);
+    // And the two sockets on the one game agree, ticket for ticket.
+    expect(replay(joined, arrived)).toEqual(replay(opening, sincePlaying()));
   });
 
   it('keeps every message newer than the one before it, batches and whole pictures alike', async () => {

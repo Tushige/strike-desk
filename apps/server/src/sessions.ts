@@ -122,6 +122,15 @@ export function createRegistry(options: RegistryOptions): SessionRegistry {
       if (!entry.sockets.has(socket) && entry.sockets.size >= maxSocketsPerSession) return 'tooManySockets';
       entry.sockets.set(socket, playerOf(entry.session.game, playerId).id);
       entry.idleSinceMs = null;
+      // A socket that has just joined holds the frame the door answered its
+      // hello with, projected at its own moment, and not what the sampler last
+      // sent. Forgetting what was last sent makes the next pass send the whole
+      // picture, which is the only message every socket on this session can
+      // safely be given: they share one text, so the difference cannot be
+      // right for the one that just arrived and for the ones already here.
+      // One extra whole picture per hello, on a service holding at most a
+      // handful of these games.
+      entry.stressStream = null;
       return 'attached';
     },
     detach(id, socket, nowMs) {

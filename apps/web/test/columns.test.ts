@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CellClassParams, ColDef, ValueFormatterParams, ValueGetterParams } from 'ag-grid-community';
 import { COLUMNS, DEFAULT_COL_DEF } from '../src/board/columns';
+import { ValueCell } from '../src/board/ValueCell';
 import type { ContractRow } from '../src/store/contractRows';
 
 function column(headerName: string): ColDef<ContractRow> {
@@ -25,15 +26,21 @@ const ROW: ContractRow = {
   side: 'up',
   targetCents: 8379,
   priceCents: 1200,
+  realCents: 500,
+  hopeCents: 700,
   dimmed: false,
   dir: 0,
 };
 
-/** The value the Price cell is given for a row: what it shows, and what the grid compares to decide on a flash. */
-function priceValue(row: ContractRow): unknown {
-  const getter = column('Price').valueGetter;
-  if (typeof getter !== 'function') throw new Error('Price has no value getter');
+/** The value a cell is given for a row: what it shows, and what the grid compares to decide on a redraw. */
+function cellValue(headerName: string, row: ContractRow): unknown {
+  const getter = column(headerName).valueGetter;
+  if (typeof getter !== 'function') throw new Error(`${headerName} has no value getter`);
   return getter({ data: row } as ValueGetterParams<ContractRow>);
+}
+
+function priceValue(row: ContractRow): unknown {
+  return cellValue('Price', row);
 }
 
 /** The rule classes a column puts on a row's cell. */
@@ -46,7 +53,14 @@ function ruleClasses(headerName: string, row: ContractRow): string[] {
 
 describe('the contract table columns', () => {
   it('come in the agreed order, under the glossary words', () => {
-    expect(COLUMNS.map((one) => one.headerName)).toEqual(['Company', 'Ticket', 'Target', 'Price']);
+    expect(COLUMNS.map((one) => one.headerName)).toEqual([
+      'Company',
+      'Ticket',
+      'Target',
+      'Price',
+      'Real value',
+      'Hope value',
+    ]);
   });
 
   it('cannot be sorted, filtered, moved or resized by the player', () => {
@@ -79,6 +93,44 @@ describe('the contract table columns', () => {
     expect(priceValue(dimmed)).not.toBe(priceValue({ ...dimmed, dimmed: false }));
   });
 
+  it('shows the two parts of the price, and nothing at all while the ticket is too cheap to trade', () => {
+    expect(cellValue('Real value', ROW)).toBe(500);
+    expect(cellValue('Hope value', ROW)).toBe(700);
+    expect(cellValue('Real value', { ...ROW, realCents: 0 })).toBe(0);
+    expect(cellValue('Hope value', { ...ROW, hopeCents: 0 })).toBe(0);
+
+    const dimmed = { ...ROW, priceCents: 300, realCents: 0, hopeCents: 300, dimmed: true };
+    expect(cellValue('Real value', dimmed)).toBeNull();
+    expect(cellValue('Hope value', dimmed)).toBeNull();
+  });
+
+  it('brings all three money cells back at the closing bell, even the part that did not move', () => {
+    // A ticket that ends out of the money settles at $0 with $0 of real
+    // value: its real value never moved. Were the cell's value the field
+    // itself, that cell would still be showing a dash after the bell.
+    const dimmed = { ...ROW, priceCents: 300, realCents: 0, hopeCents: 300, dimmed: true };
+    const settled = { ...dimmed, priceCents: 0, hopeCents: 0, dimmed: false };
+
+    expect(cellValue('Real value', dimmed)).not.toBe(cellValue('Real value', settled));
+    expect(cellValue('Hope value', dimmed)).not.toBe(cellValue('Hope value', settled));
+    expect(priceValue(dimmed)).not.toBe(priceValue(settled));
+    expect(cellValue('Real value', settled)).toBe(0);
+  });
+
+  it('draws both parts with the one value cell, handed over by reference', () => {
+    // The same component object on both columns, and the grid is given the
+    // component itself rather than a name to look up: a new one per render
+    // would make the grid rebuild the column.
+    expect(column('Real value').cellRenderer).toBe(ValueCell);
+    expect(column('Hope value').cellRenderer).toBe(ValueCell);
+    expect(column('Real value').valueFormatter).toBeUndefined();
+  });
+
+  it('keeps both value cells right-aligned beside their own class', () => {
+    expect(column('Real value').cellClass).toEqual(['ag-right-aligned-cell', 'sd-value']);
+    expect(column('Hope value').cellClass).toBe(column('Real value').cellClass);
+  });
+
   it('flashes the Price column and no other', () => {
     expect(COLUMNS.filter((one) => one.enableCellChangeFlash === true).map((one) => one.headerName)).toEqual(['Price']);
   });
@@ -98,10 +150,19 @@ describe('the contract table columns', () => {
     expect(column('Price').cellClass).toEqual(['ag-right-aligned-cell', 'sd-price']);
   });
 
-  it('right-aligns the two money columns and nothing else', () => {
+  it('right-aligns every money column and nothing else', () => {
     expect(COLUMNS.filter((one) => one.type === 'rightAligned').map((one) => one.headerName)).toEqual([
       'Target',
       'Price',
+      'Real value',
+      'Hope value',
     ]);
+  });
+
+  it('leaves the two parts out of the flash, so only the price moves the eye', () => {
+    for (const headerName of ['Real value', 'Hope value']) {
+      expect(column(headerName).enableCellChangeFlash).toBeUndefined();
+      expect(column(headerName).cellClassRules).toBeUndefined();
+    }
   });
 });

@@ -173,6 +173,15 @@ main {
 }
 
 /*
+ * The price's two parts are read rather than watched: the page's own weight,
+ * not the price's, and digits of a single width so a column of them does not
+ * shuffle sideways as the numbers change.
+ */
+.sd-value {
+  font-variant-numeric: tabular-nums;
+}
+
+/*
  * The flash. The table does the timing; the page only names the colour, by
  * setting the one variable the table's flash reads, on the cell itself: the
  * UP colour when the price rose, the DOWN colour when it fell. A wash, not a

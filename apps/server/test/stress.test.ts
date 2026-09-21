@@ -10,10 +10,11 @@ import {
   createSession,
   frameFor,
   handleCommand,
+  isNewerFrame,
   parseServerMessage,
   quotesMessageSchema,
 } from '@strike-desk/shared/engine';
-import type { Frame, QuotesMessage, ServerMessage } from '@strike-desk/shared/engine';
+import type { Frame, FrameOrder, QuotesMessage, ServerMessage } from '@strike-desk/shared/engine';
 import type { Harness, TestClient } from './harness';
 import { FIXED_SEEDS, startHarness } from './harness';
 
@@ -507,6 +508,121 @@ describe('what a switched-on session is sent', () => {
     await roundTrip(client);
 
     expect(since()).toEqual([]);
+  });
+});
+
+/**
+ * A batch is not the whole picture, so everything the brief never lets a
+ * client miss has to be carried by a whole frame instead. Each rule here is
+ * one condition in the sampler, pinned over a real socket.
+ */
+describe('what a batch is never allowed to carry on its own', () => {
+  /** Long enough that nothing below sends a whole frame for the cadence alone: every one is a trigger. */
+  const TRIGGERS_ONLY = { limits: { stressFullFrameMs: 1_000_000 } };
+  /** A second of wall clock at pace 7.5 is 37.5 logical steps, so one run reaches day 2 in 40 passes. */
+  const FAST_PASS_MS = 1000;
+
+  /** The session, revision and step of a message of either shape. */
+  const orderOf = (message: Frame | QuotesMessage): FrameOrder => ({ session: message.session, rev: message.rev, step: message.step });
+  const dayOf = (message: Frame | QuotesMessage): number => (isFrame(message) ? message.clock.day : message.day);
+  const ordered = (stream: readonly ServerMessage[]): (Frame | QuotesMessage)[] => stream.flatMap((message) => (isFrame(message) || isBatch(message) ? [message] : []));
+
+  it('brings the whole picture on a new day, before any batch of that day', async () => {
+    const running = await boot(TRIGGERS_ONLY);
+    const { client } = await join(running, { board: STRESS_SIZE });
+    client.send(start('start-0001', 7.5));
+    await client.nextReply();
+    const since = fromHere(client);
+
+    for (let pass = 0; pass < 40; pass += 1) {
+      running.clock.advance(FAST_PASS_MS);
+      running.sample();
+    }
+    await roundTrip(client);
+
+    const stream = ordered(since());
+    const firstOfDayTwo = stream.findIndex((message) => dayOf(message) === 2);
+    expect(firstOfDayTwo).toBeGreaterThanOrEqual(0);
+    expect(stream[firstOfDayTwo]?.t).toBe('frame');
+    // And the batches that follow belong to the new day, not the old one.
+    const after = stream.slice(firstOfDayTwo + 1).filter(isBatch);
+    expect(after.length).toBeGreaterThan(0);
+    expect(new Set(after.map((message) => message.day))).toEqual(new Set([2]));
+  });
+
+  it('brings the whole picture on a phase change, at each bell', async () => {
+    const running = await boot(TRIGGERS_ONLY);
+    const { client } = await play(running, { board: STRESS_SIZE });
+    const startedAtMs = running.clock.now();
+    const since = fromHere(client);
+
+    // At pace 1 a step is 200 ms: the last steps before the opening bell, the
+    // first of the open market, the next one, and the closing bell.
+    for (const step of [295, 305, 306, 805]) {
+      running.clock.advance(startedAtMs + step * SAMPLE_MS - running.clock.now());
+      running.sample();
+    }
+    await roundTrip(client);
+
+    const stream = ordered(since());
+    expect(stream.map((message) => message.t)).toEqual(['frame', 'frame', 'quotes', 'frame']);
+    // The phase is what decides whether a row is dimmed as too cheap to
+    // trade, and a batch carries none, so every bell has to arrive whole.
+    expect(stream.filter(isFrame).map((frame) => frame.clock.phase)).toEqual(['preBell', 'open', 'debrief']);
+  });
+
+  it('brings the whole picture when a command moves the revision', async () => {
+    const running = await boot(TRIGGERS_ONLY);
+    const { client } = await play(running, { board: STRESS_SIZE });
+    running.clock.advance(OPEN_AT_MS);
+    running.sample();
+    // Taken one at a time so nothing is left queued in front of the reply below.
+    await client.nextFrame();
+    running.clock.advance(SAMPLE_MS);
+    running.sample();
+    expect((await client.next()).t).toBe('quotes');
+    const since = fromHere(client);
+
+    // A second start is refused, and a refusal is a stored receipt, which is
+    // what moves the revision. A batch carrying the new revision without the
+    // account behind it would leave the page holding a newer ordering triple
+    // than the picture it shows.
+    client.send(start('start-0002'));
+    const reply = await client.nextReply();
+    expect(reply.receipt).toMatchObject({ outcome: 'rejected', reason: 'alreadyStarted' });
+
+    running.clock.advance(SAMPLE_MS);
+    running.sample();
+    await roundTrip(client);
+
+    // The reply carries its own fresh frame; what is asserted here is the
+    // sampled message that follows it, which is a whole picture and not a batch.
+    const stream = ordered(since());
+    expect(stream.map((message) => message.t)).toEqual(['frame']);
+    expect(reply.frame.rev).toBe(2);
+    expect(stream[0]?.rev).toBe(reply.frame.rev);
+  });
+
+  it('keeps every message newer than the one before it, batches and whole pictures alike', async () => {
+    const running = await boot({ limits: { stressFullFrameMs: SAMPLE_MS * 4 } });
+    const { client } = await play(running, { board: STRESS_SIZE });
+    running.clock.advance(OPEN_AT_MS);
+    const since = fromHere(client);
+
+    for (let pass = 0; pass < 12; pass += 1) {
+      running.sample();
+      running.clock.advance(SAMPLE_MS);
+    }
+    await roundTrip(client);
+
+    const stream = ordered(since());
+    expect(stream.filter(isBatch).length).toBeGreaterThan(0);
+    expect(stream.filter(isFrame).length).toBeGreaterThan(1);
+    let held: FrameOrder | null = null;
+    for (const message of stream) {
+      expect({ t: message.t, step: message.step, newer: isNewerFrame(held, orderOf(message)) }).toEqual({ t: message.t, step: message.step, newer: true });
+      held = orderOf(message);
+    }
   });
 });
 

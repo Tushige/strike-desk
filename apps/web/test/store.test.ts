@@ -876,6 +876,119 @@ describe('the store and a batch of changed quotes', () => {
     expect(counts.sinkCalls[0]?.[0]).toMatchObject({ contractId: 7, priceCents: 400, dimmed: false });
   });
 
+  it('drops a batch that arrived before any frame, and changes nothing', () => {
+    const store = createGameStore();
+    const counts = watchBoard(store);
+
+    store.ingest(batch([[5, 9999, 4000, 5999, 12_345]]));
+
+    expect(store.counters).toEqual({ accepted: 0, dropped: 1 });
+    expect(counts.sinkCalls).toEqual([]);
+    expect(store.currentRows()).toEqual([]);
+    expect(prices(store)).toEqual([null, null, null, null, null, null]);
+  });
+
+  it('drops a batch of another session', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 1 }));
+    const counts = watchBoard(store);
+
+    store.ingest(batch([[5, 9999, 4000, 5999, 12_345]], { session: 's-2' }));
+
+    expect(store.counters).toEqual({ accepted: 1, dropped: 1 });
+    expect(counts.sinkCalls).toEqual([]);
+    expect(store.currentRows().find((row) => row.contractId === 5)?.priceCents).toBe(1005);
+  });
+
+  it('drops a batch older than what it holds, and takes one of the same step', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 10 }));
+    const counts = watchBoard(store);
+
+    store.ingest(batch([[5, 9999, 4000, 5999, 12_345]], { step: 9 }));
+
+    expect(store.counters).toEqual({ accepted: 1, dropped: 1 });
+    expect(counts.sinkCalls).toEqual([]);
+
+    // The same rule frames obey: an equal step is still the whole truth of
+    // that step, so it is taken.
+    store.ingest(batch([[5, 9999, 4000, 5999, 12_345]], { step: 10 }));
+
+    expect(store.counters).toEqual({ accepted: 2, dropped: 1 });
+    expect(counts.sinkCalls).toHaveLength(1);
+  });
+
+  it('drops a batch of the day before, arriving after the frame that opened the new one', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 1 }));
+    // The whole frame the server sends first on a new day.
+    store.ingest(boardFrame({ step: 2, board: testBoard(500), clock: { ...OPEN_CLOCK, day: 2 } }));
+    const counts = watchBoard(store);
+    const before = store.currentRows();
+
+    // A batch and a frame can cross on the wire; this one belongs to a board
+    // that is no longer on screen.
+    store.ingest(batch([[5, 9999, 4000, 5999, 12_345]], { step: 3, day: 1 }));
+
+    expect(store.counters.dropped).toBe(1);
+    expect(counts.sinkCalls).toEqual([]);
+    expect(store.currentRows()).toEqual(before);
+  });
+
+  it('changes nothing when a batch follows a frame that left no board at all', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 1 }));
+    // A lobby frame clears the row set; a batch after it has nothing to be
+    // applied to, and its day could not match a lobby frame's day 0 in any case.
+    store.ingest(testFrame({ step: 2 }));
+    const counts = watchBoard(store);
+
+    store.ingest(batch([[5, 9999, 4000, 5999, 12_345]], { step: 3 }));
+
+    expect(counts.sinkCalls).toEqual([]);
+    expect(store.currentRows()).toEqual([]);
+    expect(store.counters.dropped).toBe(1);
+  });
+
+  it('is put right by the next whole picture after a batch it had to drop', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 10 }));
+    store.ingest(batch([[5, 9999, 4000, 5999, 12_345]], { step: 9 }));
+    expect(store.counters.dropped).toBe(1);
+
+    const settled = quotes({ 5: 7777, 6: 8888 });
+    store.ingest(boardFrame({ step: 11, quotes: settled }));
+
+    // Every row is what that one frame says, and nothing of the dropped batch
+    // survives anywhere.
+    const rebuilt = buildRows({
+      board: testBoard(),
+      companies: testFrame().companies,
+      quotes: settled,
+      quoteReals: reals(),
+      quoteHopes: hopes(),
+      minTicketCents: 500,
+      buyable: true,
+    });
+    expect(store.currentRows().map((row) => ({ ...row, dir: 0 }))).toEqual(rebuilt);
+  });
+
+  it('stops dimming on the frame that closes the market, and a batch after it dims nothing', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 1, quotes: quotes({ 7: 400 }) }));
+    expect(store.currentRows().find((row) => row.contractId === 7)?.dimmed).toBe(true);
+
+    // The whole frame the server sends on a phase change is what tells the
+    // page the market is shut; without it the row would stay dimmed for a
+    // whole cadence, and every batch after it would keep dimming.
+    store.ingest(boardFrame({ step: 2, clock: DEBRIEF_CLOCK, quotes: quotes({ 7: 400 }) }));
+    expect(store.currentRows().find((row) => row.contractId === 7)?.dimmed).toBe(false);
+
+    store.ingest(batch([[7, 300, 0, 300, 12_345]], { step: 3 }));
+
+    expect(store.currentRows().find((row) => row.contractId === 7)).toMatchObject({ priceCents: 300, dimmed: false });
+  });
+
   it('gives the merged rows back as the latest rows, in the default order', () => {
     const store = createGameStore();
     store.ingest(boardFrame({ step: 1 }));

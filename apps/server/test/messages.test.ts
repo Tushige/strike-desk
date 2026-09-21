@@ -116,7 +116,8 @@ describe('a malformed message is refused and the service carries on', () => {
     expect(reply.frame.draft).toMatchObject({ contractId: 5, spendCents: 5_000_000 });
     expect(reply.frame.draft?.costs).toHaveLength(reply.frame.quotes.length);
     expect(reply.frame.account.cashCents).toBe(lobby.account.cashCents);
-    expect(reply.frame.receipts).toEqual([]);
+    expect(reply.frame.receipts).toEqual([{ commandId: 'start-0001', kind: 'start', step: 0, outcome: 'accepted' }]);
+    expect(reply.frame.rev).toBe(1); // Only Start is a command; neither draft creates an outcome.
 
     await stillServing(running);
   });

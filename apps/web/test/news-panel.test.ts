@@ -2,7 +2,7 @@
 
 import { createElement, Profiler } from 'react';
 import { act, cleanup, fireEvent, render, within } from '@testing-library/react';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, expect, it, vi } from 'vitest';
 import type { Frame } from '@strike-desk/shared/protocol';
 import { Strip } from '../src/board/Strip';
 import { newsStore as pageNews, store as gameStore } from '../src/boot';
@@ -10,14 +10,27 @@ import App from '../src/App';
 import { NewsPanel } from '../src/news/NewsPanel';
 import { createNewsStore } from '../src/news/newsStore';
 
+const bootFixture = vi.hoisted((): { receive?: (frame: Frame) => void; close?: () => void } => ({}));
+
 vi.mock('../src/boot', async () => {
   const { createGameStore } = await import('../src/store/gameStore');
   const { createNewsStore } = await import('../src/news/newsStore');
   const { createComparisonStore } = await import('../src/comparison/comparisonStore');
-  return { store: createGameStore(), newsStore: createNewsStore(), comparisonStore: createComparisonStore(() => true) };
+  const { createGameLoop } = await import('../src/gameplay/gameLoop');
+  const { createWsFeed } = await import('../src/feed/wsFeed');
+  const { createFakeSocket } = await import('./fakeSocket');
+  const socket = createFakeSocket();
+  const feed = createWsFeed({ url: 'ws://example.test/ws', createSocket: () => socket });
+  const gameLoop = createGameLoop(feed, () => 'render-control');
+  feed.connect();
+  socket.fireOpen();
+  bootFixture.receive = (frame) => { socket.fireMessage(JSON.stringify(frame)); };
+  bootFixture.close = () => { gameLoop.dispose(); feed.close(); };
+  return { store: createGameStore(), newsStore: createNewsStore(), comparisonStore: createComparisonStore(() => true), gameLoop };
 });
 
 afterEach(cleanup);
+afterAll(() => { bootFixture.close?.(); });
 
 it('keeps the neutral reveal in its original live region without redrawing on prices', () => {
   const store = createNewsStore();
@@ -187,6 +200,7 @@ it('does not redraw the news panel or the application root while the price slice
   const current = { ...frame(), session: 'render-session' };
   gameStore.ingest(current);
   pageNews.ingest(current);
+  bootFixture.receive!(current);
   const root = vi.fn(App);
   const panelRendered = vi.fn();
   const view = render(createElement(root));
@@ -198,6 +212,7 @@ it('does not redraw the news panel or the application root while the price slice
     const moving: Frame = { ...current, step: 310, prices: [10100, 20000, 30000, 40000, 50000, 60000], clock: { ...current.clock, priceIndex: 10, stepsLeft: 490 } };
     gameStore.ingest(moving);
     pageNews.ingest(moving);
+    bootFixture.receive!(moving);
   });
   expect(view.container.querySelector('.strip-price')?.textContent).toBe('$101'); // 10,100 cents / 100.
   expect(pageNews.getSnapshot()).toBe(snapshot);

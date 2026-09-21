@@ -159,6 +159,9 @@ const webStorePath = path.join(repoRoot, 'apps/web/src/store/gameStore.ts');
 const webAutoStartPath = path.join(repoRoot, 'apps/web/src/autoStart.ts');
 const webHooksPath = path.join(repoRoot, 'apps/web/src/store/hooks.ts');
 const webTestPath = path.join(repoRoot, 'apps/web/test/feed.test.ts');
+const webBlockPath = path.join(repoRoot, 'apps/web/src/modules/connection/ports.ts');
+const webBlockFakePath = path.join(repoRoot, 'apps/web/src/modules/connection/fake.ts');
+const webLabPath = path.join(repoRoot, 'apps/web/src/lab/modules/connection.lab.ts');
 
 // Hardcoded on purpose, like the Math list above: the fence is checked
 // against what the web app is meant to reach, not against the config's own
@@ -285,6 +288,37 @@ describe('web app lint fences', () => {
 
       for (const filePath of [webStorePath, webFeedPath, webAutoStartPath]) {
         expect(await linesReported([...banned, ...allowed], filePath, 'no-restricted-imports')).toEqual(everyLine(banned));
+      }
+    },
+    LINT_TIMEOUT_MS * 2,
+  );
+
+  it(
+    'web fences: a block, its stand-in source and the lab may import the shared Feed interface, but not the page\'s own feed',
+    async () => {
+      // The running-game fence names '**/feed' for the page's socket feed at
+      // 'apps/web/src/feed/'. That pattern also reads the package path
+      // '@strike-desk/shared/feed' — the Feed interface every block is built
+      // against — so the two are pinned apart here.
+      const allowed = [
+        "import type { Feed } from '@strike-desk/shared/feed';",
+        "import type { Frame } from '@strike-desk/shared/protocol';",
+      ];
+      const refused = [
+        "import '../../feed/wsFeed';",
+        "import '../../feed';",
+        "import '../../feed/index';",
+        "import '../../boot';",
+        "import '../../store/hooks';",
+        "import '../../autoStart';",
+        "import '../../App';",
+      ];
+
+      // Every path is two steps up from each of these files, so one list of
+      // lines reads the same from all three.
+      for (const filePath of [webBlockPath, webBlockFakePath, webLabPath]) {
+        expect(await linesReported(allowed, filePath, 'no-restricted-imports')).toEqual([]);
+        expect(await linesReported(refused, filePath, 'no-restricted-imports')).toEqual(everyLine(refused));
       }
     },
     LINT_TIMEOUT_MS * 2,

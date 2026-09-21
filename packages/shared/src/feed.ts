@@ -14,10 +14,16 @@ import type { ClientMessage, Hello, ServerMessage } from './protocol';
  *
  * What a caller may rely on:
  *
- * 1. Events are delivered in the order they arrived.
+ * 1. Events are delivered in the order they arrived. Delivery is
+ *    synchronous: a listener must not call `connect`, `close` or
+ *    `simulateDrop` from inside an event, or the events it causes are
+ *    delivered inside the one being delivered.
  * 2. A message that fails the schema never reaches a listener.
  * 3. A listener that throws never costs another listener its event.
  * 4. `send` never throws.
+ * 5. `connect`, `close`, `simulateDrop` and event delivery rethrow the first
+ *    listener error after every listener has run: call them where a throw is
+ *    handled.
  */
 
 export type FeedStatus = 'connecting' | 'live' | 'reconnecting' | 'closed';
@@ -51,11 +57,13 @@ export interface Feed {
    */
   send(message: Outbound): boolean;
   /**
-   * Cut the line exactly as the network would: the feed behaves as if its
-   * socket had closed by itself (status `reconnecting`, a retry after the
-   * usual wait, the session remembered). Does nothing unless the feed is
-   * live. It exists for the hidden developer control and for tests, and it
-   * sends nothing to the server.
+   * Cut the line the way the page experiences a cut: the feed behaves as if
+   * its socket had closed by itself (status `reconnecting`, a retry after the
+   * usual wait, the session remembered). It closes its own socket cleanly, so
+   * the server frees the old seat at once and this does not reproduce a dead
+   * socket still holding a seat. Does nothing unless the feed is live. It
+   * exists for the hidden developer control and for tests, and it sends the
+   * server no message of its own.
    */
   simulateDrop(): void;
   /** Listen to status changes and server messages. Returns the unsubscribe function. */

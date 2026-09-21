@@ -2,6 +2,7 @@ import { memo } from 'react';
 import { formatCents } from '@strike-desk/shared/money';
 import type { CompanyView } from '@strike-desk/shared/protocol';
 import { useCompanies, usePrice } from '../store/hooks';
+import { CompanyMark } from '../modules/desk/index';
 
 /**
  * The six companies and their share prices, one card each, in one row above
@@ -17,8 +18,12 @@ const CompanyCard = memo(function CompanyCard({ companyId, company }: { companyI
   const price = usePrice(companyId);
   return (
     <li className="strip-card">
-      <span className="strip-name">{company.name}</span>
-      <span className="strip-ticker">{company.ticker}</span>
+      <span className="strip-name">
+        <span className="flex min-w-0 flex-col items-start gap-1">
+          <span className="w-full truncate">{company.name}</span>
+          <CompanyMark companyId={companyId} ticker={company.ticker} size="sm" />
+        </span>
+      </span>
       <span className="strip-price">{price === null ? NO_PRICE : formatCents(price)}</span>
     </li>
   );
@@ -27,7 +32,7 @@ const CompanyCard = memo(function CompanyCard({ companyId, company }: { companyI
 export const Strip = memo(function Strip() {
   const companies = useCompanies();
   return (
-    <ul className="strip">
+    <ul className="strip" role="list">
       {companies.map((company, companyId) => (
         <CompanyCard key={companyId} companyId={companyId} company={company} />
       ))}

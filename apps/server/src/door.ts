@@ -1,5 +1,6 @@
 import type { Hello, ServerMessage, StartCommand } from '@strike-desk/shared/engine';
-import { FIRST_PLAYER_ID, PROTOCOL_VERSION, frameFor, handleCommand, parseClientMessage } from '@strike-desk/shared/engine';
+import { FIRST_PLAYER_ID, PROTOCOL_VERSION, handleCommand, parseClientMessage } from '@strike-desk/shared/engine';
+import { liveNewsFrameFor } from './liveNewsFrame';
 import { targetsForBoardSize } from './boardSizes';
 import type { TokenBucket, WindowCounter } from './limits';
 import type { FrameSocket } from './sampler';
@@ -111,7 +112,7 @@ function hello(options: DoorOptions, connection: Connection, message: Hello): vo
   connection.sessionId = entry.session.id;
   connection.playerId = playerId;
 
-  const { session, frame } = frameFor(entry.session, playerId, options.now(), { history: false, sections: 'live' });
+  const { session, frame } = liveNewsFrameFor(entry.session, playerId, options.now());
   options.registry.replace(session.id, session);
   answer(connection, frame);
 }
@@ -126,7 +127,7 @@ function start(options: DoorOptions, connection: Connection, command: StartComma
   }
   const nowMs = options.now();
   const handled = handleCommand(entry.session, playerId, command, nowMs);
-  const { session, frame } = frameFor(handled.session, playerId, nowMs, { history: false, sections: 'live' });
+  const { session, frame } = liveNewsFrameFor(handled.session, playerId, nowMs);
   options.registry.replace(session.id, session);
   answer(connection, { t: 'reply', receipt: handled.receipt, frame });
 }

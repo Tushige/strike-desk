@@ -3,6 +3,7 @@ import { boardFromSearch } from './boardSize';
 import { createWsFeed } from './feed/wsFeed';
 import { createGameStore } from './store/gameStore';
 import { autoStart } from './autoStart';
+import { createNewsStore } from './news/newsStore';
 
 /**
  * Run once per page load, at module scope rather than inside an effect, so
@@ -20,6 +21,7 @@ function socketUrl(): string {
 }
 
 export const store = createGameStore();
+export const newsStore = createNewsStore();
 
 const feed = createWsFeed({
   url: socketUrl(),
@@ -30,7 +32,10 @@ const feed = createWsFeed({
 });
 
 feed.subscribe((event) => {
-  if (event.type === 'message') store.ingest(event.message);
+  if (event.type === 'message') {
+    store.ingest(event.message);
+    newsStore.ingest(event.message);
+  }
   else store.setStatus(event.status);
 });
 

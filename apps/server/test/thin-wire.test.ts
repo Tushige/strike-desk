@@ -30,7 +30,7 @@ import { FIXED_SEEDS, startHarness } from './harness';
  * side of both bells, across a day boundary, and past the last step of the
  * last day. Two things are asserted about every frame collected: that the
  * only sections filled in are the ones this service owns (the clock, the
- * share prices, the names, the board and the ticket prices; never news,
+ * share prices, the names, the board, ticket prices and public news; never
  * positions, receipts, days, history, the final result or a quote of a
  * ticket being built), and that the market's identity is nowhere in the
  * text of it.
@@ -111,7 +111,7 @@ function allowList(sampled: Sampled): Record<string, unknown> {
       wholeCentsFromZero(frame.quotes) && wholeCentsFromZero(frame.quoteReals) && wholeCentsFromZero(frame.quoteHopes) && wholeCentsFromZero(frame.quoteBreakEvens),
     quotesThatAreNotRealPlusHope: frame.quotes.flatMap((price, id) => ((frame.quoteReals[id] ?? Number.NaN) + (frame.quoteHopes[id] ?? Number.NaN) === price ? [] : [id])),
     companyKeys: frame.companies.map((company) => Object.keys(company).sort().join(',')),
-    news: frame.news,
+    newsCount: frame.news.length,
     positions: frame.positions,
     receipts: frame.receipts,
     days: frame.days,
@@ -138,7 +138,7 @@ function thinAt(where: string): Record<string, unknown> {
     everyQuoteIsWholeCentsFromZero: true,
     quotesThatAreNotRealPlusHope: [],
     companyKeys: Array.from({ length: COMPANIES }, () => 'name,ticker'),
-    news: [],
+    newsCount: started ? 3 : 0,
     positions: [],
     receipts: [],
     days: [],
@@ -157,13 +157,38 @@ describe('every frame this service emits', () => {
     expect(collected.map(({ where }) => where)).toEqual([LOBBY, ...MOMENTS.map(([where]) => where)]);
   });
 
-  it('fills in nothing but the clock, six whole-cent prices, the six names, the board, the ticket prices with their two parts, and the starting account', () => {
+  it('fills only the live board, clock, public news and starting account', () => {
     for (const sampled of collected) {
       expect(allowList(sampled)).toEqual(thinAt(sampled.where));
       expect({ where: sampled.where, account: sampled.frame.account }).toEqual({
         where: sampled.where,
-        account: { cashCents: STARTING_CASH_CENTS, worthCents: STARTING_CASH_CENTS, capCents: STARTING_CASH_CENTS / 2, canBuy: false },
+        // $1,000,000 × 100 cents; the cap is half, $500,000 × 100.
+        account: { cashCents: STARTING_CASH_CENTS, worthCents: STARTING_CASH_CENTS, capCents: 50_000_000, canBuy: false },
       });
+    }
+  });
+
+  it('carries three current headlines with only public fields even after the bell and at final', () => {
+    for (const { frame } of collected) {
+      if (frame.clock.phase === 'lobby') {
+        expect(frame.news).toEqual([]);
+        continue;
+      }
+      expect(frame.news).toHaveLength(3);
+      expect(frame.news.map((news) => news.trust).sort()).toEqual([1, 2, 3]);
+      expect(new Set(frame.news.map((news) => news.companyId)).size).toBe(3);
+      for (const news of frame.news) {
+        const keys = ['id', 'day', 'companyId', 'trust', 'source', 'title', 'body', 'direction', 'revealed'];
+        if (news.revealed) {
+          keys.push('revealIndex');
+          expect(news.revealIndex).toBeLessThanOrEqual(frame.clock.priceIndex);
+        }
+        expect(Object.keys(news).sort()).toEqual(keys.sort());
+        expect(news.day).toBe(frame.clock.day);
+        expect(news.source.length).toBeGreaterThan(0);
+        expect(news.title.length).toBeGreaterThan(0);
+        expect(news.body.length).toBeGreaterThan(0);
+      }
     }
   });
 

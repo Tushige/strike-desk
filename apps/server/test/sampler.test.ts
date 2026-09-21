@@ -58,13 +58,21 @@ async function sampleFrame(from: Harness, client: TestClient): Promise<Frame> {
 /**
  * Thin: the lobby has no board and no ticket price; a started game has the
  * whole board and 252 ticket prices, each with its real value, its hope value
- * and its break-even. At every moment everything else is empty.
+ * and its break-even, plus three public headlines. Trade sections stay empty.
  */
 function expectThin(frame: Frame): void {
-  expect(frame).toMatchObject({ news: [], positions: [], receipts: [], days: [], stress: false });
+  expect(frame).toMatchObject({ positions: [], receipts: [], days: [], stress: false });
   if (frame.clock.phase === 'lobby') {
-    expect(frame).toMatchObject({ board: null, quotes: [], quoteReals: [], quoteHopes: [], quoteBreakEvens: [] });
+    expect(frame).toMatchObject({ news: [], board: null, quotes: [], quoteReals: [], quoteHopes: [], quoteBreakEvens: [] });
   } else {
+    expect(frame.news).toHaveLength(3);
+    expect(frame.news.map((news) => news.trust).sort()).toEqual([1, 2, 3]);
+    for (const news of frame.news) {
+      expect(news.day).toBe(frame.clock.day);
+      expect(news).not.toHaveProperty('wasTrue');
+      if (news.revealed) expect(news.revealIndex).toBeLessThanOrEqual(frame.clock.priceIndex);
+      else expect(news).not.toHaveProperty('revealIndex');
+    }
     expect(frame.board?.targetsPerCompany).toBe(21);
     expect(frame.board?.companies.map((company) => company.targets.length)).toEqual([21, 21, 21, 21, 21, 21]);
     expect([frame.quotes.length, frame.quoteReals.length, frame.quoteHopes.length, frame.quoteBreakEvens.length]).toEqual([252, 252, 252, 252]);

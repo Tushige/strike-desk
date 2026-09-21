@@ -1,4 +1,10 @@
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
+
+// App imports build metadata even when tests run before any build command.
+// Prepare both generated files once, before workers load application modules.
+execFileSync(process.execPath, [fileURLToPath(new URL('./scripts/write-version.mjs', import.meta.url))], { stdio: 'inherit' });
 
 export default defineConfig({
   test: {

@@ -1,7 +1,7 @@
 import { useCallback, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import { formatCents } from '@strike-desk/shared/money';
-import { rejectReasonSchema } from '@strike-desk/shared/protocol';
+import { draftMessageSchema, rejectReasonSchema } from '@strike-desk/shared/protocol';
 import type { RejectReason } from '@strike-desk/shared/protocol';
 import { OrderTicket } from '../../modules/order-ticket/index';
 import type { LineState, OrderTicketProps } from '../../modules/order-ticket/index';
@@ -72,6 +72,27 @@ function answerOf(desk: HeldTicketDesk, answered: number, outcome: 'accepted' | 
     desk.controls.answer({ outcome, receipt: { commandId: waiting.commandId, kind, step: 400, outcome, reason } });
   }
   return answered + 1;
+}
+
+function PreviewDemo(): ReactElement {
+  const [desk] = useState(() => {
+    const source = createHeldTicketDesk({ schedule: browserSchedule });
+    source.controls.select(FAKE_CONTRACT_A);
+    return source;
+  });
+  const props = useSyncExternalStore(desk.subscribe, desk.props, desk.props);
+  const [text, setText] = useState('50000');
+  const [whole = '', fraction = ''] = text.split('.');
+  const cents = /^(?:\d+(?:\.\d{0,2})?|\.\d{1,2})$/.test(text) ? Number(`${whole}${fraction.padEnd(2, '0')}`) : null;
+  const parsed = draftMessageSchema.safeParse({ t: 'draft', contractId: props.contract?.contractId ?? null, spendCents: cents });
+  const spendCents = parsed.success ? parsed.data.spendCents : null;
+  return <OrderTicket mode="preview" day={props.day} contract={props.contract} choices={props.choices}
+    quote={props.quote} account={props.account} line={props.line} onDraftChange={props.onDraftChange}
+    spendEditor={{ value: text, spendCents, error: text === '' || spendCents !== null ? null : 'Enter an amount in dollars and cents.', onChange: setText }}
+    onPick={(id) => {
+      const choice = props.choices.find((one) => one.contractId === id);
+      if (choice !== undefined) desk.controls.select({ ...FAKE_CONTRACT_A, ...choice });
+    }} />;
 }
 
 export default function OrderTicketDemo(): ReactElement {
@@ -145,8 +166,9 @@ export default function OrderTicketDemo(): ReactElement {
 
   return (
     <div id="lab-demo-order-ticket" className="mt-4 grid items-start gap-5 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
-      <div className="rounded-lg bg-background p-4">
+      <div className="grid gap-4 rounded-lg bg-background p-4">
         <OrderTicket {...shown} />
+        <PreviewDemo />
       </div>
       <div className="grid gap-4">
         <Group title="The desk selects" note="Only these two contracts have scripted quotes. Any other pick on the form is selected too, and the form then waits for a price that never comes.">

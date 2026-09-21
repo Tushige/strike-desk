@@ -198,6 +198,7 @@ export interface TicketDraft {
 
 /** Everything the order ticket is given. Every callback is a plain function and may be passed on by itself. */
 export interface OrderTicketProps {
+  mode?: 'trade';
   /** Today, 1 to 5. Goes into the buy command. */
   day: number;
   /** Null when nothing is selected. */
@@ -231,4 +232,16 @@ export interface OrderTicketProps {
   submit: (command: BuyCommand | CashOutCommand) => Promise<SubmitOutcome>;
   /** A fresh command id. Called once, at the press; a retry reuses the id. */
   newCommandId: () => string;
+}
+
+/** A controlled comparison form. It can request prices, but has no command path. */
+export interface TicketPreviewProps extends Pick<OrderTicketProps, 'day' | 'contract' | 'choices' | 'onPick' | 'quote' | 'account' | 'line' | 'onDraftChange'> {
+  mode: 'preview';
+  spendEditor: {
+    /** Raw editing text, preserved even while incomplete or invalid. */
+    value: string;
+    spendCents: number | null;
+    error: string | null;
+    onChange: (text: string) => void;
+  };
 }

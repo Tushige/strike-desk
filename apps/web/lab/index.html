@@ -6,6 +6,8 @@
     <meta name="robots" content="noindex, nofollow" />
     <meta name="color-scheme" content="dark" />
     <title>Strike Desk module lab</title>
+    <!-- The cascade order, fixed in the page itself as the game's page does: a table on this page writes its styles into `ag-grid`, after the reset and before the utilities. -->
+    <style>@layer theme, base, ag-grid, components, utilities;</style>
   </head>
   <body>
     <div id="lab-root"></div>

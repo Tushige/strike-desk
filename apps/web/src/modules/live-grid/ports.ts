@@ -90,6 +90,7 @@ export interface RowSource<Row extends GridRow> {
  * long tasks, and the delay since a message was received.
  */
 export interface GridReadout {
+  /** Rows in the current set, whether or not the filter shows them. */
   readonly rowCount: number;
   /** Rows handed to the grid in the last whole second. */
   readonly rowsPerSecond: number;

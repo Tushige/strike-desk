@@ -2,8 +2,13 @@ import {
   CellStyleModule,
   ClientSideRowModelApiModule,
   ClientSideRowModelModule,
+  ColumnApiModule,
+  ExternalFilterModule,
   HighlightChangesModule,
   ModuleRegistry,
+  RenderApiModule,
+  RowApiModule,
+  RowSelectionModule,
   RowStyleModule,
   enableDevValidations,
   themeQuartz,
@@ -19,11 +24,16 @@ import {
  * a console message that names the option and the module.
  */
 ModuleRegistry.registerModules([
-  ClientSideRowModelModule, // rows held in the browser
-  ClientSideRowModelApiModule, // applyTransactionAsync
+  ClientSideRowModelModule, // rows held in the browser, and sorting them
+  ClientSideRowModelApiModule, // applyTransactionAsync, refreshClientSideRowModel
   HighlightChangesModule, // the flash on a changed cell
   CellStyleModule, // cellClass and cellClassRules
   RowStyleModule, // rowClassRules
+  ExternalFilterModule, // the caller's filter
+  RowSelectionModule, // the selected row, and its selected state for assistive technology
+  RowApiModule, // getRowNode, redrawRows
+  ColumnApiModule, // getColumnState: is any column sorted
+  RenderApiModule, // setGridAriaProperty: the table's accessible name
 ]);
 
 if (import.meta.env.DEV) enableDevValidations();

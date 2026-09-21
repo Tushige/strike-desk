@@ -95,7 +95,51 @@ it.each([
     expect(view.queryByRole('button', { name: /Buy ticket|Cash out/ })).toBeNull();
     expect(sockets).toBe(1);
     expect(outbound.every((message) => message.t === 'start' || message.t === 'openBell' || message.t === 'draft')).toBe(true);
+    for (const day of [1, 2, 3, 4, 5]) {
+      // Let the server's input budget refill between deliberate day controls.
+      // Even at turbo this stays within the pre-bell/open phase.
+      await sample(2000);
+      if (day !== 1) {
+        fireEvent.click(view.getByRole('button', { name: 'Ring the opening bell' }));
+        await view.findByRole('heading', { name: `Day ${String(day)}: the market is open` });
+      }
+      fireEvent.click(view.getByRole('button', { name: 'Skip to the closing bell' }));
+      await view.findByRole('heading', { name: `Day ${String(day)}: closing bell` });
+      expect(view.getByText('A quiet day.')).toBeTruthy();
+      expect(view.getByText('Change today').nextElementSibling?.textContent).toBe('$0');
+      expect(view.getByText('Ended the day with').nextElementSibling?.textContent).toBe('$1,000,000');
+      expect(view.queryByText('Market number')).toBeNull();
+      fireEvent.click(view.getByRole('button', { name: day === 5 ? 'See your final result' : `Go to day ${String(day + 1)}` }));
+      await view.findByRole('heading', { name: day === 5 ? 'That was the final bell!' : `Day ${String(day + 1)}: before the bell` });
+    }
+    expect(view.getByText('You finished with').nextElementSibling?.textContent).toBe('$1,000,000');
+    expect(view.getByText('Since the start').nextElementSibling?.textContent).toBe('$0');
+    expect(view.getByText('Market number').nextElementSibling?.textContent).toMatch(/^[2-9A-HJ-NP-Z]{3}-[2-9A-HJ-NP-Z]{3}-[2-9A-HJ-NP-Z]{4}$/);
+    expect(view.getByRole('table', { name: 'Day by day' }).querySelectorAll('tbody tr')).toHaveLength(5);
+    const oldSession = reply.frame.session;
+    const reload = vi.fn();
+    const realWindow = window;
+    vi.stubGlobal('window', new Proxy(realWindow, { get(target, key): unknown {
+      return key === 'location' ? { ...target.location, reload } : Reflect.get(target, key);
+    } }));
+    fireEvent.click(view.getByRole('button', { name: 'Play again' }));
+    expect(reload).toHaveBeenCalledOnce();
+    vi.unstubAllGlobals();
+    view.unmount(); feed?.close();
+    // Recreate the page after the requested navigation. Feed's final frame
+    // already forgot the old session; unrelated tab storage stays untouched.
+    window.sessionStorage.setItem('unrelated', 'keep');
+    vi.resetModules();
+    const { default: FreshApp } = await import('../src/App');
+    const freshView = render(createElement(FreshApp));
+    await freshView.findByRole('button', { name: label });
+    const fresh = messages.at(-1);
+    if (fresh?.t !== 'frame') throw new Error('missing fresh lobby');
+    expect(fresh.clock.phase).toBe('lobby');
+    expect(fresh.session).not.toBe(oldSession);
+    expect(window.sessionStorage.getItem('unrelated')).toBe('keep');
   } finally {
+    vi.unstubAllGlobals();
     cleanup(); feed?.close(); child.stdin.end('close\n');
     await new Promise<void>((resolve) => {
       const timer = setTimeout(() => { child.kill(); resolve(); }, 5000);

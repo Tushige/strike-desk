@@ -33,8 +33,8 @@ import { PLAYER, T0, closeUp, frameAt, msAtStep, newId, sessionAt, tradableTicke
  * game. The money typed in is the starting cash and what a case spends; every
  * other amount is read off the same reply it is compared with.
  *
- * Left open on purpose, as in the contract suite: whether a refused command
- * moves the revision. Nothing here says either way.
+ * Newly stored refusals move revision and enter the input log once, just
+ * like accepted commands; duplicate IDs preserve their original receipts.
  */
 
 const STARTING_CASH = 100_000_000;
@@ -216,6 +216,35 @@ describe('who the command is for', () => {
 });
 
 describe('the input log', () => {
+  it('stores each new refused clock input once and replays its authoritative arrival step', () => {
+    const { session, nowMs } = sessionAt('beforeBell');
+    const command: Command = { t: 'nextDay', commandId: 'early-next-day', day: 1 };
+    const first = send(session, command, nowMs);
+    expect(first.reply.receipt).toEqual({ commandId: command.commandId, kind: 'nextDay', step: 10, outcome: 'rejected', reason: 'wrongPhase' });
+    expect(first.reply.frame.rev).toBe(2); // One Start outcome, one refused Next day.
+    // At step 950 day two has begun. A retry keeps the first receipt while
+    // the returned session catches up through day one's closing bell.
+    const again = send(first.session, command, msAtStep(950));
+    expect(again.repeat).toBe(true);
+    expect(again.reply.receipt).toEqual(first.reply.receipt);
+    expect(again.session.game.step).toBe(950);
+    expect(again.reply.frame.rev).toBe(2);
+    expect(again.reply.frame.days).toEqual([{ day: 1, startCents: 100000000, endCents: 100000000, changeCents: 0 }]);
+    expect(playerOf(again.session.game, PLAYER).log).toEqual(playerOf(first.session.game, PLAYER).log);
+    const wrongDay = send(again.session, { ...command, commandId: 'late-next-day' }, msAtStep(950));
+    expect(wrongDay.reply.receipt).toMatchObject({ step: 950, reason: 'wrongDay' });
+    expect(wrongDay.reply.frame.rev).toBe(3);
+    const wrongPhase = send(wrongDay.session, { ...command, commandId: 'new-next-day', day: 2 }, msAtStep(950));
+    expect(wrongPhase.reply.receipt).toMatchObject({ step: 950, reason: 'wrongPhase' });
+    expect(wrongPhase.reply.frame.rev).toBe(4);
+    const log = playerOf(wrongPhase.session.game, PLAYER).log;
+    expect(log.map((input) => input.step)).toEqual([0, 10, 950, 950]);
+    const fresh = sessionAt('lobby').session;
+    let replayed = fresh.game;
+    for (const input of log) replayed = applyCommand(fresh.market, replayed, PLAYER, input.command, input.step).game;
+    expect(replayed).toEqual(wrongPhase.session.game);
+  });
+
   it('holds every command that was not a repeat, with its step, and plays again to the same accounts', () => {
     const lobby = sessionAt('lobby');
     let session = lobby.session;

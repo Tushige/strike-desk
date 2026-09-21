@@ -27,17 +27,17 @@ import type { Command, DraftRequest, Reply, Session } from '@strike-desk/shared/
  *   when that is within the tolerance of the price the player saw (2% or $1,
  *   whichever is larger), and is refused `priceMoved` otherwise. The price
  *   claimed only gates acceptance; it is never the price paid.
- * - Every accepted command is in the player's log, with the step it arrived
- *   at, and moves the player's revision. A repeat does neither.
+ * - Every schema-valid, non-duplicate command admitted here, including a
+ *   refusal, is logged at its authoritative arrival step and advances the
+ *   player's revision once. A duplicate returns the original receipt without
+ *   another input or command revision. Independent settlement may still
+ *   advance the session when its frame is projected.
  * - The player is the connection's. An id the session does not hold is a
  *   fault in the wiring, not something a player did: it throws, and is the one
  *   case with no receipt.
  *
  * What this interface deliberately does not say:
  *
- * - Whether a refused command moves the revision, and whether a refused
- *   command is logged. Both are open product decisions; either answer fits
- *   behind this interface, and its contract asserts neither.
  * - How many receipts or log entries are kept.
  * - Rate limits, payload bounds and parsing. Those belong to the door, which
  *   hands over a command only once the shared schema has accepted it.

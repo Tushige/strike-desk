@@ -33,6 +33,10 @@ describe('client messages', () => {
     [{ t: 'openBell', commandId: ID, day: 1 }],
     [{ t: 'skipToBell', commandId: ID, day: 3 }],
     [{ t: 'nextDay', commandId: ID, day: 5 }],
+    [{ t: 'draft', contractId: 5, spendCents: 5_000_000 }],
+    [{ t: 'draft', contractId: 5, spendCents: null }],
+    [{ t: 'draft', contractId: null, spendCents: 5_000_000 }],
+    [{ t: 'draft', contractId: null, spendCents: null }],
   ])('accepts %j', (message) => {
     expect(clientMessageSchema.parse(message)).toEqual(message);
     expect(parseClientMessage(message)).toEqual(message);
@@ -61,6 +65,12 @@ describe('client messages', () => {
     ['day 6', { t: 'nextDay', commandId: ID, day: 6 }],
     ['not-a-number cents', { ...buy, spendCents: NaN }],
     ['infinite cents', { ...buy, spendCents: Infinity }],
+    ['a draft with a command id', { t: 'draft', commandId: ID, contractId: 5, spendCents: 5_000_000 }],
+    ['a draft with a negative spend', { t: 'draft', contractId: 5, spendCents: -100 }],
+    ['a draft with a spend of nothing', { t: 'draft', contractId: 5, spendCents: 0 }],
+    ['a draft with a negative contract', { t: 'draft', contractId: -1, spendCents: 5_000_000 }],
+    ['a draft with an unknown key', { t: 'draft', contractId: 5, spendCents: 5_000_000, day: 1 }],
+    ['a draft with a key missing', { t: 'draft', contractId: 5 }],
     ['text', 'buy'],
     ['nothing', null],
   ])('refuses %s', (_name, message) => {
@@ -74,6 +84,11 @@ describe('client messages', () => {
     expect(parseClientMessage({ t: 'hello', v: 2, seed: 77 })).toBeNull();
     expect(parseClientMessage({ ...buy, seed: 77 })).toBeNull();
     expect(parseClientMessage({ t: 'start', commandId: ID, pace: 1, seed: 77 })).toBeNull();
+  });
+
+  it('does not take a draft as a command: it can never reach the rules, get a receipt or be logged', () => {
+    expect(commandSchema.safeParse({ t: 'draft', contractId: 5, spendCents: 5_000_000 }).success).toBe(false);
+    expect(commandSchema.safeParse({ t: 'draft', contractId: null, spendCents: null }).success).toBe(false);
   });
 
   it('does not take hello as a command', () => {

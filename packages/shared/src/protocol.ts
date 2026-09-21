@@ -93,6 +93,21 @@ export const clockCommandSchema = z.strictObject({
   day,
 });
 
+/**
+ * What the ticket form is showing, so that the server can quote it: a ticket
+ * (by contract id), a spend, both, or neither. It replaces whatever this
+ * connection asked before; both null clears it.
+ *
+ * It is not a command. It has no command id and gets no receipt, is never
+ * logged and changes nothing in the game, so it is outside the retry rules
+ * altogether. The answer is the `draft` section of the frames that follow.
+ */
+export const draftMessageSchema = z.strictObject({
+  t: z.literal('draft'),
+  contractId: count.nullable(),
+  spendCents: cents.positive().nullable(),
+});
+
 export const commandSchema = z.discriminatedUnion('t', [
   startCommandSchema,
   buyCommandSchema,
@@ -106,6 +121,7 @@ export const clientMessageSchema = z.discriminatedUnion('t', [
   buyCommandSchema,
   cashOutCommandSchema,
   clockCommandSchema,
+  draftMessageSchema,
 ]);
 
 export type Hello = z.infer<typeof helloSchema>;
@@ -116,6 +132,9 @@ export type ClockCommand = z.infer<typeof clockCommandSchema>;
 export type Command = z.infer<typeof commandSchema>;
 export type CommandKind = Command['t'];
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
+export type DraftMessage = z.infer<typeof draftMessageSchema>;
+/** A draft without its tag: what a connection last asked to have quoted. */
+export type DraftRequest = Omit<DraftMessage, 't'>;
 
 // ---------------------------------------------------------------- server -> client
 
@@ -310,6 +329,55 @@ export const finalViewSchema = z.object({
 });
 export type FinalView = z.infer<typeof finalViewSchema>;
 
+/** One stop of the what-if: if the share price finishes exactly at `atCents` at the bell, the ticket makes `profitCents` (negative for a loss). */
+export const whatIfPointSchema = z.object({
+  atCents: cents,
+  profitCents: cents,
+});
+export type WhatIfPoint = z.infer<typeof whatIfPointSchema>;
+
+/** The ticket being built, quoted at this frame's prices. */
+export const draftTicketSchema = z.object({
+  contractId: count,
+  /** The same number as `quotes[contractId]` in this frame, and the number a buy sends back as `seenPriceCents`. */
+  priceCents: cents,
+  /** Whole tickets the spend buys. 0 with no spend, or with a spend too small for one. */
+  quantity: count,
+  /** Price times quantity: what the buy would cost, which is also the most it can lose. */
+  costCents: cents,
+  /** The highest price at which a buy that saw `priceCents` still fills. */
+  limitPriceCents: cents,
+  /** The same number as `quoteBreakEvens[contractId]` in this frame. */
+  breakEvenCents: cents,
+  /**
+   * One stop per target of this company's board plus one at the break-even,
+   * ascending, no stop twice. The page looks a stop up; it multiplies
+   * nothing. Empty while `quantity` is 0.
+   */
+  whatIf: z.array(whatIfPointSchema),
+});
+export type DraftTicket = z.infer<typeof draftTicketSchema>;
+
+/** The server's answer to a `draft` message, priced from the frame that carries it. */
+export const draftViewSchema = z.object({
+  /**
+   * The request this section answers, echoed. The page shows a number from
+   * this section only while both equal what its form holds now.
+   */
+  contractId: count.nullable(),
+  spendCents: cents.nullable(),
+  /**
+   * Present when a spend was named: what that spend would cost on each ticket
+   * at this frame's prices (price times whole tickets; 0 where the price is
+   * 0), by contract id, same length as `quotes`. The table's "most you can
+   * lose".
+   */
+  costs: z.array(cents).optional(),
+  /** Present when the named contract exists. */
+  ticket: draftTicketSchema.optional(),
+});
+export type DraftView = z.infer<typeof draftViewSchema>;
+
 export const frameSchema = z.object({
   t: z.literal('frame'),
   session: z.string(),
@@ -359,6 +427,8 @@ export const frameSchema = z.object({
    */
   history: z.array(z.array(cents)).optional(),
   final: finalViewSchema.optional(),
+  /** The quote of the ticket being built. Only in the full form of a started game, only while this connection has a draft. */
+  draft: draftViewSchema.optional(),
 });
 export type Frame = z.infer<typeof frameSchema>;
 

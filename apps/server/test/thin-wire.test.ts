@@ -20,8 +20,9 @@ import { FIXED_SEEDS, startHarness } from './harness';
  * last day. Two things are asserted about every frame collected: that the
  * only sections filled in are the ones this service owns (the clock, the
  * share prices, the names, the board and the ticket prices; never news,
- * positions, receipts, days, history or the final result), and that the
- * market's identity is nowhere in the text of it.
+ * positions, receipts, days, history, the final result or a quote of a
+ * ticket being built), and that the market's identity is nowhere in the
+ * text of it.
  *
  * The fake clock is jumped straight to each moment. It may jump forward as
  * far as it likes and must never go back.
@@ -107,6 +108,7 @@ function allowList(sampled: Sampled): Record<string, unknown> {
     stress: frame.stress,
     hasHistory: 'history' in frame,
     hasFinal: 'final' in frame,
+    hasDraft: 'draft' in frame,
     priceCount: frame.prices.length,
     everyPriceIsWholeCents: frame.prices.every((price) => Number.isInteger(price)),
   };
@@ -133,6 +135,7 @@ function thinAt(where: string): Record<string, unknown> {
     stress: false,
     hasHistory: false,
     hasFinal: false,
+    hasDraft: false,
     priceCount: 6,
     everyPriceIsWholeCents: true,
   };

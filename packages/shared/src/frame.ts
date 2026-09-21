@@ -1,4 +1,5 @@
 import { contractCount } from './board';
+import { quoteDraft } from './draft';
 import { DAYS, GAME_STEPS, OPEN_STEPS, momentAt } from './clock';
 import type { GameState, PositionRecord } from './game';
 import { STARTING_CASH_CENTS, breakEvenCents, playerOf, spendCapCents } from './game';
@@ -6,7 +7,7 @@ import type { Market } from './market';
 import { boardFor, marketDay, quoteAt } from './market';
 import { sharePriceCents, totalCents } from './money';
 import { MIN_TICKET_PRICE_CENTS } from './pricing';
-import type { CompanyView, Frame, NewsView, PositionView } from './protocol';
+import type { CompanyView, DraftRequest, Frame, NewsView, PositionView } from './protocol';
 import { FRAME_RECEIPTS, decodeContractId } from './protocol';
 import { seedToMarketCode } from './rng';
 
@@ -41,6 +42,11 @@ export interface ProjectOptions {
    * 'full': every section. The default.
    */
   sections?: 'live' | 'full';
+  /**
+   * What this connection last asked to have quoted, if anything. Only the
+   * full form of a started game answers it, in the frame's `draft` section.
+   */
+  draft?: DraftRequest | null;
 }
 
 function projectPosition(market: Market, game: GameState, position: PositionRecord, step: number): PositionView {
@@ -235,6 +241,10 @@ export function projectFrame(market: Market, game: GameState, playerId: string, 
     days,
     stress: game.stress,
   };
+  // The quote reads the board and the ticket prices built above for this same
+  // frame and nothing else, so it can show nothing the frame does not show.
+  const draft = options.draft === undefined || options.draft === null ? null : quoteDraft(options.draft, board, quotes);
+  if (draft !== null) frame.draft = draft;
   if (options.history) {
     frame.history = data.paths.map((path) => path.slice(0, moment.priceIndex + 1).map(sharePriceCents));
   }

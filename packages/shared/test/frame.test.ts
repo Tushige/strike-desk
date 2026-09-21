@@ -8,7 +8,7 @@ import type { Market } from '../src/market';
 import { CONTENT_VERSION, ENGINE_VERSION, boardFor, buildMarket, marketDay, quoteAt } from '../src/market';
 import { sharePriceCents } from '../src/money';
 import { MIN_TICKET_PRICE_CENTS, isTradable } from '../src/pricing';
-import type { Frame } from '../src/protocol';
+import type { DraftRequest, Frame } from '../src/protocol';
 import { decodeContractId, frameSchema } from '../src/protocol';
 import { seedToMarketCode } from '../src/rng';
 import { ME, TEST_IDENTITY, TEST_SEED, buyCommand, cashOut, findContract, me, priceOf, start, startedGame, testMarket } from './helpers';
@@ -505,6 +505,51 @@ describe('projectFrame, profit, a day\'s change and the headline\'s direction', 
     const directions = (source: Market) => project(source, game, step).news.map((item) => item.direction);
     expect(directions(scrambled)).toEqual(directions(market));
     expect(directions(market)).toEqual(marketDay(market, 1).news.map((item) => item.headline.direction));
+  });
+});
+
+describe('projectFrame, the ticket being built', () => {
+  const DRAFT: DraftRequest = { contractId: 0, spendCents: 10_000_000 };
+  const projectDraft = (source: Market, game: GameState, step: number, draft: DraftRequest | null, sections: ProjectOptions['sections'] = 'full'): Frame =>
+    projectFrame(source, game, ME, step, { session: 'session-1', history: true, sections, draft });
+
+  it.each(STEPS)('%s: scrambling everything still to come gives the identical frame, draft section included', (_name, step) => {
+    const game = gameAt(step);
+    const frame = projectDraft(market, game, step, DRAFT);
+    expect(frame.draft).toMatchObject({ contractId: 0, spendCents: 10_000_000 });
+    expect(frame.draft?.costs).toHaveLength(252);
+    expect(projectDraft(scrambleFuture(market, step), game, step, DRAFT)).toEqual(frame);
+  });
+
+  it('the live form never has a draft section, whatever is asked', () => {
+    for (const [, step] of STEPS) expect('draft' in projectDraft(market, gameAt(step), step, DRAFT, 'live')).toBe(false);
+  });
+
+  it('the lobby never has one, in either form', () => {
+    for (const form of FORMS) expect('draft' in projectDraft(market, newGame(), 0, DRAFT, form)).toBe(false);
+  });
+
+  it('the full form has none when nothing is asked, or when what is asked is empty', () => {
+    const step = 1800 + 300 + 250;
+    expect('draft' in project(market, gameAt(step), step)).toBe(false);
+    expect('draft' in projectDraft(market, gameAt(step), step, null)).toBe(false);
+    expect('draft' in projectDraft(market, gameAt(step), step, { contractId: null, spendCents: null })).toBe(false);
+  });
+
+  it.each(STEPS)('%s: the quoted ticket shows the price and the break-even of its own row, and makes $0 exactly at its break-even', (_name, step) => {
+    let bought = 0;
+    for (let contractId = 0; contractId < 252; contractId += 17) {
+      const frame = projectDraft(market, gameAt(step), step, { contractId, spendCents: 10_000_000 });
+      const ticket = frame.draft?.ticket;
+      expect({ contractId, priceCents: ticket?.priceCents }).toEqual({ contractId, priceCents: frame.quotes[contractId] });
+      expect({ contractId, breakEvenCents: ticket?.breakEvenCents }).toEqual({ contractId, breakEvenCents: frame.quoteBreakEvens[contractId] });
+      expect(frameSchema.parse(frame)).toEqual(frame);
+      if ((ticket?.quantity ?? 0) === 0) continue;
+      bought += 1;
+      expect(ticket?.whatIf.filter((stop) => stop.atCents === ticket.breakEvenCents)).toEqual([{ atCents: ticket?.breakEvenCents, profitCents: 0 }]);
+      expect(ticket?.costCents).toBe(frame.draft?.costs?.[contractId]);
+    }
+    expect(bought).toBeGreaterThan(0);
   });
 });
 

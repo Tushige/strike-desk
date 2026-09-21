@@ -1,4 +1,5 @@
 import { contractCount } from './board';
+import { quoteDraft } from './draft';
 import { DAYS, GAME_STEPS, OPEN_STEPS, momentAt } from './clock';
 import type { GameState, PositionRecord } from './game';
 import { STARTING_CASH_CENTS, breakEvenCents, playerOf, spendCapCents } from './game';
@@ -6,8 +7,8 @@ import type { Market } from './market';
 import { boardFor, marketDay, quoteAt } from './market';
 import { sharePriceCents, totalCents } from './money';
 import { MIN_TICKET_PRICE_CENTS } from './pricing';
-import type { CompanyView, Frame, NewsView, PositionView } from './protocol';
-import { FRAME_RECEIPTS } from './protocol';
+import type { CompanyView, DraftRequest, Frame, NewsView, PositionView } from './protocol';
+import { FRAME_RECEIPTS, decodeContractId } from './protocol';
 import { seedToMarketCode } from './rng';
 
 /**
@@ -23,6 +24,11 @@ import { seedToMarketCode } from './rng';
  * prices, the clock, the board, the quotes and the news are the same for
  * every player of the session.
  *
+ * The `draft` section is a third scope, neither the session's nor the
+ * player's: it belongs to the connection that sent the `draft` message. A
+ * server that caches one frame text per player must not hand one connection's
+ * draft to another.
+ *
  * `game` must already be advanced to the step (see `advanceTo`).
  */
 
@@ -33,14 +39,19 @@ export interface ProjectOptions {
   /**
    * Which sections are filled in. Both forms carry rev, step, the clock,
    * the companies' names, six share prices, the cheapest tradable price,
-   * today's board and one ticket price per contract with its real and hope
-   * value (no board and no ticket price in the lobby).
+   * today's board and one ticket price per contract with its real value, its
+   * hope value and its break-even (no board and no ticket price in the lobby).
    * 'live': besides those, only the account, with the player's cash as its
    *         worth and `canBuy` false. News, positions, receipts and days
    *         are empty; `history` and `final` are never set.
    * 'full': every section. The default.
    */
   sections?: 'live' | 'full';
+  /**
+   * What this connection last asked to have quoted, if anything. Only the
+   * full form of a started game answers it, in the frame's `draft` section.
+   */
+  draft?: DraftRequest | null;
 }
 
 function projectPosition(market: Market, game: GameState, position: PositionRecord, step: number): PositionView {
@@ -65,10 +76,12 @@ function projectPosition(market: Market, game: GameState, position: PositionReco
     breakEvenCents: breakEvenCents(position.targetCents, position.entryPriceCents, position.side),
   };
   if (position.exit === undefined) {
+    const valueCents = totalCents(livePriceCents, position.quantity);
     return {
       ...base,
       status: 'open',
-      valueCents: totalCents(livePriceCents, position.quantity),
+      valueCents,
+      profitCents: valueCents - position.costCents,
       realCents: live?.realCents ?? 0,
       hopeCents: live?.hopeCents ?? 0,
     };
@@ -78,6 +91,7 @@ function projectPosition(market: Market, game: GameState, position: PositionReco
     ...base,
     status: position.exit.kind === 'bell' ? 'settled' : 'cashedOut',
     valueCents: position.exit.proceedsCents,
+    profitCents: position.exit.proceedsCents - position.costCents,
     realCents: atExit?.realCents ?? 0,
     hopeCents: atExit?.hopeCents ?? 0,
     exit: position.exit,
@@ -95,11 +109,10 @@ export function projectFrame(market: Market, game: GameState, playerId: string, 
   const receipts = live ? [] : player.receipts.slice(-FRAME_RECEIPTS);
   const days = live
     ? []
-    : player.dayEndCents.map((endCents, index) => ({
-        day: index + 1,
-        startCents: index === 0 ? STARTING_CASH_CENTS : (player.dayEndCents[index - 1] ?? STARTING_CASH_CENTS),
-        endCents,
-      }));
+    : player.dayEndCents.map((endCents, index) => {
+        const startCents = index === 0 ? STARTING_CASH_CENTS : (player.dayEndCents[index - 1] ?? STARTING_CASH_CENTS);
+        return { day: index + 1, startCents, endCents, changeCents: endCents - startCents };
+      });
 
   if (!started) {
     return {
@@ -115,6 +128,7 @@ export function projectFrame(market: Market, game: GameState, playerId: string, 
       quotes: [],
       quoteReals: [],
       quoteHopes: [],
+      quoteBreakEvens: [],
       news: [],
       account: { cashCents: player.cashCents, worthCents: player.cashCents, capCents: spendCapCents(player.cashCents), canBuy: false },
       positions: [],
@@ -130,17 +144,25 @@ export function projectFrame(market: Market, game: GameState, playerId: string, 
 
   // Both forms share the board and the quotes. One pricing call per contract,
   // at the current point of the path and nowhere else, gives the price and
-  // its two parts, so real plus hope is the price on every contract.
+  // its two parts, so real plus hope is the price on every contract. The
+  // break-even comes from that same price and the contract's target, by the
+  // rule a bought ticket uses, so the table and the ticket cannot disagree.
   const board = boardFor(market, moment.day, game.targetsPerCompany);
   const quotes: number[] = [];
   const quoteReals: number[] = [];
   const quoteHopes: number[] = [];
+  const quoteBreakEvens: number[] = [];
   const total = contractCount(board);
   for (let id = 0; id < total; id += 1) {
     const value = quoteAt(market, moment.day, moment.priceIndex, board, id);
-    quotes.push(value?.priceCents ?? 0);
+    const priceCents = value?.priceCents ?? 0;
+    const { companyId, targetIndex, side } = decodeContractId(board.targetsPerCompany, id);
+    const targetCents = board.companies[companyId]?.targets[targetIndex] ?? 0;
+    quotes.push(priceCents);
     quoteReals.push(value?.realCents ?? 0);
     quoteHopes.push(value?.hopeCents ?? 0);
+    // A contract with no quote has a price of 0, so it breaks even at its target.
+    quoteBreakEvens.push(breakEvenCents(targetCents, priceCents, side));
   }
 
   if (live) {
@@ -160,6 +182,7 @@ export function projectFrame(market: Market, game: GameState, playerId: string, 
       quotes,
       quoteReals,
       quoteHopes,
+      quoteBreakEvens,
       news: [],
       account: { cashCents: player.cashCents, worthCents: player.cashCents, capCents: spendCapCents(player.cashCents), canBuy: false },
       positions: [],
@@ -182,6 +205,7 @@ export function projectFrame(market: Market, game: GameState, playerId: string, 
       source: headline.source,
       title: headline.title,
       body: headline.body,
+      direction: headline.direction,
       revealed,
     };
     if (revealed) view.revealIndex = hidden.revealIndex;
@@ -209,6 +233,7 @@ export function projectFrame(market: Market, game: GameState, playerId: string, 
     quotes,
     quoteReals,
     quoteHopes,
+    quoteBreakEvens,
     news,
     account: {
       cashCents: player.cashCents,
@@ -221,6 +246,10 @@ export function projectFrame(market: Market, game: GameState, playerId: string, 
     days,
     stress: game.stress,
   };
+  // The quote reads the board and the ticket prices built above for this same
+  // frame and nothing else, so it can show nothing the frame does not show.
+  const draft = options.draft === undefined || options.draft === null ? null : quoteDraft(options.draft, board, quotes);
+  if (draft !== null) frame.draft = draft;
   if (options.history) {
     frame.history = data.paths.map((path) => path.slice(0, moment.priceIndex + 1).map(sharePriceCents));
   }
@@ -230,6 +259,7 @@ export function projectFrame(market: Market, game: GameState, playerId: string, 
       engine: market.identity.engine,
       content: market.identity.content,
       finalCents: player.cashCents,
+      changeCents: player.cashCents - STARTING_CASH_CENTS,
     };
   }
   return frame;

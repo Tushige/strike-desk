@@ -73,6 +73,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
       - run: node scripts/check-web-bundle.mjs
+      - run: node scripts/check-web-css.mjs
       - run: node scripts/smoke.mjs
 
   # A market is repeatable: the same market number printed twice gives exactly

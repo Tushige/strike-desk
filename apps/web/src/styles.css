@@ -1,3 +1,22 @@
+@layer theme, base, ag-grid, components, utilities;
+@import "tailwindcss";
+
+/*
+ * Those two lines come first, and in that order, on purpose.
+ *
+ * The first names the order the browser resolves the cascade in, weakest
+ * first; naming the layers up front is the only way to fix their order, and
+ * it has to happen before the import that fills them. `base` is the
+ * framework's reset. `ag-grid` is the layer the table writes its own styles
+ * into, so the reset can never reach inside the table, and a utility always
+ * can. Every rule below is in no layer at all, which puts it above all
+ * five: this page's own styles stay the last word.
+ *
+ * The built page says the same thing again, in a style element in its head.
+ * A build is free to rewrite a statement whose names it can see are already
+ * in that order, and this one does.
+ */
+
 /*
  * The one place a colour is written down. Everything else, the table's theme
  * included, refers to these by name.
@@ -25,6 +44,32 @@
   --selection-foreground: #fff;
 
   color-scheme: dark;
+}
+
+/*
+ * The same names again, handed to the utility engine. `inline` is what makes
+ * this a reference rather than a copy: each utility emits `var(--border)`,
+ * not `#3b3147`, so the block above stays the one live source and the
+ * table's theme, which reads the same variables, can never drift from it.
+ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+  --color-up: var(--up);
+  --color-down: var(--down);
+  --color-gold: var(--gold);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
 }
 
 * {
@@ -222,16 +267,6 @@ main {
   }
 }
 
-.build-stamp {
-  position: fixed;
-  right: 1rem;
-  bottom: 0.4375rem;
-  margin: 0;
-  color: var(--muted-foreground);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-
 /* Phone width: two rows of three, the name on a line of its own, tighter edges. */
 @media (max-width: 640px) {
   main {
@@ -253,9 +288,5 @@ main {
 
   .strip-price {
     font-size: 13px;
-  }
-
-  .build-stamp {
-    right: 0.5rem;
   }
 }

@@ -7,7 +7,7 @@ import type { Cents } from './money';
 import { quantityForSpend, totalCents } from './money';
 import { SHARES_PER_TICKET, isTradable } from './pricing';
 import type { Command, Receipt, RejectReason, Side } from './protocol';
-import { decodeContractId } from './protocol';
+import { BUY_TOLERANCE_BPS, BUY_TOLERANCE_FLOOR_CENTS, decodeContractId } from './protocol';
 
 /**
  * The rules of a game, as pure functions of the logical step. A game is what
@@ -26,8 +26,6 @@ export const STARTING_CASH_CENTS: Cents = 100_000_000;
 export const SPEND_CAP_FRACTION = 0.5;
 /** ...rounded down to a multiple of this. */
 export const SPEND_CAP_ROUND_CENTS: Cents = 100_000;
-/** A buy fills at the server's price if that is no more than this much worse than the price seen (basis points). */
-export const PRICE_TOLERANCE_BPS = 200;
 
 export interface PositionExit {
   kind: 'cashOut' | 'bell';
@@ -130,9 +128,20 @@ export function breakEvenCents(targetCents: Cents, ticketPriceCentsPaid: Cents, 
   return side === 'up' ? targetCents + perShare : targetCents - perShare;
 }
 
-/** True when the fill price is within tolerance of the price the player saw. Integer maths only. */
+/**
+ * The highest price at which a buy that saw `seenPriceCents` still fills: the
+ * price seen plus the larger of the floor and the whole-cent part of its
+ * percentage. Integer maths only. The buy check and the quote of a ticket
+ * being built both read this, so they cannot disagree.
+ */
+export function toleranceLimitCents(seenPriceCents: Cents): Cents {
+  const share = Math.floor((seenPriceCents * BUY_TOLERANCE_BPS) / 10_000);
+  return seenPriceCents + Math.max(BUY_TOLERANCE_FLOOR_CENTS, share);
+}
+
+/** True when the fill price is within tolerance of the price the player saw. A price that fell always is. */
 export function withinTolerance(fillPriceCents: Cents, seenPriceCents: Cents): boolean {
-  return fillPriceCents * 10_000 <= seenPriceCents * (10_000 + PRICE_TOLERANCE_BPS);
+  return fillPriceCents <= toleranceLimitCents(seenPriceCents);
 }
 
 /** One player's account brought up to a step. The same object comes back when no bell has rung for it since. */

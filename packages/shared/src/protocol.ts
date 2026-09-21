@@ -15,6 +15,10 @@ import { PACES } from './clock';
  *   the seed. The market code appears only in `final`.
  * - Client messages are strict (unknown keys are refused). Server messages
  *   are open, so fields can be added without breaking an older client.
+ * - The page never computes money. Every money number it shows (a break-even,
+ *   a ticket's worth, profit and loss, total worth, the cost and the price
+ *   limit of a ticket being built) arrives in a frame; the page only formats
+ *   and compares.
  */
 
 export const PROTOCOL_VERSION = 1;
@@ -64,6 +68,18 @@ export const buyCommandSchema = z.strictObject({
   seenPriceCents: cents.positive(),
 });
 
+/**
+ * The buy tolerance. A buy names the ticket price the player saw. The server
+ * fills at its own current price when that is at most the larger of these two
+ * above the price seen (2% of it, or $1), and refuses with `priceMoved`
+ * otherwise. A price that fell always fills. The floor exists because ticket
+ * prices are whole dollars, so the smallest possible move is $1. Both numbers
+ * are the owner's. Once buying is live, changing either needs an
+ * engine-version bump, because a recorded game would replay differently.
+ */
+export const BUY_TOLERANCE_BPS = 200;
+export const BUY_TOLERANCE_FLOOR_CENTS = 100;
+
 export const cashOutCommandSchema = z.strictObject({
   t: z.literal('cashOut'),
   commandId,
@@ -75,6 +91,24 @@ export const clockCommandSchema = z.strictObject({
   commandId,
   /** The day the player was looking at, so a late resend cannot skip the wrong day. */
   day,
+});
+
+/** The most a draft may name, $1 billion: every what-if number stays an exact whole number, and no player can ever hold that much. */
+export const MAX_DRAFT_SPEND_CENTS = 100_000_000_000;
+
+/**
+ * What the ticket form is showing, so that the server can quote it: a ticket
+ * (by contract id), a spend, both, or neither. It replaces whatever this
+ * connection asked before; both null clears it.
+ *
+ * It is not a command. It has no command id and gets no receipt, is never
+ * logged and changes nothing in the game, so it is outside the retry rules
+ * altogether. The answer is the `draft` section of the frames that follow.
+ */
+export const draftMessageSchema = z.strictObject({
+  t: z.literal('draft'),
+  contractId: count.nullable(),
+  spendCents: cents.positive().max(MAX_DRAFT_SPEND_CENTS).nullable(),
 });
 
 export const commandSchema = z.discriminatedUnion('t', [
@@ -90,6 +124,7 @@ export const clientMessageSchema = z.discriminatedUnion('t', [
   buyCommandSchema,
   cashOutCommandSchema,
   clockCommandSchema,
+  draftMessageSchema,
 ]);
 
 export type Hello = z.infer<typeof helloSchema>;
@@ -100,6 +135,9 @@ export type ClockCommand = z.infer<typeof clockCommandSchema>;
 export type Command = z.infer<typeof commandSchema>;
 export type CommandKind = Command['t'];
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
+export type DraftMessage = z.infer<typeof draftMessageSchema>;
+/** A draft without its tag: what a connection last asked to have quoted. */
+export type DraftRequest = Omit<DraftMessage, 't'>;
 
 // ---------------------------------------------------------------- server -> client
 
@@ -158,6 +196,12 @@ export const newsViewSchema = z.object({
   source: z.string(),
   title: z.string(),
   body: z.string(),
+  /**
+   * What the headline claims: `'up'` for good news, `'down'` for bad. Public
+   * from the start of its day. It says nothing about whether the claim is
+   * true; `wasTrue` tells that, and only from the bell.
+   */
+  direction: side,
   /** True once the hidden reveal moment has passed. The banner is derived from this. */
   revealed: z.boolean(),
   /** Present only once revealed: where on today's path the move landed. */
@@ -190,8 +234,8 @@ export const boardSchema = z.object({
 });
 
 /**
- * The contract id. A frame's `quotes`, `quoteReals` and `quoteHopes` are
- * indexed by it, so the scheme is part of the wire contract: both sides must
+ * The contract id. A frame's `quotes`, `quoteReals`, `quoteHopes` and
+ * `quoteBreakEvens` are indexed by it, so the scheme is part of the wire contract: both sides must
  * turn a company, a target and a side into the same number. Every company
  * has the same number of targets, UP and DOWN on each, so ids are dense from
  * 0 and stay stable for the day.
@@ -242,6 +286,12 @@ export const positionViewSchema = z.object({
   status: z.enum(['open', 'cashedOut', 'settled']),
   /** Open: what it would sell for right now. Closed: what it paid. */
   valueCents: cents,
+  /**
+   * What the ticket has made so far, or lost when negative: `valueCents`
+   * minus `costCents`. For an open ticket at this frame's price; for a closed
+   * one, final.
+   */
+  profitCents: cents,
   /** Per-ticket split of the current (or exit) price. */
   realCents: cents,
   hopeCents: cents,
@@ -266,6 +316,8 @@ export const dayResultSchema = z.object({
   day,
   startCents: cents,
   endCents: cents,
+  /** What the day changed: `endCents` minus `startCents`. Negative for a losing day. */
+  changeCents: cents,
 });
 export type DayResult = z.infer<typeof dayResultSchema>;
 
@@ -275,8 +327,63 @@ export const finalViewSchema = z.object({
   engine: z.string(),
   content: z.string(),
   finalCents: cents,
+  /** What the whole game changed: `finalCents` minus the cash the game started with. */
+  changeCents: cents,
 });
 export type FinalView = z.infer<typeof finalViewSchema>;
+
+/** One stop of the what-if: if the share price finishes exactly at `atCents` at the bell, the ticket makes `profitCents` (negative for a loss). */
+export const whatIfPointSchema = z.object({
+  atCents: cents,
+  profitCents: cents,
+});
+export type WhatIfPoint = z.infer<typeof whatIfPointSchema>;
+
+/** The ticket being built, quoted at this frame's prices. */
+export const draftTicketSchema = z.object({
+  contractId: count,
+  /** The same number as `quotes[contractId]` in this frame, and the number a buy sends back as `seenPriceCents`. */
+  priceCents: cents,
+  /** Whole tickets the spend buys. 0 with no spend, or with a spend too small for one. */
+  quantity: count,
+  /** Price times quantity: what the buy would cost, which is also the most it can lose. */
+  costCents: cents,
+  /** The highest price at which a buy that saw `priceCents` still fills. */
+  limitPriceCents: cents,
+  /** The same number as `quoteBreakEvens[contractId]` in this frame. */
+  breakEvenCents: cents,
+  /**
+   * One stop per target of this company's board, one at the break-even, and
+   * one a gap past the break-even (above it for UP, below it for DOWN, never
+   * below zero), so every table shows a profit somewhere. The gap is the
+   * board's average distance between neighbouring targets in whole cents; a
+   * board with a single target has none and gets no such stop. Ascending, no
+   * stop twice. The page looks a stop up; it multiplies nothing. Empty while
+   * `quantity` is 0.
+   */
+  whatIf: z.array(whatIfPointSchema),
+});
+export type DraftTicket = z.infer<typeof draftTicketSchema>;
+
+/** The server's answer to a `draft` message, priced from the frame that carries it. */
+export const draftViewSchema = z.object({
+  /**
+   * The request this section answers, echoed. The page shows a number from
+   * this section only while both equal what its form holds now.
+   */
+  contractId: count.nullable(),
+  spendCents: cents.positive().max(MAX_DRAFT_SPEND_CENTS).nullable(),
+  /**
+   * Present when a spend was named: what that spend would cost on each ticket
+   * at this frame's prices (price times whole tickets; 0 where the price is
+   * 0), by contract id, same length as `quotes`. The table's "most you can
+   * lose".
+   */
+  costs: z.array(cents).optional(),
+  /** Present when the named contract exists. */
+  ticket: draftTicketSchema.optional(),
+});
+export type DraftView = z.infer<typeof draftViewSchema>;
 
 export const frameSchema = z.object({
   t: z.literal('frame'),
@@ -299,6 +406,13 @@ export const frameSchema = z.object({
   quoteReals: z.array(cents),
   /** Hope value of each ticket in cents, by contract id, same length as `quotes`. Real plus hope is the price. */
   quoteHopes: z.array(cents),
+  /**
+   * The share price at which each ticket, bought at this frame's price, earns
+   * back what it cost, in cents, by contract id, same length as `quotes`.
+   * Empty in the lobby. The table's break-even column and the chart's
+   * break-even line read it, because the page never computes money.
+   */
+  quoteBreakEvens: z.array(cents),
   /** Today's headlines. */
   news: z.array(newsViewSchema),
   account: accountViewSchema,
@@ -312,23 +426,46 @@ export const frameSchema = z.object({
   stress: z.boolean(),
   /**
    * Today's share prices so far, by company id, from index 0 to the current
-   * priceIndex. Sent on connect, after a command and whenever the server
-   * skipped frames; otherwise the client appends `prices` itself.
+   * priceIndex. Sent on connect, after a command, on the first frame of each
+   * phase and whenever the server skipped frames; otherwise the client
+   * appends `prices` itself. A client that does so must key each point by
+   * `clock.priceIndex`: at a fast pace consecutive frames are several points
+   * apart.
    */
   history: z.array(z.array(cents)).optional(),
   final: finalViewSchema.optional(),
+  /**
+   * The quote of the ticket being built. Only in the full form of a started
+   * game, only while this connection has a draft. It belongs to the connection
+   * that sent the `draft` message, a third scope beside the session's and the
+   * player's: a server that caches one frame text per player must not hand
+   * one connection's draft to another.
+   */
+  draft: draftViewSchema.optional(),
 });
 export type Frame = z.infer<typeof frameSchema>;
 
-/** Stress setting only: changed quotes between full frames. Ordered like frames. */
+/**
+ * Stress setting only: the tickets that changed between full frames. Ordered
+ * like frames.
+ *
+ * Each change is `[contractId, priceCents, realCents, hopeCents,
+ * breakEvenCents]`, in that order: a stress table shows the same columns as
+ * the game's table, and the page may not derive any of them.
+ *
+ * A batch belongs to one day's board. The server sends a whole frame first on
+ * a new day, and a client ignores a batch whose `day` is not the day of the
+ * frame it holds.
+ */
 export const quotesMessageSchema = z.object({
   t: z.literal('quotes'),
   session: z.string(),
   rev: count,
   step: count,
+  day,
   priceIndex: count,
   prices: z.array(cents),
-  changes: z.array(z.tuple([count, cents])),
+  changes: z.array(z.tuple([count, cents, cents, cents, cents])),
 });
 export type QuotesMessage = z.infer<typeof quotesMessageSchema>;
 

@@ -5,6 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex" />
     <title>Strike Desk</title>
+    <!--
+      The order the browser resolves the cascade in, weakest first. The
+      stylesheet says the same thing, but a build is free to rewrite a
+      statement whose names it can see are already in that order, and it
+      does. Saying it here, before the stylesheet loads, fixes the order in
+      the page itself, where nothing rewrites it and anyone can read it.
+      `ag-grid` is the layer the table writes its own styles into: after the
+      reset, so the reset can never reach inside the table, and before the
+      utilities, so a utility always can.
+    -->
+    <style>@layer theme, base, ag-grid, components, utilities;</style>
   </head>
   <body>
     <div id="root"></div>

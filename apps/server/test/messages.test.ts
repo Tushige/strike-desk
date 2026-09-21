@@ -97,6 +97,26 @@ describe('a malformed message is refused and the service carries on', () => {
     await stillServing(running);
   });
 
+  it('a draft is refused by name until the ticket form exists, and the connection keeps answering', async () => {
+    const running = await boot();
+    const client = running.connect();
+    await client.opened();
+    client.send(HELLO);
+    const lobby = await client.nextFrame();
+
+    client.send({ t: 'draft', contractId: 5, spendCents: 5_000_000 });
+    expect(await client.nextError()).toEqual(BAD_MESSAGE);
+
+    // The same connection is still served: a start is taken and answered.
+    client.send({ t: 'start', commandId: 'start-0001', pace: 1 });
+    const reply = await client.nextReply();
+    expect(reply.receipt.outcome).toBe('accepted');
+    expect(reply.frame.session).toBe(lobby.session);
+    expect('draft' in reply.frame).toBe(false);
+
+    await stillServing(running);
+  });
+
   it('two hundred malformed messages in a row leave the service answering', async () => {
     // The service refuses a socket that sends more than twenty in ten seconds
     // (proved in limits.test.ts). That guard is lifted here on purpose: what

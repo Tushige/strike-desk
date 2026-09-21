@@ -60,9 +60,14 @@ export function handleCommand(session: Session, playerId: string, command: Comma
 }
 
 /** Settle every player up to `nowMs`, then project the named player's public frame for that step. */
-export function frameFor(session: Session, playerId: string, nowMs: number, options: Pick<ProjectOptions, 'history' | 'sections'>): { session: Session; frame: Frame } {
+export function frameFor(session: Session, playerId: string, nowMs: number, options: Pick<ProjectOptions, 'history' | 'sections' | 'draft'>): { session: Session; frame: Frame } {
   const game = advanceTo(session.market, session.game, sessionStep(session, nowMs));
   const next = game === session.game ? session : { ...session, game };
-  const frame = projectFrame(next.market, game, playerId, game.step, { session: session.id, history: options.history, sections: options.sections ?? 'full' });
+  const frame = projectFrame(next.market, game, playerId, game.step, {
+    session: session.id,
+    history: options.history,
+    sections: options.sections ?? 'full',
+    draft: options.draft ?? null,
+  });
   return { session: next, frame };
 }

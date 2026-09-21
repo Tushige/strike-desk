@@ -8,7 +8,9 @@ import type { SessionRegistry } from './sessions';
  * The door: every inbound message is parsed here and routed from here.
  * Two kinds are taken: `hello`, which makes or resumes a session and leaves
  * its clock stopped, and `start`, which starts it. Everything else is
- * refused by name and never reaches the game rules.
+ * refused by name and never reaches the game rules. That includes `draft`,
+ * the ticket form's request for a quote: it is refused until the ticket form
+ * exists, so no frame this service sends carries a `draft` section.
  */
 
 export interface Connection {
@@ -146,6 +148,10 @@ export function handleInbound(options: DoorOptions, connection: Connection, text
     case 'skipToBell':
     case 'nextDay':
       answer(connection, { t: 'error', code: 'badMessage', commandId: message.commandId });
+      return;
+    case 'draft':
+      // Not a command: there is no command id to answer with.
+      answer(connection, { t: 'error', code: 'badMessage' });
       return;
   }
 }

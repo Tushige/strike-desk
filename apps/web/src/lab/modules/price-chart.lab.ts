@@ -7,6 +7,7 @@ const entry: LabEntry = {
   summary:
     "An SVG chart that measures itself: the day's price so far, target and break-even lines, markers.",
   builtAgainst: 'a series source outside React, plus lines and markers as plain data',
+  demo: () => import('./price-chart.demo'),
 };
 
 export default entry;

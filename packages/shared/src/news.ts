@@ -1,4 +1,5 @@
 import type { Company } from './cast';
+import { NAME_MARK, PRODUCT_MARK, SITUATIONS, SOURCES } from './newsPool';
 import type { Trust } from './pricing';
 import type { Side } from './protocol';
 import type { Rng } from './rng';
@@ -53,18 +54,63 @@ export interface HeadlineWords {
  */
 export type WriteHeadlines = (slots: readonly HeadlineSlot[], cast: readonly Company[], rng: Rng) => HeadlineWords[];
 
+// The pool is listed through this file, so that a script on the server can
+// show every string of it beside the games it writes.
+export { NAME_MARK, PRODUCT_MARK, SITUATIONS, SOURCES } from './newsPool';
+export type { Situation } from './newsPool';
+
+/** A text of the pool with the company's name and what it makes filled in. */
+function fillIn(text: string, company: Company): string {
+  return text.split(NAME_MARK).join(company.name).split(PRODUCT_MARK).join(company.product);
+}
+
 /**
- * The stand-in writer, until the reviewed headline pool replaces it. It
- * draws nothing. Its titles can repeat within a game, so it does not pass
- * the writer's contract; the pool that replaces it must.
+ * The writer: a headline is a source phrase and a situation from the pool in
+ * `newsPool.ts`, put together by the game's wording stream.
+ *
+ * It goes through the slots in order and makes exactly two draws for each,
+ * whatever it finds: the first picks the source phrase among those of the
+ * slot's trust level, the second picks the situation. So the words of a day
+ * depend on that day's slots, on the days before it and on nothing after it:
+ * no headline can give away what a later day holds.
+ *
+ * The situation is picked among those of the slot's direction that this game
+ * has not used yet. When the game has used them all, it is picked among those
+ * this company has not had: a title names its company, so it still cannot
+ * repeat. A company has at most one headline a day, five in a game, and the
+ * pool holds at least five situations for each direction, so that second
+ * list is never empty for slots that follow the market's rules.
+ *
+ * It reads the slots, the cast and the stream, and nothing else: no clock, no
+ * global, and nothing remembered from one call to the next.
  */
-export const writeHeadlines: WriteHeadlines = (slots, cast) =>
-  slots.map((slot) => {
-    const name = cast[slot.companyId]?.name ?? '';
-    const up = slot.direction === 'up';
+export const writeHeadlines: WriteHeadlines = (slots, cast, rng) => {
+  const usedInGame = new Set<number>();
+  const usedByCompany = new Map<number, Set<number>>();
+
+  return slots.map((slot) => {
+    const company = cast[slot.companyId];
+    if (company === undefined) throw new Error(`headline ${slot.id} names company ${slot.companyId}, which is not in the cast`);
+    const hadAlready = usedByCompany.get(slot.companyId) ?? new Set<number>();
+    usedByCompany.set(slot.companyId, hadAlready);
+
+    const sources = SOURCES[slot.trust];
+    const source = sources[rng.nextInt(sources.length)] ?? '';
+
+    const ofDirection = SITUATIONS.flatMap((situation, index) => (situation.direction === slot.direction ? [index] : []));
+    const newToGame = ofDirection.filter((index) => !usedInGame.has(index));
+    const newToCompany = ofDirection.filter((index) => !hadAlready.has(index));
+    // Slots that break the market's rules can run a company out of situations. A repeat is kinder than a game that will not start.
+    const open = newToGame.length > 0 ? newToGame : newToCompany.length > 0 ? newToCompany : ofDirection;
+    const picked = open[rng.nextInt(open.length)] ?? 0;
+    usedInGame.add(picked);
+    hadAlready.add(picked);
+
+    const situation = SITUATIONS[picked];
     return {
-      source: slot.trust === 3 ? 'Company statement' : slot.trust === 2 ? 'A store manager says' : 'Someone online says',
-      title: up ? `Good news for ${name}?` : `Trouble at ${name}?`,
-      body: up ? `${name} may be about to have a very good day.` : `${name} may be about to have a very bad day.`,
+      source,
+      title: fillIn(situation?.title ?? '', company),
+      body: fillIn(situation?.body ?? '', company),
     };
   });
+};

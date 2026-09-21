@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  MAX_DRAFT_SPEND_CENTS,
   boardSchema,
   clientMessageSchema,
   commandSchema,
   contractId,
   decodeContractId,
+  draftViewSchema,
   frameSchema,
   isNewerFrame,
   parseClientMessage,
@@ -37,6 +39,8 @@ describe('client messages', () => {
     [{ t: 'draft', contractId: 5, spendCents: null }],
     [{ t: 'draft', contractId: null, spendCents: 5_000_000 }],
     [{ t: 'draft', contractId: null, spendCents: null }],
+    // The largest spend a draft may name: $1 billion.
+    [{ t: 'draft', contractId: 5, spendCents: 100_000_000_000 }],
   ])('accepts %j', (message) => {
     expect(clientMessageSchema.parse(message)).toEqual(message);
     expect(parseClientMessage(message)).toEqual(message);
@@ -68,6 +72,7 @@ describe('client messages', () => {
     ['a draft with a command id', { t: 'draft', commandId: ID, contractId: 5, spendCents: 5_000_000 }],
     ['a draft with a negative spend', { t: 'draft', contractId: 5, spendCents: -100 }],
     ['a draft with a spend of nothing', { t: 'draft', contractId: 5, spendCents: 0 }],
+    ['a draft that spends one cent more than $1 billion', { t: 'draft', contractId: 5, spendCents: 100_000_000_001 }],
     ['a draft with a negative contract', { t: 'draft', contractId: -1, spendCents: 5_000_000 }],
     ['a draft with an unknown key', { t: 'draft', contractId: 5, spendCents: 5_000_000, day: 1 }],
     ['a draft with a key missing', { t: 'draft', contractId: 5 }],
@@ -163,6 +168,15 @@ describe('server messages', () => {
     expect(quotesMessageSchema.safeParse({ ...batch, day: 6 }).success).toBe(false);
     expect(quotesMessageSchema.safeParse({ ...batch, changes: [[5, 1200]] }).success).toBe(false);
     expect(quotesMessageSchema.safeParse({ ...batch, changes: [[5, 1200, 300, 900, 8512.5]] }).success).toBe(false);
+  });
+
+  it('the echoed draft spend is no looser than the message it echoes: above zero, at most $1 billion', () => {
+    expect(MAX_DRAFT_SPEND_CENTS).toBe(100_000_000_000);
+    expect(draftViewSchema.safeParse({ contractId: 5, spendCents: 100_000_000_000 }).success).toBe(true);
+    expect(draftViewSchema.safeParse({ contractId: 5, spendCents: null }).success).toBe(true);
+    expect(draftViewSchema.safeParse({ contractId: 5, spendCents: 100_000_000_001 }).success).toBe(false);
+    expect(draftViewSchema.safeParse({ contractId: 5, spendCents: 0 }).success).toBe(false);
+    expect(draftViewSchema.safeParse({ contractId: 5, spendCents: -100 }).success).toBe(false);
   });
 
   it('lets an older client read a message with a field it does not know', () => {

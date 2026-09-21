@@ -110,6 +110,24 @@ describe('quoteDraft', () => {
     expect(ticket).toMatchObject({ priceCents: 0, quantity: 0, costCents: 0, breakEvenCents: 8700, whatIf: [] });
   });
 
+  it('at the largest spend a draft may name, on the cheapest ticket with the richest stop, every number is still an exact whole number', () => {
+    // The worst case by construction: a $1 ticket, UP on the lowest target, on a
+    // board whose top target is $90.00 higher. $1 billion buys 1,000,000,000
+    // tickets. At $490.00 each pays 100 x $90 = $9,000: $9,000,000,000,000 in
+    // all, less the $1,000,000,000 cost.
+    const wide: NonNullable<Frame['board']> = {
+      targetsPerCompany: 3,
+      companies: [{ targets: [40_000, 44_500, 49_000], simpleUp: [0, 1, 2], simpleDown: [0, 1, 2], lowestUpIndex: 0, highestDownIndex: 2 }],
+    };
+    const quote = quoteDraft({ contractId: 0, spendCents: 100_000_000_000 }, wide, [100, 0, 0, 0, 0, 0]);
+    expect(quote?.ticket).toMatchObject({ quantity: 1_000_000_000, costCents: 100_000_000_000, breakEvenCents: 40_001 });
+    expect(quote?.ticket?.whatIf.find((stop) => stop.atCents === 49_000)).toEqual({ atCents: 49_000, profitCents: 899_900_000_000_000 });
+    const numbers = [...(quote?.costs ?? []), ...(quote?.ticket?.whatIf ?? []).flatMap((stop) => [stop.atCents, stop.profitCents])];
+    expect(numbers.length).toBeGreaterThan(6);
+    expect(numbers.filter((value) => !Number.isSafeInteger(value))).toEqual([]);
+    expect(draftViewSchema.parse(quote)).toEqual(quote);
+  });
+
   it('with nothing chosen there is no quote at all', () => {
     expect(quoteDraft({ contractId: null, spendCents: null }, BOARD, QUOTES)).toBeNull();
   });

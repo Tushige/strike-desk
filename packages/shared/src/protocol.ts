@@ -93,6 +93,9 @@ export const clockCommandSchema = z.strictObject({
   day,
 });
 
+/** The most a draft may name, $1 billion: every what-if number stays an exact whole number, and no player can ever hold that much. */
+export const MAX_DRAFT_SPEND_CENTS = 100_000_000_000;
+
 /**
  * What the ticket form is showing, so that the server can quote it: a ticket
  * (by contract id), a spend, both, or neither. It replaces whatever this
@@ -105,7 +108,7 @@ export const clockCommandSchema = z.strictObject({
 export const draftMessageSchema = z.strictObject({
   t: z.literal('draft'),
   contractId: count.nullable(),
-  spendCents: cents.positive().nullable(),
+  spendCents: cents.positive().max(MAX_DRAFT_SPEND_CENTS).nullable(),
 });
 
 export const commandSchema = z.discriminatedUnion('t', [
@@ -365,7 +368,7 @@ export const draftViewSchema = z.object({
    * this section only while both equal what its form holds now.
    */
   contractId: count.nullable(),
-  spendCents: cents.nullable(),
+  spendCents: cents.positive().max(MAX_DRAFT_SPEND_CENTS).nullable(),
   /**
    * Present when a spend was named: what that spend would cost on each ticket
    * at this frame's prices (price times whole tickets; 0 where the price is

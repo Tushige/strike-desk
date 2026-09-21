@@ -51,7 +51,12 @@ export interface TransportSeam {
   schedule: (run: () => void, ms: number) => () => void;
   /** A number from 0 up to, not including, 1: the jitter on a wait. */
   random: () => number;
-  /** Milliseconds on a clock that never goes back. */
+  /**
+   * Milliseconds on a clock that never goes back. The same clock the feed
+   * stamps `receivedAt` with: staleness is the difference between the two, so
+   * a connection that builds its feed must hand this on rather than let it
+   * take a clock of its own.
+   */
   now: () => number;
 }
 

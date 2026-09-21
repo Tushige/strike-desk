@@ -28,7 +28,11 @@ export interface SessionSeats<Socket> {
    * seated stays where it is and takes no second seat.
    */
   attach(sessionId: string, playerId: string, socket: Socket): SeatResult;
-  /** Free a socket's seat. Does nothing for a socket that has none. */
+  /**
+   * Free a socket's seat. Does nothing for a socket that has none. `nowMs` is
+   * the clock reading recorded when the session's *last* socket leaves; a
+   * session's idle life, and whether it is swept away, is measured from it.
+   */
   detach(sessionId: string, socket: Socket, nowMs: number): void;
 }
 

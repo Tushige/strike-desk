@@ -17,6 +17,7 @@ import type {
 } from 'ag-grid-community';
 import { strikeTheme } from './gridSetup';
 import type { GridRow, LiveGridProps, RowSource } from './ports';
+import { createReadoutMeter } from './readout';
 import { createSortPause } from './sortPause';
 import type { SortPauseEvent } from './sortPause';
 
@@ -91,6 +92,9 @@ const HIGHLIGHTED_ROW = 'bg-accent/40 shadow-[inset_3px_0_0_0_var(--gold)]';
  */
 const NOTICE = 'rounded-sm border border-border bg-card px-2 py-0.5 text-[11px] leading-4';
 
+/** How often a caller who asked for the readout is handed one, in milliseconds. */
+const READOUT_EVERY_MS = 1000;
+
 const SELECT_KEYS = new Set(['Enter', ' ']);
 
 function isSelectKey(event: Event | null | undefined): event is KeyboardEvent {
@@ -132,6 +136,7 @@ function isAnyColumnSorted<Row extends GridRow>(grid: GridApi<Row>): boolean {
 
 function LiveGridInner<Row extends GridRow>(props: LiveGridProps<Row>): ReactElement {
   const { source, columns, defaultColDef, label, selectedId, onSelect, filter, isDimmed, isHighlighted, stale } = props;
+  const { onReadout } = props;
 
   const rows = useSyncExternalStore(source.subscribe, source.rows, source.rows);
   // The grid wants an array it may keep; the source's is read-only. One copy per row set.
@@ -147,9 +152,9 @@ function LiveGridInner<Row extends GridRow>(props: LiveGridProps<Row>): ReactEle
    * reach the caller's latest props through this ref rather than through a
    * closure that would go out of date.
    */
-  const latest = useRef({ selectedId, onSelect, filter, isDimmed, isHighlighted });
+  const latest = useRef({ selectedId, onSelect, filter, isDimmed, isHighlighted, onReadout });
   useEffect(() => {
-    latest.current = { selectedId, onSelect, filter, isDimmed, isHighlighted };
+    latest.current = { selectedId, onSelect, filter, isDimmed, isHighlighted, onReadout };
   });
 
   // ------------------------------------------------------------------ the order holds still
@@ -316,6 +321,28 @@ function LiveGridInner<Row extends GridRow>(props: LiveGridProps<Row>): ReactEle
     if (api.current !== null && !api.current.isDestroyed()) api.current.redrawRows();
   }, [isDimmed, isHighlighted]);
 
+  // ------------------------------------------------------------------ the readout
+
+  /*
+   * Only a caller who asks is measured. A batch is timed from the moment it
+   * is handed to the grid until the grid reports it applied, so the time
+   * includes the grid's own short wait while it gathers batches.
+   */
+  const [meter] = useState(createReadoutMeter);
+  const measured = onReadout !== undefined;
+
+  useEffect(() => {
+    if (!measured) return undefined;
+    const timer = window.setInterval(() => {
+      const sample = meter.sample(performance.now(), source.rows().length);
+      // A hidden tab runs its timers late and draws nothing: that second is dropped, not reported.
+      if (document.visibilityState !== 'hidden') latest.current.onReadout?.(sample);
+    }, READOUT_EVERY_MS);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [measured, meter, source]);
+
   // ------------------------------------------------------------------ the source
 
   /** The sink first, the latest rows second: the other order could drop a change that lands between the two. */
@@ -324,11 +351,18 @@ function LiveGridInner<Row extends GridRow>(props: LiveGridProps<Row>): ReactEle
       stopSink.current?.();
       stopSink.current = source.onChanged((changed) => {
         if (grid.isDestroyed()) return;
-        grid.applyTransactionAsync({ update: [...changed] });
+        if (latest.current.onReadout === undefined) {
+          grid.applyTransactionAsync({ update: [...changed] });
+          return;
+        }
+        const applied = meter.handedOver(changed.length, performance.now());
+        grid.applyTransactionAsync({ update: [...changed] }, () => {
+          applied(performance.now());
+        });
       });
       sendLatestRows(grid, source);
     },
-    [source],
+    [source, meter],
   );
 
   const onGridReady = useCallback(
@@ -357,10 +391,11 @@ function LiveGridInner<Row extends GridRow>(props: LiveGridProps<Row>): ReactEle
     if (api.current !== null && !api.current.isDestroyed()) api.current.setGridAriaProperty('label', label);
   }, [label]);
 
-  // Once after every new row set, which is rare.
+  // Once after every new row set, which is rare. The worst apply time belonged to the set before.
   useEffect(() => {
+    meter.reset();
     if (api.current !== null) sendLatestRows(api.current, source);
-  }, [rowData, source]);
+  }, [rowData, source, meter]);
 
   return (
     <div

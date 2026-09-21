@@ -14,7 +14,7 @@ import { decode } from './decode';
  * a listener ever sees it. It keeps no frame data of its own.
  */
 
-/** Where the session id is kept. Per tab, so a second tab is a second game. */
+/** Where the ordinary game's session id is kept. Per tab, so a second tab is a second game. */
 export const SESSION_KEY = 'strike-desk.session';
 
 /** How long to wait before each reconnect attempt. The last wait repeats. */
@@ -51,6 +51,11 @@ export interface WsFeedOptions {
   random?: () => number;
   /** The clock every message is stamped with. The page's own, unless a test hands one in. */
   now?: () => number;
+  /**
+   * The stress board size to ask for, read from the page's address. Null, or
+   * absent, is an ordinary game.
+   */
+  board?: number | null;
 }
 
 function pageClock(): number {
@@ -83,6 +88,7 @@ export function createWsFeed(options: WsFeedOptions): Feed {
   const random = options.random ?? Math.random;
   const now = options.now ?? pageClock;
   const storage = options.storage ?? null;
+  const board = options.board ?? null;
 
   const listeners = new Set<(event: FeedEvent) => void>();
   let socket: SocketLike | null = null;
@@ -91,10 +97,21 @@ export function createWsFeed(options: WsFeedOptions): Feed {
   let attempt = 0;
   let cancelRetry: (() => void) | null = null;
 
+  /**
+   * One tab holds both games: the ordinary one and a stress one. Each keeps
+   * its session under its own key, so neither can resume as the other.
+   * Without that, adding the size to the address of a tab that already has a
+   * game would resume the game it had and show the ordinary table — the
+   * exact gesture this setting exists to be checked with.
+   */
+  function sessionKey(): string {
+    return board === null ? SESSION_KEY : `${SESSION_KEY}.b${String(board)}`;
+  }
+
   // Storage throws in some private-browsing modes, so every use is guarded.
   function readSession(): string | null {
     try {
-      return storage?.getItem(SESSION_KEY) ?? null;
+      return storage?.getItem(sessionKey()) ?? null;
     } catch {
       return null;
     }
@@ -104,7 +121,7 @@ export function createWsFeed(options: WsFeedOptions): Feed {
     if (id === sessionId) return;
     sessionId = id;
     try {
-      storage?.setItem(SESSION_KEY, id);
+      storage?.setItem(sessionKey(), id);
     } catch {
       // Keeping it in memory is enough for this page load.
     }
@@ -113,7 +130,7 @@ export function createWsFeed(options: WsFeedOptions): Feed {
   function forgetSession(): void {
     sessionId = null;
     try {
-      storage?.removeItem(SESSION_KEY);
+      storage?.removeItem(sessionKey());
     } catch {
       // Nothing to do: the id is already gone from memory.
     }
@@ -145,10 +162,11 @@ export function createWsFeed(options: WsFeedOptions): Feed {
   }
 
   function sendHello(target: SocketLike): void {
-    const hello: Hello =
-      sessionId === null
-        ? { t: 'hello', v: PROTOCOL_VERSION }
-        : { t: 'hello', v: PROTOCOL_VERSION, session: sessionId };
+    const hello: Hello = { t: 'hello', v: PROTOCOL_VERSION };
+    if (sessionId !== null) hello.session = sessionId;
+    // The key is present only when a size was asked for: an ordinary hello is
+    // exactly the message it has always been.
+    if (board !== null) hello.board = board;
     target.send(JSON.stringify(hello));
   }
 

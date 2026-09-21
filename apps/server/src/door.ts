@@ -1,5 +1,6 @@
 import type { Hello, ServerMessage, StartCommand } from '@strike-desk/shared/engine';
 import { FIRST_PLAYER_ID, PROTOCOL_VERSION, frameFor, handleCommand, parseClientMessage } from '@strike-desk/shared/engine';
+import { PUBLIC_MAX_BOARD_SIZE, targetsForBoardSize } from './boardSizes';
 import type { TokenBucket, WindowCounter } from './limits';
 import type { FrameSocket } from './sampler';
 import type { SessionRegistry } from './sessions';
@@ -56,11 +57,20 @@ function hello(options: DoorOptions, connection: Connection, message: Hello): vo
     answer(connection, { t: 'error', code: 'versionMismatch' });
     return;
   }
-  // The stress board size is not taken by this service: refused, not ignored,
-  // so no client can come to rely on sending it.
+  // The stress board size is judged here, before the session is looked up and
+  // before the value reaches any game code. Judging it first means a size the
+  // service will not grant is refused whether or not a session is named: a
+  // client should never send an unlisted one, and it must not be able to
+  // learn otherwise by naming a session it already has. Refused, not ignored,
+  // so nothing can come to rely on sending one.
+  let targetsPerCompany: number | undefined;
   if (message.board !== undefined) {
-    answer(connection, { t: 'error', code: 'badMessage' });
-    return;
+    const targets = targetsForBoardSize(message.board);
+    if (targets === null || message.board > PUBLIC_MAX_BOARD_SIZE) {
+      answer(connection, { t: 'error', code: 'badMessage' });
+      return;
+    }
+    targetsPerCompany = targets;
   }
 
   const known = message.session === undefined ? undefined : options.registry.get(message.session);
@@ -75,7 +85,9 @@ function hello(options: DoorOptions, connection: Connection, message: Hello): vo
     answer(connection, { t: 'error', code: 'serverFull' });
     return;
   }
-  const entry = known ?? options.registry.create(options.now());
+  // The size is read only where a session is made, so a resumed session keeps
+  // whatever size it was built at.
+  const entry = known ?? options.registry.create(options.now(), targetsPerCompany);
   if (entry === null) {
     // Every session the service may hold is in use. This hello gets nothing;
     // nobody already playing is disturbed.

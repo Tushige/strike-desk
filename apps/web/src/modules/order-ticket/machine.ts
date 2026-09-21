@@ -252,14 +252,18 @@ export function buyCommandOf(state: TicketState, snapshot: TicketSnapshot, comma
   return { t: 'buy', commandId, day: snapshot.day, contractId: state.contractId, spendCents: state.spendCents, seenPriceCents: quote.priceCents };
 }
 
+/** Which command the form is for right now. While today's ticket is held it is the cash-out form: it never builds a buy. */
+export function commandKindOf(snapshot: TicketSnapshot): CommandKind {
+  return snapshot.position === null ? 'buy' : 'cashOut';
+}
+
 /**
  * The whole of a press. When the press is allowed it takes one new id, builds
  * the command and returns it with the event that moves the form on; when it
  * is not, it returns null and asks for no id.
  */
 export function pressOf(state: TicketState, snapshot: TicketSnapshot, newCommandId: () => string): Press | null {
-  // While today's ticket is held the form is the cash-out form: it never builds a buy.
-  const kind: CommandKind = snapshot.position === null ? 'buy' : 'cashOut';
+  const kind = commandKindOf(snapshot);
   const blocked = kind === 'buy' ? buyBlocker(state, snapshot) : cashOutBlocker(state, snapshot);
   if (blocked !== null) return null;
   const commandId = newCommandId();

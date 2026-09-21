@@ -3,7 +3,7 @@ import { cashOutCommandSchema, rejectReasonSchema } from '@strike-desk/shared/pr
 import type { Receipt } from '@strike-desk/shared/protocol';
 import { recordedFrame } from '../src/fixtures/recordedGame';
 import { FAKE_ACCOUNT_AFTER_BUY, FAKE_CONTRACT_A, FAKE_OPEN_TICKET, createFakeTicketDesk, createHeldTicketDesk } from '../src/modules/order-ticket/fake';
-import type { FakeTicketDesk } from '../src/modules/order-ticket/fake';
+import type { FakeTicketDesk, HeldTicketDesk } from '../src/modules/order-ticket/fake';
 import { DRAFT_MIN_GAP_MS, createDraftPacer } from '../src/modules/order-ticket/draftPacer';
 import { createLatestState, createTicketHandlers } from '../src/modules/order-ticket/handlers';
 import type { TicketHandlers } from '../src/modules/order-ticket/handlers';
@@ -449,8 +449,8 @@ describe('the order ticket: what its handlers do, which are the ones the form is
     const desk = deskWithKnownDraft();
     const form = wired(desk);
 
-    form.handlers.onPress();
-    form.handlers.onPress();
+    form.handlers.onPress('buy');
+    form.handlers.onPress('buy');
 
     expect(form.minted()).toBe(1);
     expect(desk.controls.submitted()).toEqual([{ t: 'buy', commandId: 'fake-cmd-0001', day: 1, contractId: 24, spendCents: 5000000, seenPriceCents: 11800 }]);
@@ -462,7 +462,7 @@ describe('the order ticket: what its handlers do, which are the ones the form is
   it('hands the outcome to the machine when the desk answers', async () => {
     const desk = deskWithKnownDraft();
     const form = wired(desk);
-    form.handlers.onPress();
+    form.handlers.onPress('buy');
     const sent = desk.controls.submitted()[0];
     if (sent === undefined) throw new Error('the press should have sent a command');
 
@@ -478,7 +478,7 @@ describe('the order ticket: what its handlers do, which are the ones the form is
   it('asks the desk once on a retry, takes no new id and submits nothing', () => {
     const desk = deskWithKnownDraft();
     const form = wired(desk);
-    form.handlers.onPress();
+    form.handlers.onPress('buy');
     desk.controls.setLine('offline');
     desk.controls.offerRetry(true);
     const checking = wired(desk, ticketReducer(form.state(), { type: 'line', line: 'offline' }));
@@ -495,7 +495,7 @@ describe('the order ticket: what its handlers do, which are the ones the form is
   it('does not reach the desk on a retry that is not offered, or while nothing is being checked', () => {
     const desk = deskWithKnownDraft();
     const form = wired(desk);
-    form.handlers.onPress();
+    form.handlers.onPress('buy');
     desk.controls.setLine('offline');
     const checking = wired(desk, ticketReducer(form.state(), { type: 'line', line: 'offline' }));
 
@@ -504,6 +504,48 @@ describe('the order ticket: what its handlers do, which are the ones the form is
     wired(desk).handlers.onRetry();
 
     expect(desk.controls.retries()).toBe(0);
+  });
+
+  /** A desk whose open ticket can come and go, with contract 24 selected and a $50,000 spend quoted: everything a buy needs. */
+  function heldDeskWithKnownDraft(): HeldTicketDesk {
+    const desk = createHeldTicketDesk({});
+    desk.controls.select(FAKE_CONTRACT_A);
+    desk.props().onDraftChange({ contractId: 24, spendCents: 5_000_000 });
+    return desk;
+  }
+
+  it('spends nothing on a press of the cash-out button when the ticket went away after the button was drawn', () => {
+    const desk = heldDeskWithKnownDraft();
+    const form = wired(desk);
+    // The button on screen says "Cash out". Then the ticket goes, before the form is drawn again.
+    desk.held.hand({ position: FAKE_OPEN_TICKET });
+    desk.held.hand({ position: null });
+
+    form.handlers.onPress('cashOut');
+
+    expect(desk.controls.submitted()).toEqual([]);
+    expect(form.minted()).toBe(0);
+    expect(form.state().form).toBe('draft');
+    expect(form.drawn).toEqual([]);
+
+    // The same desk, pressed as a buy, does buy: the press above was refused for what it was drawn as, not for the draft.
+    form.handlers.onPress('buy');
+    expect(desk.controls.submitted()).toEqual([{ t: 'buy', commandId: 'fake-cmd-0001', day: 1, contractId: 24, spendCents: 5000000, seenPriceCents: 11800 }]);
+  });
+
+  it('sells nothing on a press of the buy button when the ticket arrived after the button was drawn', () => {
+    const desk = heldDeskWithKnownDraft();
+    const form = wired(desk);
+    desk.held.hand({ position: FAKE_OPEN_TICKET, account: FAKE_ACCOUNT_AFTER_BUY });
+
+    form.handlers.onPress('buy');
+
+    expect(desk.controls.submitted()).toEqual([]);
+    expect(form.minted()).toBe(0);
+    expect(form.state().form).toBe('draft');
+
+    form.handlers.onPress('cashOut');
+    expect(desk.controls.submitted()).toEqual([{ t: 'cashOut', commandId: 'fake-cmd-0001', positionId: 'd1' }]);
   });
 
   it('reports a pick to the desk and changes nothing of its own; a chosen spend is kept by the form', () => {

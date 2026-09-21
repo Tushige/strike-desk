@@ -4,8 +4,8 @@ import { formatCents } from '@strike-desk/shared/money';
 import type { Side } from '@strike-desk/shared/protocol';
 import { createDraftPacer } from './draftPacer';
 import { createLatestState, createTicketHandlers } from './handlers';
-import { breakEvenStopIndex, buyBlocker, cashOutBlocker, initialTicketState, quoteEchoes, retryAllowed, stopAt, ticketReducer } from './machine';
-import type { TicketNotice, TicketSnapshot, TicketState } from './machine';
+import { breakEvenStopIndex, buyBlocker, cashOutBlocker, commandKindOf, initialTicketState, quoteEchoes, retryAllowed, stopAt, ticketReducer } from './machine';
+import type { CommandKind, TicketNotice, TicketSnapshot, TicketState } from './machine';
 import type { OpenTicket, OrderTicketProps, SimpleChoice, TicketAccount, TicketContract, TicketDraft, TicketQuote } from './ports';
 import {
   ACCEPTED_WORDS,
@@ -328,7 +328,8 @@ export interface TicketViewProps {
   retryOffered: boolean;
   onPick: (contractId: number) => void;
   onChooseSpend: (spendCents: number) => void;
-  onPress: () => void;
+  /** Told which command the pressed button was drawn for, so that a press can never send the other one. */
+  onPress: (drawnAs: CommandKind) => void;
   onRetry: () => void;
 }
 
@@ -342,6 +343,7 @@ export function TicketView({ state, snapshot, choices, spendChoices, retryOffere
   const retryHintId = useId();
 
   const { contract, quote, account, position, line } = snapshot;
+  const drawnAs = commandKindOf(snapshot);
   const holding = position !== null;
   // The choices are open in `draft`, and in `rejected`, where changing one is a way back to `draft`. An accepted form waits for the server.
   const locked = state.form !== 'draft' && state.form !== 'rejected';
@@ -380,8 +382,16 @@ export function TicketView({ state, snapshot, choices, spendChoices, retryOffere
         )}
       </div>
       <div className="grid gap-2 border-t border-border px-4 pt-3 pb-3.5">
-        <button type="button" className={ACTION} disabled={blocked} aria-describedby={whyOff === null ? undefined : whyOffId} onClick={onPress}>
-          {holding ? CASH_OUT_LABEL : BUY_LABEL}
+        <button
+          type="button"
+          className={ACTION}
+          disabled={blocked}
+          aria-describedby={whyOff === null ? undefined : whyOffId}
+          onClick={() => {
+            onPress(drawnAs);
+          }}
+        >
+          {drawnAs === 'cashOut' ? CASH_OUT_LABEL : BUY_LABEL}
         </button>
         {whyOff === null ? null : (
           <p id={whyOffId} className="m-0 text-xs text-muted-foreground">

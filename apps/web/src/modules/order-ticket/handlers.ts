@@ -1,5 +1,5 @@
-import { pressOf, retryAllowed, ticketReducer } from './machine';
-import type { TicketEvent, TicketSnapshot, TicketState } from './machine';
+import { commandKindOf, pressOf, retryAllowed, ticketReducer } from './machine';
+import type { CommandKind, TicketEvent, TicketSnapshot, TicketState } from './machine';
 import type { OrderTicketProps } from './ports';
 
 /**
@@ -22,7 +22,8 @@ export interface TicketHandlerSource {
 export interface TicketHandlers {
   onPick: (contractId: number) => void;
   onChooseSpend: (spendCents: number) => void;
-  onPress: () => void;
+  /** `drawnAs` is the command the pressed button was drawn for. */
+  onPress: (drawnAs: CommandKind) => void;
   onRetry: () => void;
 }
 
@@ -65,9 +66,12 @@ export function createTicketHandlers(source: TicketHandlerSource): TicketHandler
       source.send({ type: 'spend', spendCents });
     },
     /** The one place a command leaves the form. */
-    onPress: () => {
+    onPress: (drawnAs) => {
       const now = source.props();
-      const press = pressOf(source.state(), snapshotOf(now), now.newCommandId);
+      const snapshot = snapshotOf(now);
+      // The ticket can arrive or go between the drawing of the button and the press. A press sends what its button said, or nothing.
+      if (commandKindOf(snapshot) !== drawnAs) return;
+      const press = pressOf(source.state(), snapshot, now.newCommandId);
       if (press === null) return;
       source.send(press.event);
       const { commandId } = press.command;

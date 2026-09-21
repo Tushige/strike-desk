@@ -74,12 +74,38 @@ export const STALE_AFTER_MS = 1500;
  * - `resumed`: the first frame after a reconnect has been taken and commands
  *   still unanswered are being settled; the next message makes it live.
  * - `closed`: the page closed the connection, or the server refused for good.
+ *
+ * A message, here, is data: a frame, a reply or a batch of quotes. An `error`
+ * from the server puts nothing newer on screen, so it moves neither the phase
+ * nor `lastMessageAt`.
+ *
+ * What a form or a status strip makes of each phase is stated once, here, and
+ * is the function `lineStateOf`:
+ *
+ * | phase          | line      |
+ * |----------------|-----------|
+ * | `connecting`   | `offline` |
+ * | `live`         | `live`    |
+ * | `stale`        | `stale`   |
+ * | `reconnecting` | `offline` |
+ * | `resumed`      | `stale`   |
+ * | `closed`       | `offline` |
+ *
+ * `resumed` is `stale` and not `live`: the numbers on screen are current, but
+ * commands still unanswered are being settled and perhaps sent again, and a
+ * new order must not race them. Buying opens again with the next message.
  */
 export type ConnectionPhase = 'connecting' | 'live' | 'stale' | 'reconnecting' | 'resumed' | 'closed';
 
 /**
  * One snapshot of the connection. A new object whenever a member changes,
  * the same object otherwise.
+ *
+ * Going `stale` is the one change no message causes. While `state` has a
+ * listener, a check is booked on the seam after each message and the listener
+ * is told when it turns. While it has none, nothing is booked, and `get()`
+ * works the phase out from the clock when asked: a reader is never told
+ * `live` about data that is 1,500 ms old.
  */
 export interface ConnectionState {
   phase: ConnectionPhase;
@@ -150,7 +176,13 @@ export interface Connection extends Feed {
    *   can, and for each command still pending `resendOnResume` decides
    *   whether it goes out again by itself.
    * - A resend always reuses the command id, which is what makes it safe:
-   *   the server answers a repeated id with the first receipt.
+   *   the server answers a repeated id with the first receipt. The text is
+   *   built once, at the press, and every send hands over that same text.
+   * - It goes out at once only while the phase is `live`. Submitted in any
+   *   other phase it waits as `checking`, never sent, until a reconnect's
+   *   first frame asks `resendOnResume` about it or the page calls `resend`.
+   * - A command pressed in one game is never sent into another: when a frame
+   *   names a different session, what was pending under the old one is `lost`.
    */
   submit(command: Command): Promise<CommandOutcome>;
   /**

@@ -100,16 +100,47 @@ const runningGameGroup = {
     'A building block and the lab never reach the running game: no boot, no store, no socket feed, no App. A block is built against its port and shown against its stand-in source.',
 };
 
+// The group above never sees a dynamic `import()`: no-restricted-imports
+// visits import and export declarations and nothing else. A block registers
+// the demo the lab shows as exactly that — `demo: () => import('./…')` — so
+// the one import shape the lab's contract asks for would otherwise pass every
+// fence, and a demo could open a socket and start a real game from a page that
+// is supposed to talk to nothing.
+//
+// The same names as the group above, read off the text of the specifier: a
+// relative path whose last step is boot, App or autoStart; a relative path
+// with a store or feed step anywhere in it; and the shared package's engine
+// entry. Whole steps only, so `../feeds/x` and `../my-store/x` are somebody
+// else's folders and are left alone — as are the shared package's client-safe
+// entry points, `@strike-desk/shared/feed` (the interface a block is built
+// against) included, since those are not relative paths.
+const RUNNING_GAME_SPECIFIER = String.raw`^\.{1,2}\/(?:.*\/)?(?:boot|App|autoStart)(?:\.[jt]sx?)?$|^\.{1,2}\/(?:.*\/)?(?:store|feed)(?:\/|$)|^@strike-desk\/shared\/engine(?:\/|$)`;
+
+const runningGameDynamicImport = {
+  selector: `ImportExpression > Literal[value=/${RUNNING_GAME_SPECIFIER}/]`,
+  message: runningGameGroup.message,
+};
+
 // Matched as a regular expression rather than by the gitignore rules the
-// other groups use, because this fence has to say "exactly these three steps
-// and no more". A gitignore pattern always matches everything beneath what it
+// other groups use, because this fence has to say "into that folder, and no
+// further". A gitignore pattern always matches everything beneath what it
 // matches, so `../*/*` also swallows `../../fixtures/probe` and
 // `../../modules/other/index` — and a negation cannot let those back in,
-// since nothing under an excluded parent can be re-included. Both shapes
-// below are the ones the blocks, their stand-in sources and the lab's demos
-// actually use, and both are proved by probes.
+// since nothing under an excluded parent can be re-included.
+//
+// Read left to right: a path that climbs out of the file's own folder
+// (`../`, however many), optionally through a `modules/` step, into some
+// named folder — and then anything at all except that folder's `index` or
+// `fake`, with or without an extension. It says nothing about how deep the
+// file doing the importing sits, so it reads the same from a block, from a
+// stand-in source, from `lab/` and from `lab/modules/`.
+//
+// It is text, not resolved paths, so it has to be told which folders are not
+// blocks: `fixtures/` and `lab/` are the two a block legitimately reaches
+// sideways into, and a further `../` is a climb that has not landed yet. A
+// third such folder has to be added here.
 const siblingBlockGroup = {
-  regex: String.raw`^(?:\.\.|\.\./\.\./modules)/[^/]+/(?!index$|fake$)[^/]+$`,
+  regex: String.raw`^(?:\.\./)+(?:modules/)?(?!\.\.|fixtures/|modules/|lab/)[^/]+/(?!(?:index|fake)(?:\.[jt]sx?)?$)`,
   message:
     'Import another block only through its index.ts (or its fake.ts from a test or a lab demo), never its inner files.',
 };
@@ -229,11 +260,14 @@ export default tseslint.config(
           patterns: [...webSharedImportFence.patterns, runningGameGroup, siblingBlockGroup],
         },
       ],
+      'no-restricted-syntax': ['error', runningGameDynamicImport],
     },
   },
   {
     // A stand-in data source lives outside React, like every other module
-    // that holds or moves data.
+    // that holds or moves data. Both fences are repeated whole, for the same
+    // reason: a later block replaces a rule's options rather than adding to
+    // them, so anything left out here is lost for these files.
     files: ['apps/web/src/modules/*/fake.ts', 'apps/web/src/fixtures/**/*.ts'],
     rules: {
       'no-restricted-imports': [
@@ -243,6 +277,7 @@ export default tseslint.config(
           patterns: [...webSharedImportFence.patterns, runningGameGroup, siblingBlockGroup, reactFreeGroup],
         },
       ],
+      'no-restricted-syntax': ['error', runningGameDynamicImport],
     },
   },
   {

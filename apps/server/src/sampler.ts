@@ -1,4 +1,4 @@
-import { frameFor } from '@strike-desk/shared/engine';
+import { liveNewsFrameFor } from './liveNewsFrame';
 import type { Frame, QuotesMessage } from '@strike-desk/shared/engine';
 import type { SessionRegistry, StressStream } from './sessions';
 
@@ -156,7 +156,7 @@ export function sampleSessions(registry: SessionRegistry, nowMs: number, stats: 
       let text = texts.get(playerId);
       if (text === undefined) {
         // The first of these advances the session; after it `entry.session` is already at this step.
-        const { session, frame } = frameFor(entry.session, playerId, nowMs, { history: false, sections: 'live' });
+        const { session, frame } = liveNewsFrameFor(entry.session, playerId, nowMs);
         registry.replace(session.id, session);
         if (session.game.stress) {
           const sampled = stressSample(entry.stressStream, frame, nowMs, stressFullFrameMs);

@@ -17,6 +17,7 @@
     "day": "pnpm --filter @strike-desk/server exec tsx scripts/day.ts",
     "smoke": "node scripts/smoke.mjs",
     "check:bundle": "node scripts/check-web-bundle.mjs",
+    "check:css": "node scripts/check-web-css.mjs",
     "measure:ws": "node scripts/measure-ws-idle.mjs"
   },
   "devDependencies": {

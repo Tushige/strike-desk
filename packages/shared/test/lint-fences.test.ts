@@ -162,6 +162,9 @@ const webTestPath = path.join(repoRoot, 'apps/web/test/feed.test.ts');
 const webBlockPath = path.join(repoRoot, 'apps/web/src/modules/connection/ports.ts');
 const webBlockFakePath = path.join(repoRoot, 'apps/web/src/modules/connection/fake.ts');
 const webLabPath = path.join(repoRoot, 'apps/web/src/lab/modules/connection.lab.ts');
+// The lab's own files sit one folder higher than a block's `*.lab.ts`, which
+// is where a demo wrapper goes: the fences have to read the same from both.
+const webLabTopPath = path.join(repoRoot, 'apps/web/src/lab/registry.ts');
 
 // Hardcoded on purpose, like the Math list above: the fence is checked
 // against what the web app is meant to reach, not against the config's own
@@ -319,6 +322,87 @@ describe('web app lint fences', () => {
       for (const filePath of [webBlockPath, webBlockFakePath, webLabPath]) {
         expect(await linesReported(allowed, filePath, 'no-restricted-imports')).toEqual([]);
         expect(await linesReported(refused, filePath, 'no-restricted-imports')).toEqual(everyLine(refused));
+      }
+    },
+    LINT_TIMEOUT_MS * 2,
+  );
+
+  it(
+    'web fences: a block is reached by its index or its fake and never by an inner file, from every folder the fence covers',
+    async () => {
+      // One list, read from all four paths: the fence reads the specifier and
+      // not how deep the file doing the importing sits, so a demo wrapper in
+      // `lab/` is answered the same as a block's own file.
+      const refused = [
+        "import '../other/inner/file';",
+        "import '../other/ports';",
+        "import '../other/index/x';",
+        "import '../../other/inner';",
+        "import '../../modules/live-grid/ports';",
+        "import '../../modules/x/y/z';",
+        "import '../modules/other/inner';",
+        "import '../../../modules/other/inner';",
+      ];
+      // A block's public entry and its stand-in source, however they are
+      // spelled; the folders that are not blocks; and the file's own folder.
+      const allowed = [
+        "import '../other';",
+        "import '../other/index';",
+        "import '../other/fake';",
+        "import '../other/index.js';",
+        "import '../../modules/live-grid';",
+        "import '../../modules/live-grid/index';",
+        "import '../../modules/live-grid/fake';",
+        "import '../modules/live-grid';",
+        "import '../fixtures/x';",
+        "import '../../fixtures';",
+        "import '../../fixtures/frames';",
+        "import '../../styles.css';",
+        "import '../types';",
+        "import './inner/file';",
+      ];
+
+      for (const filePath of [webBlockPath, webBlockFakePath, webLabPath, webLabTopPath]) {
+        expect(await linesReported(refused, filePath, 'no-restricted-imports')).toEqual(everyLine(refused));
+        expect(await linesReported(allowed, filePath, 'no-restricted-imports')).toEqual([]);
+      }
+    },
+    LINT_TIMEOUT_MS * 2,
+  );
+
+  it(
+    'web fences: a dynamic import of the running game is refused from a block, its stand-in and the lab',
+    async () => {
+      // A block hands the lab its demo as `() => import('…')`, and the import
+      // fence never sees a dynamic import: it visits import and export
+      // declarations only. So the same names are refused a second time, by
+      // shape, or the one import every block writes would pass every fence.
+      const refused = [
+        "void import('../../boot');",
+        "void import('../../store');",
+        "void import('../../store/hooks');",
+        "void import('../../feed');",
+        "void import('../../feed/wsFeed');",
+        "void import('../../autoStart');",
+        "void import('../../App');",
+        "void import('@strike-desk/shared/engine');",
+        "void import('@strike-desk/shared/engine/market');",
+      ];
+      // What a demo actually loads: another block through its public entry or
+      // its stand-in source, its own files, and the client-safe entry points.
+      const allowed = [
+        "void import('../../modules/live-grid');",
+        "void import('../../modules/live-grid/index');",
+        "void import('../../modules/live-grid/fake');",
+        "void import('./fake');",
+        "void import('./inner/thing');",
+        "void import('@strike-desk/shared/feed');",
+        "void import('@strike-desk/shared/protocol');",
+      ];
+
+      for (const filePath of [webBlockPath, webBlockFakePath, webLabPath]) {
+        expect(await linesReported(refused, filePath, 'no-restricted-syntax')).toEqual(everyLine(refused));
+        expect(await linesReported(allowed, filePath, 'no-restricted-syntax')).toEqual([]);
       }
     },
     LINT_TIMEOUT_MS * 2,

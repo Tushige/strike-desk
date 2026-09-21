@@ -1,7 +1,7 @@
-import { ContractBoard } from './board/ContractBoard';
+import { ComparisonDesk } from './comparison/ComparisonDesk';
 import { Strip } from './board/Strip';
 import { VERSION } from './generated/version';
-import { newsStore } from './boot';
+import { comparisonStore, newsStore, store } from './boot';
 import { NewsPanel } from './news/NewsPanel';
 
 /**
@@ -17,8 +17,8 @@ export default function App() {
     <main>
       <Strip />
       <NewsPanel store={newsStore} />
-      <div className="board">
-        <ContractBoard />
+      <div className="min-h-0 flex-1">
+        <ComparisonDesk comparison={comparisonStore} game={store} />
       </div>
       {/*
         The one element styled in utilities rather than in the stylesheet:

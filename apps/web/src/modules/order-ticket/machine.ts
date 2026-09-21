@@ -1,5 +1,5 @@
 import type { BuyCommand, CashOutCommand, RejectReason } from '@strike-desk/shared/protocol';
-import type { LineState, OpenTicket, SubmitOutcome, TicketAccount, TicketContract, TicketFormState, TicketQuote } from './ports';
+import type { LineState, OpenTicket, SubmitOutcome, TicketAccount, TicketContract, TicketFormState, TicketQuote, WhatIfStop } from './ports';
 
 /**
  * The order ticket's rules, with no React and no page in them: the form's
@@ -186,6 +186,38 @@ export function buyAllowed(state: TicketState, snapshot: TicketSnapshot): boolea
   return buyBlocker(state, snapshot) === null;
 }
 
+/** Why the cash-out may not be pressed right now, or null when it may. */
+export type CashOutBlocker = 'notDraft' | 'stale' | 'offline' | 'noTicket';
+
+/** The cash-out obeys the same state rule as the buy: only from `draft`, only on a live line. */
+export function cashOutBlocker(state: TicketState, snapshot: TicketSnapshot): CashOutBlocker | null {
+  if (state.form !== 'draft') return 'notDraft';
+  if (snapshot.line !== 'live') return snapshot.line;
+  if (snapshot.position === null) return 'noTicket';
+  return null;
+}
+
+/** The cash-out for the open ticket, or null while none is held. Its position id is all it carries. */
+export function cashOutCommandOf(snapshot: TicketSnapshot, commandId: string): CashOutCommand | null {
+  if (snapshot.position === null) return null;
+  return { t: 'cashOut', commandId, positionId: snapshot.position.positionId };
+}
+
+/**
+ * The what-if slider moves over the quote's stops by their place in the
+ * list. Where it starts: on the stop at the break-even, or on the first stop
+ * if the server sent none there.
+ */
+export function breakEvenStopIndex(quote: TicketQuote): number {
+  const found = quote.whatIf.findIndex((stop) => stop.atCents === quote.breakEvenCents);
+  return found === -1 ? 0 : found;
+}
+
+/** The stop at a place in the list, exactly as the server sent it, or null when there is none there. */
+export function stopAt(quote: TicketQuote, index: number): WhatIfStop | null {
+  return quote.whatIf[index] ?? null;
+}
+
 /** The retry control shows only for an unanswered command on a line that dropped, and only when the desk offers it. */
 export function retryAllowed(state: TicketState, retryOffered: boolean): boolean {
   return retryOffered && state.form === 'checking';
@@ -208,9 +240,13 @@ export function buyCommandOf(state: TicketState, snapshot: TicketSnapshot, comma
  * is not, it returns null and asks for no id.
  */
 export function pressOf(state: TicketState, snapshot: TicketSnapshot, newCommandId: () => string): Press | null {
-  if (!buyAllowed(state, snapshot)) return null;
+  // While today's ticket is held the form is the cash-out form: it never builds a buy.
+  const kind: CommandKind = snapshot.position === null ? 'buy' : 'cashOut';
+  const blocked = kind === 'buy' ? buyBlocker(state, snapshot) : cashOutBlocker(state, snapshot);
+  if (blocked !== null) return null;
   const commandId = newCommandId();
-  const command = buyCommandOf(state, snapshot, commandId);
+  const command = kind === 'buy' ? buyCommandOf(state, snapshot, commandId) : cashOutCommandOf(snapshot, commandId);
+  // Not reachable: a press that is not blocked always has its command. Said for the compiler.
   if (command === null) return null;
-  return { command, event: { type: 'pressed', commandId, kind: 'buy' } };
+  return { command, event: { type: 'pressed', commandId, kind } };
 }

@@ -1,11 +1,25 @@
 import { describe, expect, it } from 'vitest';
+import { cashOutCommandSchema, rejectReasonSchema } from '@strike-desk/shared/protocol';
 import type { Receipt } from '@strike-desk/shared/protocol';
-import { FAKE_CONTRACT_A, createFakeTicketDesk } from '../src/modules/order-ticket/fake';
+import { recordedFrame } from '../src/fixtures/recordedGame';
+import { FAKE_ACCOUNT_AFTER_BUY, FAKE_CONTRACT_A, FAKE_OPEN_TICKET, createFakeTicketDesk, createHeldTicketDesk } from '../src/modules/order-ticket/fake';
 import type { FakeTicketDesk } from '../src/modules/order-ticket/fake';
 import { DRAFT_MIN_GAP_MS, createDraftPacer } from '../src/modules/order-ticket/draftPacer';
 import type { TicketAccount, TicketDraft, TicketQuote } from '../src/modules/order-ticket/index';
-import { buyAllowed, buyBlocker, buyCommandOf, initialTicketState, pressOf, retryAllowed, ticketReducer } from '../src/modules/order-ticket/machine';
+import {
+  breakEvenStopIndex,
+  buyAllowed,
+  buyBlocker,
+  buyCommandOf,
+  cashOutBlocker,
+  initialTicketState,
+  pressOf,
+  retryAllowed,
+  stopAt,
+  ticketReducer,
+} from '../src/modules/order-ticket/machine';
 import type { TicketSnapshot, TicketState } from '../src/modules/order-ticket/machine';
+import { REJECT_WORDS } from '../src/modules/order-ticket/words';
 
 /**
  * The order ticket's rules, tried with no page: the state machine is a pure
@@ -505,6 +519,209 @@ describe('the order ticket: the way back to draft follows the server', () => {
 
     expect(next.form).toBe('draft');
     expect(next.notice).toEqual({ kind: 'rejected', of: 'cashOut', reason: 'priceMoved' });
+  });
+});
+
+describe('the order ticket: cash out', () => {
+  /** A desk whose buy was accepted: the account after the buy, and the open ticket `d1`. */
+  function deskHoldingTheTicket(): FakeTicketDesk {
+    const desk = deskWithKnownDraft();
+    void desk.props().submit({ t: 'buy', commandId: 'an-earlier-buy', day: 1, contractId: 24, spendCents: 5_000_000, seenPriceCents: 11_800 });
+    desk.controls.answer(
+      { outcome: 'accepted', receipt: { commandId: 'an-earlier-buy', kind: 'buy', step: 400, outcome: 'accepted', positionId: 'd1' } },
+      { account: FAKE_ACCOUNT_AFTER_BUY, position: FAKE_OPEN_TICKET },
+    );
+    return desk;
+  }
+
+  function holding(): TicketState {
+    return initialTicketState({ day: 1, contractId: 24, spendCents: 5_000_000, held: true });
+  }
+
+  it('builds the whole of the cash-out command from the open ticket: its position id and nothing else', () => {
+    const desk = deskHoldingTheTicket();
+
+    const press = pressOf(holding(), snapshotOf(desk), desk.props().newCommandId);
+
+    expect(press).toEqual({
+      command: { t: 'cashOut', commandId: 'fake-cmd-0001', positionId: 'd1' },
+      event: { type: 'pressed', commandId: 'fake-cmd-0001', kind: 'cashOut' },
+    });
+    expect(cashOutCommandSchema.safeParse(press?.command).success).toBe(true);
+  });
+
+  it('sends one cash-out for two presses: the second returns null and mints no id', () => {
+    const desk = deskHoldingTheTicket();
+    let minted = 0;
+    const newCommandId = (): string => {
+      minted += 1;
+      return desk.props().newCommandId();
+    };
+    const first = pressOf(holding(), snapshotOf(desk), newCommandId);
+    if (first === null) throw new Error('the first press should have been allowed');
+    const after = ticketReducer(holding(), first.event);
+
+    expect(pressOf(after, snapshotOf(desk), newCommandId)).toBeNull();
+    expect(minted).toBe(1);
+  });
+
+  it('is off while the line is not live, and says which', () => {
+    const desk = deskHoldingTheTicket();
+    expect(cashOutBlocker(holding(), snapshotOf(desk))).toBeNull();
+
+    desk.controls.setLine('stale');
+    expect(cashOutBlocker(holding(), snapshotOf(desk))).toBe('stale');
+    expect(pressOf(holding(), snapshotOf(desk), desk.props().newCommandId)).toBeNull();
+
+    desk.controls.setLine('offline');
+    expect(cashOutBlocker(holding(), snapshotOf(desk))).toBe('offline');
+  });
+
+  it('never builds a buy while a ticket is held', () => {
+    const desk = deskHoldingTheTicket();
+
+    expect(pressOf(holding(), snapshotOf(desk), desk.props().newCommandId)?.command.t).toBe('cashOut');
+  });
+});
+
+describe('the what-if slider', () => {
+  it('starts on the break-even stop, where the profit is 0', () => {
+    const quote = deskWithKnownDraft().props().quote.get();
+    if (quote === null) throw new Error('the desk did not quote its known draft');
+
+    // The scripted stops are $83, $85, $86.18, $87 and $89: the break-even is the third.
+    expect(breakEvenStopIndex(quote)).toBe(2);
+    expect(stopAt(quote, 2)).toEqual({ atCents: 8618, profitCents: 0 });
+  });
+
+  it('looks the next stop up and multiplies nothing: $87.00 shows the $34,686 the server sent', () => {
+    const quote = deskWithKnownDraft().props().quote.get();
+    if (quote === null) throw new Error('the desk did not quote its known draft');
+
+    // 423 tickets, each paying $87.00 - $85.00 = $2.00 a share on 100 shares: 423 x 200 x 100 = 8,460,000, less the 4,991,400 paid.
+    expect(stopAt(quote, 3)).toEqual({ atCents: 8700, profitCents: 3468600 });
+  });
+
+  it('has no stop outside the table, and starts at the first stop when the break-even is not among them', () => {
+    const quote = deskWithKnownDraft().props().quote.get();
+    if (quote === null) throw new Error('the desk did not quote its known draft');
+
+    expect(stopAt(quote, 5)).toBeNull();
+    expect(stopAt(quote, -1)).toBeNull();
+    expect(breakEvenStopIndex({ ...quote, breakEvenCents: 1 })).toBe(0);
+  });
+
+  it('has a position for every stop of a real recorded draft, and one of them is the break-even', () => {
+    const draft = recordedFrame('day1-draft').draft;
+    const ticket = draft?.ticket;
+    if (draft === undefined || ticket === undefined) throw new Error('the recorded frame holds no draft ticket');
+    const quote: TicketQuote = { ...ticket, spendCents: draft.spendCents };
+
+    // A stop per target of the board (21), one at the break-even, one a gap past it; fewer when two fall together.
+    expect(quote.whatIf.length).toBeGreaterThanOrEqual(21);
+    expect(quote.whatIf.length).toBeLessThanOrEqual(23);
+    expect(stopAt(quote, quote.whatIf.length - 1)).not.toBeNull();
+    expect(stopAt(quote, quote.whatIf.length)).toBeNull();
+    expect(stopAt(quote, breakEvenStopIndex(quote))).toEqual({ atCents: quote.breakEvenCents, profitCents: 0 });
+  });
+});
+
+describe('the words of the order ticket', () => {
+  const EMOJI = /\p{Extended_Pictographic}/u;
+
+  it('has plain words for all 17 ways the server can say no', () => {
+    const codes = rejectReasonSchema.options;
+    expect(codes).toHaveLength(17);
+
+    for (const code of codes) {
+      expect(REJECT_WORDS[code].trim().length, `${code} has words`).toBeGreaterThan(0);
+      expect(EMOJI.test(REJECT_WORDS[code]), `${code} has no emoji`).toBe(false);
+    }
+    expect(Object.keys(REJECT_WORDS).sort()).toEqual([...codes].sort());
+  });
+
+  it('never states the numbers of the price tolerance', () => {
+    for (const words of Object.values(REJECT_WORDS)) {
+      expect(words).not.toMatch(/2\s?%|\$1\b/);
+    }
+  });
+});
+
+describe('the lab desk that can hold a quote back', () => {
+  const KNOWN: TicketDraft = { contractId: 24, spendCents: 5_000_000 };
+
+  it('passes quotes straight through until it is told to hold them', () => {
+    const desk = createHeldTicketDesk({});
+
+    desk.props().onDraftChange(KNOWN);
+
+    expect(desk.props().quote.get()).toMatchObject({ contractId: 24, spendCents: 5000000, costCents: 4991400 });
+  });
+
+  it('leaves the quote as it was while holding, and lets the newest one through on release, telling subscribers once', () => {
+    const desk = createHeldTicketDesk({ holding: true });
+    const { quote, onDraftChange } = desk.props();
+    let told = 0;
+    quote.subscribe(() => {
+      told += 1;
+    });
+
+    onDraftChange(KNOWN);
+    onDraftChange({ contractId: 24, spendCents: 10_000_000 });
+    expect(quote.get()).toBeNull();
+    expect(told).toBe(0);
+    expect(desk.held.waiting()).toBe(true);
+
+    desk.held.release();
+
+    // The newest: the $100,000 spend, which costs $99,946.
+    expect(quote.get()).toMatchObject({ contractId: 24, spendCents: 10000000, costCents: 9994600 });
+    expect(told).toBe(1);
+    expect(desk.held.waiting()).toBe(false);
+  });
+
+  it('lets a quote through when its wait runs: 800 ms on a timer moved by hand', () => {
+    const timer = handTimer();
+    const desk = createHeldTicketDesk({ delayMs: 800, schedule: timer.schedule });
+    const { quote, onDraftChange } = desk.props();
+
+    onDraftChange(KNOWN);
+    timer.advanceTo(799);
+    expect(quote.get()).toBeNull();
+
+    timer.advanceTo(800);
+    expect(quote.get()).toMatchObject({ contractId: 24, spendCents: 5000000 });
+  });
+
+  it('is still a desk: the same command id submitted twice is one command, and the day can be moved on', () => {
+    const desk = createHeldTicketDesk({});
+    const props = desk.props();
+    const command = { t: 'buy', commandId: 'held-desk-0001', day: 1, contractId: 24, spendCents: 5_000_000, seenPriceCents: 11_800 } as const;
+
+    void props.submit(command);
+    void props.submit({ ...command });
+    expect(desk.controls.submitted()).toHaveLength(1);
+
+    let told = 0;
+    desk.subscribe(() => {
+      told += 1;
+    });
+    desk.held.setDay(2);
+    expect(desk.props().day).toBe(2);
+    expect(told).toBe(1);
+  });
+
+  it('hands over the account and the open ticket when told to, and clears them again', () => {
+    const desk = createHeldTicketDesk({});
+    const { account, position } = desk.props();
+
+    desk.held.hand({ account: FAKE_ACCOUNT_AFTER_BUY, position: FAKE_OPEN_TICKET });
+    expect(account.get()).toBe(FAKE_ACCOUNT_AFTER_BUY);
+    expect(position.get()).toBe(FAKE_OPEN_TICKET);
+
+    desk.held.hand({ position: null });
+    expect(position.get()).toBeNull();
+    expect(account.get()).toBe(FAKE_ACCOUNT_AFTER_BUY);
   });
 });
 

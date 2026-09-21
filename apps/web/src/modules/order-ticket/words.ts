@@ -1,5 +1,5 @@
 import type { RejectReason, Side } from '@strike-desk/shared/protocol';
-import type { BuyBlocker } from './machine';
+import type { BuyBlocker, CashOutBlocker } from './machine';
 import type { SimpleChoice } from './ports';
 
 /**
@@ -12,6 +12,7 @@ import type { SimpleChoice } from './ports';
  */
 
 export const PANEL_TITLE = 'Your ticket';
+export const OPEN_TICKET_TITLE = "Today's ticket";
 export const NOTHING_PICKED = 'Pick a company, then pick a ticket.';
 
 /** The game's word for each side, and the grown-up word for the same thing. */
@@ -26,6 +27,9 @@ export const SIDE_HINTS: Record<Side, string> = {
   down: 'Pays if the price ends below the target',
 };
 
+/** The side as one word, beside its three choices. */
+export const SIDE_SHORT: Record<Side, string> = { up: 'UP', down: 'DOWN' };
+
 export const TARGET_WORDS = { game: 'Target', real: 'strike price' };
 
 export const CHOICES_LABEL = 'Pick a ticket';
@@ -38,16 +42,39 @@ export const CHOICE_WORDS: Record<SimpleChoice['choice'], string> = {
 export const SPEND_LABEL = 'How much to spend';
 
 export const PRICE_LABEL = 'Ticket price';
-export const QUANTITY_LABEL = 'Tickets you get';
+export const QUANTITY_LABEL = 'Tickets';
 export const COST_LABEL = 'Cost & most you can lose';
+/** Followed by the break-even, which is the server's number. */
+export const PROFIT_IF_WORDS: Record<Side, string> = {
+  up: 'Profit at the bell if price is above',
+  down: 'Profit at the bell if price is below',
+};
+/** Followed by the highest price at which the buy still goes through. The rule behind that number is the server's and is not said here. */
+export const LIMIT_LABEL = 'Still buys if the price moves up to';
 export const CASH_LABEL = 'Cash';
 export const CAP_LABEL = 'Most you can spend today';
 
+/** The what-if slider. Followed by the price the slider stands on, then by the profit or loss the server sent for it. */
+export const WHAT_IF_LABEL = 'What if, at the closing bell, the price reaches';
+export const WHAT_IF_RESULT_LABEL = 'Profit or loss';
+
+/** Today's ticket, once bought. */
+export const WORTH_NOW_LABEL = 'Worth right now';
+export const PROFIT_SO_FAR_LABEL = 'Profit or loss so far';
+export const REAL_VALUE_WORDS = { game: 'Real value', real: 'intrinsic value' };
+export const HOPE_VALUE_WORDS = { game: 'Hope value', real: 'time value' };
+export const PER_TICKET_LABEL = 'a ticket';
+export const BREAK_EVEN_LABEL = 'Break-even';
+
 export const BUY_LABEL = 'Buy ticket';
+export const CASH_OUT_LABEL = 'Cash out';
 
 /** What the form says while a command is on its way, and once the answer is in. */
 export const PENDING_WORDS = 'Pending...';
-export const ACCEPTED_BUY_WORDS = 'Accepted. The ticket is yours.';
+export const ACCEPTED_WORDS = {
+  buy: 'Accepted. The ticket is yours.',
+  cashOut: 'Accepted. You cashed out.',
+};
 export const REJECTED_LEAD = 'Rejected.';
 export const REJECTED_NO_REASON = 'The game said no to that one. Check your ticket and press again.';
 export const LOST_WORDS = 'No answer came back for that one. Check your cash and your ticket, then press again if you still want it.';
@@ -98,4 +125,12 @@ export const BLOCKER_WORDS: Record<BuyBlocker, string | null> = {
   spendTooSmall: REJECT_WORDS.spendTooSmall,
   overCap: REJECT_WORDS.overCap,
   notEnoughCash: REJECT_WORDS.notEnoughCash,
+};
+
+/** Why the cash-out button is off, said under it. */
+export const CASH_OUT_BLOCKER_WORDS: Record<CashOutBlocker, string | null> = {
+  notDraft: null,
+  stale: 'Prices have stopped moving. Cashing out is off until they move again.',
+  offline: 'Not connected. Cashing out is off until the connection is back.',
+  noTicket: REJECT_WORDS.unknownPosition,
 };

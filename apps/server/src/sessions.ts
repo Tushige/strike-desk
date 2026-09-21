@@ -1,4 +1,4 @@
-import type { Session } from '@strike-desk/shared/engine';
+import type { Frame, Session } from '@strike-desk/shared/engine';
 import { CONTENT_VERSION, DEFAULT_TARGETS_PER_COMPANY, ENGINE_VERSION, createSession, playerOf } from '@strike-desk/shared/engine';
 import type { Limits } from './limits';
 import type { FrameSocket } from './sampler';
@@ -29,7 +29,8 @@ export interface StressStream {
   quoteHopes: readonly number[];
   quoteBreakEvens: readonly number[];
   day: number;
-  phase: string;
+  /** The frame's own phase, not a string: a phase that was renamed or mistyped has to fail the typecheck, not compare quietly. */
+  phase: Frame['clock']['phase'];
   rev: number;
   /** The clock reading of the last whole frame, which is what the cadence is measured from. */
   lastWholeFrameMs: number;

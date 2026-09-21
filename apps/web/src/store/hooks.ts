@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import type { CompanyView } from '@strike-desk/shared/protocol';
 import { store } from '../boot';
+import type { RowSource } from '../modules/live-grid/index';
 import type { ContractRow } from './contractRows';
 
 /**
@@ -13,7 +14,7 @@ import type { ContractRow } from './contractRows';
  * and kept here rather than rebuilt on every render.
  *
  * The moving ticket prices deliberately have no hook: they reach the table
- * through `registerRowSink`, which is not React's to redraw.
+ * through `boardRowSource`, whose sink is not React's to redraw.
  */
 
 const subscribers = new Map<number, (listener: () => void) => () => void>();
@@ -50,30 +51,29 @@ export function useCompanies(): readonly CompanyView[] {
 
 const subscribeBoardRows = (listener: () => void): (() => void) => store.boardRows.subscribe(listener);
 const snapshotBoardRows = (): readonly ContractRow[] => store.boardRows.get();
+const latestBoardRows = (): readonly ContractRow[] => store.currentRows();
+
+/** The sink the table last registered, so that an older table's stop cannot silence a newer one. */
+let boardSink: ((changed: readonly ContractRow[]) => void) | null = null;
 
 /**
- * Today's whole row set, which changes once a day. It carries the prices the
- * board was built with, not the ones moving now: those arrive at the sink.
+ * The store, as the contract table reads it. `rows` is today's whole row set,
+ * which changes once a day and carries the prices the board was built with;
+ * the ones moving now arrive at the sink, and `latest` has the newest row for
+ * every ticket. Made once, because the table compares what it is given by
+ * identity.
  */
-export function useBoardRows(): readonly ContractRow[] {
-  return useSyncExternalStore(subscribeBoardRows, snapshotBoardRows);
-}
-
-/**
- * Take the changed rows of every frame. Returns the call that stops it; one
- * listener at a time, and calling the stop twice is harmless.
- */
-export function registerRowSink(sink: (rows: readonly ContractRow[]) => void): () => void {
-  store.setRowSink(sink);
-  let listening = true;
-  return () => {
-    if (!listening) return;
-    listening = false;
-    store.setRowSink(null);
-  };
-}
-
-/** The latest row for every contract, in the default order. */
-export function currentRows(): readonly ContractRow[] {
-  return store.currentRows();
-}
+export const boardRowSource: RowSource<ContractRow> = {
+  rows: snapshotBoardRows,
+  subscribe: subscribeBoardRows,
+  latest: latestBoardRows,
+  onChanged(sink) {
+    boardSink = sink;
+    store.setRowSink(sink);
+    return () => {
+      if (boardSink !== sink) return;
+      boardSink = null;
+      store.setRowSink(null);
+    };
+  },
+};

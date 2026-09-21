@@ -11,6 +11,7 @@ import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-libra
 import { afterEach, expect, it, vi } from 'vitest';
 import type { Frame, ServerMessage } from '@strike-desk/shared/protocol';
 import { formatCents } from '@strike-desk/shared/money';
+import { contractId, decodeContractId } from '@strike-desk/shared/protocol';
 import type { Outbound } from '@strike-desk/shared/feed';
 import { createWsFeed } from '../src/feed/wsFeed';
 import type { SocketLike, WsFeedOptions } from '../src/feed/wsFeed';
@@ -71,6 +72,9 @@ it.each([null, 2500])('selects and previews a live contract through boot and the
     const view = render(createElement(App));
     await waitFor(() => expect(store.currentRows()).toHaveLength(board === null ? 252 : 2508), { timeout: 5000 });
     expect(view.queryByRole('textbox', { name: 'How much to spend' })).not.toBeNull();
+    expect(view.queryByRole('combobox', { name: 'Company' })).not.toBeNull();
+    expect(view.queryByRole('combobox', { name: 'Ticket' })).not.toBeNull();
+    expect(view.queryByRole('checkbox', { name: 'Affordable for me' })).not.toBeNull();
     const grid = await view.findByRole('grid', { name: 'Contracts' });
     await waitFor(() => expect(grid.querySelector('.ag-row[row-id="0"]')).not.toBeNull());
     const row = grid.querySelector('.ag-row[row-id="0"]');
@@ -147,6 +151,65 @@ it.each([null, 2500])('selects and previews a live contract through boot and the
     fireEvent.change(slider, { target: { value: '0' } });
     fireEvent.change(slider, { target: { value: String(zero) } });
     expect(slider.getAttribute('aria-valuetext')).toBe(`${formatCents(ticket.breakEvenCents)}. Profit or loss $0`);
+
+    const companySelect = view.getByRole('combobox', { name: 'Company' });
+    const sideSelect = view.getByRole('combobox', { name: 'Ticket' });
+    const affordable = view.getByRole('checkbox', { name: 'Affordable for me' });
+    const visibleRows = () => [...grid.querySelectorAll('.ag-row')].map((element) => ({
+      element, row: store.currentRows().find((current) => current.id === element.getAttribute('row-id'))!,
+    }));
+    fireEvent.change(companySelect, { target: { value: '1' } });
+    await waitFor(() => {
+      expect(visibleRows().length).toBeGreaterThan(0);
+      expect(visibleRows().every(({ row: current }) => current.companyId === 1)).toBe(true);
+      expect(grid.querySelector('.ag-row[row-id="0"]')).toBeNull();
+    });
+    expect((input as HTMLInputElement).value).toBe('50000');
+    expect(comparisonStore.requested.get()).toEqual({ contractId: 0, spendCents: 5000000 });
+    expect((view.getByRole('slider') as HTMLInputElement).value).toBe(String(zero));
+    fireEvent.change(sideSelect, { target: { value: 'up' } });
+    fireEvent.click(affordable);
+    await waitFor(() => {
+      expect(visibleRows().length).toBeGreaterThan(0);
+      expect(visibleRows().every(({ row: current }) => current.companyId === 1 && current.side === 'up' &&
+        current.priceCents >= quoted.minTicketCents && current.priceCents <= quoted.account.cashCents && current.priceCents <= quoted.account.capCents &&
+        decodeContractId(quoted.board!.targetsPerCompany, current.contractId).targetIndex >= quoted.board!.companies[1]!.lowestUpIndex)).toBe(true);
+    });
+    // The preview release deliberately cannot buy; this does not make every ticket unaffordable.
+    expect(quoted.account.canBuy).toBe(false);
+    const filterCell = grid.querySelector('.ag-cell')!;
+    fireEvent.focusIn(filterCell);
+    expect(view.getByText('Sorting and filters paused')).toBeTruthy();
+    fireEvent.change(sideSelect, { target: { value: 'down' } });
+    await waitFor(() => expect(visibleRows().every(({ row: current }) => current.side === 'down')).toBe(true));
+    fireEvent.focusOut(filterCell, { relatedTarget: input });
+    fireEvent.click(affordable);
+    fireEvent.change(companySelect, { target: { value: '' } });
+    fireEvent.change(sideSelect, { target: { value: '' } });
+    await waitFor(() => expect(grid.querySelector('.ag-row[row-id="0"]')?.getAttribute('aria-selected')).toBe('true'));
+    expect(view.queryByText('Sorting and filters paused')).toBeNull();
+    const highlightIds = new Set(quoted.board!.companies[0]!.simpleUp.map((targetIndex) =>
+      contractId(quoted.board!.targetsPerCompany, { companyId: 0, side: 'up', targetIndex })));
+    for (const { element, row: current } of visibleRows()) expect(element.classList.contains('bg-accent/40')).toBe(highlightIds.has(current.contractId));
+
+    for (const [column, field] of [
+      ['company', 'company'], ['side', 'side'], ['targetCents', 'targetCents'], ['price', 'priceCents'],
+      ['breakEvenCents', 'breakEvenCents'], ['costCents', 'costCents'], ['realCents', 'realCents'], ['hopeCents', 'hopeCents'],
+    ] as const) {
+      const header = grid.querySelector(`.ag-header-cell[col-id="${column}"]`)!;
+      fireEvent.click(header.querySelector('.ag-header-cell-label')!);
+      await waitFor(() => expect(header.getAttribute('aria-sort')).toBe('ascending'));
+      const displayed = visibleRows();
+      // Read each displayed position directly; recycled DOM creation order is not display order.
+      for (let position = 1; position < displayed.length; position += 1) {
+        const previous = displayed.find(({ element }) => element.getAttribute('row-index') === String(position - 1))?.row;
+        const current = displayed.find(({ element }) => element.getAttribute('row-index') === String(position))?.row;
+        if (previous === undefined || current === undefined || previous.dimmed || current.dimmed) continue;
+        const left = previous[field]; const right = current[field];
+        if (typeof left === 'number' && typeof right === 'number') expect(left).toBeLessThanOrEqual(right);
+        else if (typeof left === 'string' && typeof right === 'string') expect(left <= right).toBe(true);
+      }
+    }
 
     fireEvent.change(slider, { target: { value: '0' } });
     await sample(23000); // The price path moves into the open market at pace three.

@@ -211,7 +211,7 @@ export function LiveGridInner<Row extends GridRow>(props: LiveGridProps<Row> & I
   const tell = useCallback(
     (event: SortPauseEvent) => {
       const { paused, catchUp } = pause.on(event);
-      setHolding(paused && sorted.current);
+      setHolding(paused && (sorted.current || latest.current.filter !== null));
       if (catchUp && behind.current && api.current !== null) bringUpToDate(api.current);
     },
     [pause, bringUpToDate],
@@ -220,10 +220,14 @@ export function LiveGridInner<Row extends GridRow>(props: LiveGridProps<Row> & I
   const onSortChanged = useCallback(
     (event: { api: GridApi<Row> }) => {
       sorted.current = isAnyColumnSorted(event.api);
-      setHolding(pause.state().paused && sorted.current);
+      setHolding(pause.state().paused && (sorted.current || latest.current.filter !== null));
     },
     [pause],
   );
+
+  useEffect(() => {
+    setHolding(pause.state().paused && (sorted.current || filter !== null));
+  }, [filter, pause]);
 
   // A mouse or a pen. A finger is followed by its touch instead: a browser
   // that takes a touch for scrolling cancels its pointer, which then "leaves"
@@ -498,7 +502,7 @@ export function LiveGridInner<Row extends GridRow>(props: LiveGridProps<Row> & I
       {/* Always here, so that a screen reader hears a notice arrive; empty, it takes no room and catches no pointer. */}
       <div role="status" className="pointer-events-none absolute bottom-2 left-2 z-10 flex gap-1.5">
         {stale ? <span className={`${NOTICE} text-foreground`}>These prices are old</span> : null}
-        {holding ? <span className={`${NOTICE} text-muted-foreground`}>Sorting paused</span> : null}
+        {holding ? <span className={`${NOTICE} text-muted-foreground`}>{filter === null ? 'Sorting paused' : 'Sorting and filters paused'}</span> : null}
       </div>
     </div>
   );

@@ -107,8 +107,8 @@ describe('the contract table columns', () => {
     ]);
   });
 
-  it('cannot be sorted, filtered, moved or resized by the player', () => {
-    expect(DEFAULT_COL_DEF).toMatchObject({ sortable: false, filter: false, suppressMovable: true, resizable: false });
+  it('sorts from every header, with external filters and fixed column geometry', () => {
+    expect(DEFAULT_COL_DEF).toMatchObject({ sortable: true, filter: false, suppressMovable: true, resizable: false });
     for (const one of COLUMNS) {
       expect(one.sortable).toBeUndefined();
       expect(one.filter).toBeUndefined();

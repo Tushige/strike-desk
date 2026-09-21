@@ -177,12 +177,10 @@ export const COLUMNS: ColDef<ContractRow>[] = [
 ];
 
 /**
- * The rows stay in the order they arrive in: company, then the UP tickets,
- * then the DOWN tickets, targets rising. Nothing here lets the player
- * reorder, filter or reshape the table.
+ * Headers compare raw text or numbers; native controls own external filtering.
  */
 export const DEFAULT_COL_DEF: ColDef<ContractRow> = {
-  sortable: false,
+  sortable: true,
   filter: false,
   suppressMovable: true,
   resizable: false,

@@ -55,6 +55,11 @@ function shownBreakEven(params: ValueGetterParams<ContractRow, number | null>): 
   return row === undefined || row.dimmed ? null : row.breakEvenCents;
 }
 
+function shownCost(params: ValueGetterParams<ContractRow, number | null>): number | null {
+  const row = params.data;
+  return row === undefined || row.dimmed ? null : row.costCents;
+}
+
 type Cell = CellClassParams<ContractRow>;
 
 /**
@@ -135,6 +140,16 @@ export const COLUMNS: ColDef<ContractRow>[] = [
     cellClass: VALUE_CELL_CLASS,
     flex: 1,
     minWidth: 88,
+  },
+  {
+    headerName: 'Cost & most you can lose',
+    field: 'costCents',
+    valueGetter: shownCost,
+    cellRenderer: ValueCell,
+    type: 'rightAligned',
+    cellClass: VALUE_CELL_CLASS,
+    flex: 1,
+    minWidth: 174,
   },
   // The price, told in its two parts. Neither flashes: the price is the one
   // number the eye should be pulled to, and these two are what the player

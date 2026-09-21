@@ -456,6 +456,7 @@ describe('building the rows of a board', () => {
     expect(rows[0]).toEqual({
       id: '0',
       contractId: 0,
+      costCents: null,
       companyId: 0,
       company: 'RoboPup',
       ticker: 'RPUP',
@@ -793,6 +794,7 @@ describe('applying one changed quote to one row', () => {
   const held: ContractRow = {
     id: '5',
     contractId: 5,
+    costCents: null,
     companyId: 0,
     company: 'RoboPup',
     ticker: 'RPUP',
@@ -836,6 +838,76 @@ describe('applying one changed quote to one row', () => {
 });
 
 describe('the store and a batch of changed quotes', () => {
+  it('uses only exact draft echoes and withdraws old costs immediately on every identity edit', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame());
+    store.setRequestedDraft({ contractId: 0, spendCents: 100000 });
+    // A supplied whole-ticket cost can be below the chosen spend: $999, not $1,000.
+    const draft = { contractId: 0, spendCents: 100000, costs: [99900, 0] };
+    store.ingest(boardFrame({ step: 1, draft }));
+    expect(store.currentRows().find((row) => row.contractId === 0)?.costCents).toBe(99900);
+    expect(store.currentRows().find((row) => row.contractId === 1)?.costCents).toBe(0);
+    const counts = watchBoard(store);
+    for (const request of [
+      { contractId: 0, spendCents: 200000 }, { contractId: 1, spendCents: 100000 },
+      { contractId: 0, spendCents: null }, { contractId: null, spendCents: null },
+    ]) {
+      store.setRequestedDraft(request);
+      expect(store.currentRows().every((row) => row.costCents === null)).toBe(true);
+      store.ingest(boardFrame({ step: 2, draft }));
+      expect(store.currentRows().every((row) => row.costCents === null)).toBe(true);
+      store.setRequestedDraft({ contractId: 0, spendCents: 100000 });
+      store.ingest(boardFrame({ step: 2, draft }));
+    }
+    expect(counts.boardRows).toBe(0);
+    expect(counts.sinkCalls[0]?.map((row) => row.contractId)).toEqual([0, 1]);
+  });
+
+  it('updates cost-only frames, preserves identical rows, and recovers only price-invalidated costs', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame());
+    store.setRequestedDraft({ contractId: 0, spendCents: 100000 });
+    const draft = { contractId: 0, spendCents: 100000, costs: [99900, 98000] };
+    store.ingest(boardFrame({ step: 1, draft }));
+    const before = store.currentRows().find((row) => row.contractId === 0);
+    const counts = watchBoard(store);
+    store.ingest(boardFrame({ step: 2, draft }));
+    expect(store.currentRows().find((row) => row.contractId === 0)).toBe(before);
+    expect(counts.sinkCalls).toEqual([]);
+    store.ingest(boardFrame({ step: 3, draft: { ...draft, costs: [99000, 98000] } }));
+    expect(counts.sinkCalls[0]).toHaveLength(1);
+    expect(counts.sinkCalls[0]?.[0]).toMatchObject({ contractId: 0, costCents: 99000, dir: 0 });
+    store.ingest(batch([[0, 1000, 300, 700, 54321]], { step: 4 }));
+    expect(store.currentRows().find((row) => row.contractId === 0)?.costCents).toBe(99000);
+    store.ingest(batch([[1, 1100, 400, 700, 12345]], { step: 5 }));
+    expect(store.currentRows().find((row) => row.contractId === 1)?.costCents).toBeNull();
+    expect(store.currentRows().find((row) => row.contractId === 0)?.costCents).toBe(99000);
+    store.ingest(batch([[0, 900, 200, 700, 54321]], { step: 6 }));
+    expect(store.currentRows().find((row) => row.contractId === 0)?.costCents).toBeNull();
+    store.ingest(boardFrame({ step: 7, draft }));
+    expect(store.currentRows().find((row) => row.contractId === 0)?.costCents).toBe(99900);
+    expect(store.currentRows().find((row) => row.contractId === 1)?.costCents).toBe(98000);
+    store.ingest(boardFrame({ step: 8 }));
+    expect(store.currentRows().every((row) => row.costCents === null)).toBe(true);
+  });
+
+  it.each(['day', 'session'])('never reuses a requested cost identity across a new %s', (change) => {
+    const store = createGameStore();
+    store.ingest(boardFrame());
+    store.setRequestedDraft({ contractId: 0, spendCents: 100000 });
+    const draft = { contractId: 0, spendCents: 100000, costs: [99900] };
+    store.ingest(boardFrame({ step: 1, draft }));
+    expect(store.currentRows()[0]?.costCents).toBe(99900);
+    store.ingest(boardFrame({ step: 2, draft, ...(change === 'day' ? { clock: { ...OPEN_CLOCK, day: 2 } } : { session: 's-2' }) }));
+    expect(store.currentRows()[0]?.costCents).toBeNull();
+  });
+
+  it('withholds row costs without a current chosen spend even if a draft array arrives', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ draft: { contractId: 0, spendCents: 100000, costs: [99900] } }));
+    expect(store.currentRows()[0]).toHaveProperty('costCents', null);
+  });
+
   it('merges a break-even-only delta and recovers from the next whole frame', () => {
     const store = createGameStore();
     store.ingest(boardFrame({ step: 1 }));

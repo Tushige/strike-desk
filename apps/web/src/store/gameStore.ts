@@ -1,4 +1,4 @@
-import type { CompanyView, Frame, FrameOrder, QuotesMessage, ServerMessage } from '@strike-desk/shared/protocol';
+import type { CompanyView, DraftMessage, Frame, FrameOrder, QuotesMessage, ServerMessage } from '@strike-desk/shared/protocol';
 import { isNewerFrame } from '@strike-desk/shared/protocol';
 import type { FeedStatus } from '@strike-desk/shared/feed';
 import { applyQuoteChange, buildRows, changedRows } from './contractRows';
@@ -34,10 +34,12 @@ interface WritableSlice<T> extends Slice<T> {
 }
 
 export type RowSink = (rows: readonly ContractRow[]) => void;
+type RequestedDraft = Pick<DraftMessage, 'contractId' | 'spendCents'>;
 
 export interface GameStore {
   ingest(message: ServerMessage): void;
   setStatus(status: FeedStatus): void;
+  setRequestedDraft(draft: RequestedDraft): void;
   price(companyId: number): Slice<number | null>;
   phase: Slice<string>;
   day: Slice<number>;
@@ -139,6 +141,21 @@ export function createGameStore(companyCount = 6): GameStore {
   let heldDay = 0;
   let heldMinTicketCents = 0;
   let heldBuyable = false;
+  let requested: RequestedDraft = { contractId: null, spendCents: null };
+
+  function setRequestedDraft(draft: RequestedDraft): void {
+    if (draft.contractId === requested.contractId && draft.spendCents === requested.spendCents) return;
+    requested = { contractId: draft.contractId, spendCents: draft.spendCents };
+    const changed: ContractRow[] = [];
+    for (const id of rowOrder) {
+      const row = rowsById[id];
+      if (row === undefined || row.costCents === null) continue;
+      const next = { ...row, costCents: null };
+      rowsById[id] = next;
+      changed.push(next);
+    }
+    if (changed.length > 0) rowSink?.(changed);
+  }
 
   function price(companyId: number): Slice<number | null> {
     const slice = prices[companyId];
@@ -167,6 +184,9 @@ export function createGameStore(companyCount = 6): GameStore {
     // A session we have not seen before is a game of its own: whatever was
     // said about the last one no longer applies.
     if (held !== null && held.session !== frame.session) sessionGone.set(false);
+    if (held !== null && (held.session !== frame.session || heldDay !== frame.clock.day)) {
+      requested = { contractId: null, spendCents: null };
+    }
     held = { session: frame.session, rev: frame.rev, step: frame.step };
     counters.accepted += 1;
 
@@ -250,6 +270,9 @@ export function createGameStore(companyCount = 6): GameStore {
       quoteReals: frame.quoteReals,
       quoteHopes: frame.quoteHopes,
       quoteBreakEvens: frame.quoteBreakEvens,
+      ...(requested.spendCents !== null && frame.draft?.contractId === requested.contractId &&
+        frame.draft.spendCents === requested.spendCents && frame.draft.costs !== undefined
+        ? { costs: frame.draft.costs } : {}),
       minTicketCents: heldMinTicketCents,
       buyable: heldBuyable,
     };
@@ -291,6 +314,7 @@ export function createGameStore(companyCount = 6): GameStore {
   return {
     ingest,
     setStatus,
+    setRequestedDraft,
     price,
     phase,
     day,

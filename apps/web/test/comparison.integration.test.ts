@@ -111,11 +111,13 @@ it.each([null, 2500])('selects and previews a live contract through boot and the
 
     const first = await sample(1500);
     expect(first?.draft).toMatchObject({ contractId: 0, spendCents: 100050 });
+    await waitFor(() => expect(grid.querySelector('.ag-row[row-id="0"] [col-id="costCents"]')?.textContent).toBe(formatCents(first?.draft?.costs?.[0] ?? -1)));
     expect((input as HTMLInputElement).value).toBe('1000.50');
     for (const [text, cents] of [['1.', 100], ['.50', 50], ['1000000000', 100000000000], ['', null]] as const) {
       fireEvent.change(input, { target: { value: text } });
       expect((input as HTMLInputElement).value).toBe(text);
       expect(comparisonStore.requested.get().spendCents).toBe(cents);
+      expect(store.currentRows().every((current) => current.costCents === null)).toBe(true);
       expect(input.getAttribute('aria-invalid')).toBe('false');
     }
     for (const text of ['-1', '+1', '1e3', '1.001', '0', '.', ' 1', '9007199254740992', '1000000000.01']) {

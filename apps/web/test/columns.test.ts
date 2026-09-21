@@ -28,6 +28,7 @@ const ROW: ContractRow = {
   targetCents: 8379,
   priceCents: 1200,
   breakEvenCents: 95_432,
+  costCents: 99_900,
   realCents: 500,
   hopeCents: 700,
   dimmed: false,
@@ -100,6 +101,7 @@ describe('the contract table columns', () => {
       'Target',
       'Price',
       'Break-even',
+      'Cost & most you can lose',
       'Real value',
       'Hope value',
     ]);
@@ -205,6 +207,7 @@ describe('the contract table columns', () => {
       'Target',
       'Price',
       'Break-even',
+      'Cost & most you can lose',
       'Real value',
       'Hope value',
     ]);

@@ -33,12 +33,13 @@ const feed = createWsFeed({
 });
 
 export const comparisonStore = createComparisonStore((message) => feed.send(message));
+comparisonStore.requested.subscribe(() => { store.setRequestedDraft(comparisonStore.requested.get()); });
 
 feed.subscribe((event) => {
   if (event.type === 'message') {
+    comparisonStore.ingest(event.message);
     store.ingest(event.message);
     newsStore.ingest(event.message);
-    comparisonStore.ingest(event.message);
   }
   else {
     store.setStatus(event.status);

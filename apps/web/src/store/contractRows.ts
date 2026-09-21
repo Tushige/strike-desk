@@ -25,6 +25,8 @@ export interface ContractRow {
   targetCents: number;
   priceCents: number;
   breakEvenCents: number;
+  /** The server's cost at the current chosen spend, or unavailable. */
+  costCents: number | null;
   /**
    * The two parts of the price, exactly as the server sends them: how far the
    * share price is past the target right now, and what the time still to run
@@ -49,6 +51,7 @@ export interface RowInput {
   quoteReals: readonly number[];
   quoteHopes: readonly number[];
   quoteBreakEvens: readonly number[];
+  costs?: readonly number[];
   minTicketCents: number;
   /** True while tickets can be bought, which is the only time a row is dimmed. */
   buyable: boolean;
@@ -95,6 +98,7 @@ function makeRow(
     targetCents,
     priceCents,
     breakEvenCents: input.quoteBreakEvens[id] ?? 0,
+    costCents: input.costs?.[id] ?? null,
     realCents: input.quoteReals[id] ?? 0,
     hopeCents: input.quoteHopes[id] ?? 0,
     dimmed: input.buyable && priceCents < input.minTicketCents,
@@ -137,7 +141,8 @@ export function changedRows(heldById: readonly (ContractRow | undefined)[], inpu
       dimmed === held.dimmed &&
       (input.quoteReals[id] ?? 0) === held.realCents &&
       (input.quoteHopes[id] ?? 0) === held.hopeCents &&
-      (input.quoteBreakEvens[id] ?? 0) === held.breakEvenCents
+      (input.quoteBreakEvens[id] ?? 0) === held.breakEvenCents &&
+      (input.costs?.[id] ?? null) === held.costCents
     ) {
       return;
     }
@@ -178,5 +183,6 @@ export function applyQuoteChange(held: ContractRow, change: QuoteChange, options
     return null;
   }
   const dir = priceCents > held.priceCents ? 1 : priceCents < held.priceCents ? -1 : 0;
-  return { ...held, priceCents, realCents, hopeCents, breakEvenCents, dimmed, dir };
+  return { ...held, priceCents, realCents, hopeCents, breakEvenCents, dimmed, dir,
+    costCents: priceCents === held.priceCents ? held.costCents : null };
 }

@@ -16,22 +16,51 @@ function countOf(text: string, needle: string): number {
   return text.split(needle).length - 1;
 }
 
+const markup = renderToStaticMarkup(createElement(CommandPathDemo));
+
 describe("the command path's lab page", () => {
   it('reads the committed transcript and shows an accepted buy and the refusal of a second one', () => {
-    const markup = renderToStaticMarkup(createElement(CommandPathDemo));
-
     expect(markup).toContain('id="lab-demo-command-path"');
     expect(markup).toContain('accepted');
     expect(markup).toContain('alreadyBought');
   });
 
-  it('marks the buy that was sent again as a repeat', () => {
-    const markup = renderToStaticMarkup(createElement(CommandPathDemo));
+  it('says in plain words what it shows and where the file came from', () => {
+    expect(markup).toContain('the same function the server calls');
+    expect(markup).toContain('works nothing out');
+  });
 
-    // One line of the transcript is the same press arriving again, and one
-    // cell on the page says so; every other line says it came the first time.
+  it.each(['alreadyBought', 'overCap', 'priceMoved', 'marketClosed', 'alreadyClosed'])('shows a refusal with the reason %s', (reason) => {
+    expect(markup).toContain(`>${reason}<`);
+  });
+
+  it('tells accepted from rejected by a word, on every line', () => {
+    // Fifteen lines. Ten accepted: the start, the buy, the same buy again (its
+    // first receipt), the opening bell, the cash-out, the skip, the next day,
+    // the buy that claimed too high a price, and the two cash-outs after the
+    // bell. Five refused: the second buy, the second cash-out, over the cap,
+    // half the price, and the buy at the bell.
+    expect(countOf(markup, '>accepted<')).toBe(10);
+    expect(countOf(markup, '>rejected<')).toBe(5);
+  });
+
+  it('marks the buy that was sent again as a repeat, and nothing else', () => {
     expect(countOf(markup, 'the same buy, sent again')).toBe(1);
     expect(countOf(markup, '>repeat<')).toBe(1);
-    expect(countOf(markup, '>first time<')).toBe(3);
+    expect(countOf(markup, '>first time<')).toBe(14);
+  });
+
+  it('groups the lines by day', () => {
+    expect(countOf(markup, '>Day 1<')).toBe(1);
+    expect(countOf(markup, '>Day 2<')).toBe(1);
+    expect(markup.indexOf('>Day 1<')).toBeLessThan(markup.indexOf('a buy before the bell'));
+    expect(markup.indexOf('a second cash-out of the same ticket')).toBeLessThan(markup.indexOf('>Day 2<'));
+    expect(markup.indexOf('>Day 2<')).toBeLessThan(markup.indexOf('a buy over the spending cap'));
+  });
+
+  it('shows money the way the game writes it', () => {
+    // The starting cash, on the line that starts the game: one million dollars, no cents.
+    expect(markup).toContain('$1,000,000');
+    expect(markup).not.toMatch(/\d{7,}/);
   });
 });

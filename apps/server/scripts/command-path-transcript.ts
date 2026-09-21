@@ -5,7 +5,10 @@ import {
   contractId,
   createSession,
   frameFor,
+  isOffered,
   sessionStep,
+  BELL_STEP_IN_DAY,
+  DAY_STEPS,
   CONTENT_VERSION,
   ENGINE_VERSION,
   FIRST_PLAYER_ID,
@@ -19,8 +22,8 @@ import { handle } from '../src/modules/command-path/index';
  * Writes down what the command path answers, one line per command, for the
  * lab page to show.
  *
- * It plays a short scripted game on a fixed market. Every line is one call of
- * `handle`, the same function the server calls for a command, and holds what
+ * It plays a scripted day and a half on a fixed market, with every kind of
+ * answer in it. Every line is one call of `handle`, the same function the server calls for a command, and holds what
  * was sent, the receipt that came back, whether it was a repeat, and from the
  * reply's frame only the player's cash, revision and tickets. It starts no
  * server and opens no socket.
@@ -45,10 +48,12 @@ const T0 = 1_000_000;
 const SPEND = 10_000_000;
 const OUTPUT = fileURLToPath(new URL('../../web/src/lab/modules/command-path.transcript.json', import.meta.url));
 
-/** A ticket as the transcript keeps it: what the player holds, and what it paid when it is closed. */
+/** A ticket as the transcript keeps it: what the player holds, what each one was filled at, and what it paid when it is closed. */
 export interface TranscriptTicket {
   id: string;
   quantity: number;
+  /** The price each ticket was filled at: the server's, whatever the command claimed to have seen. */
+  priceCents: number;
   costCents: number;
   exit?: { kind: 'cashOut' | 'bell'; proceedsCents: number };
 }
@@ -125,12 +130,43 @@ export function buildTranscript(): Transcript {
       tickets: frame.positions.map((position) => ({
         id: position.id,
         quantity: position.quantity,
+        priceCents: position.entryPriceCents,
         costCents: position.costCents,
         ...(position.exit === undefined ? {} : { exit: { kind: position.exit.kind, proceedsCents: position.exit.proceedsCents } }),
       })),
     };
     entries.push(entry);
     return entry;
+  }
+
+  /**
+   * A ticket of today's board that the closing bell goes on to pay something
+   * for, at the price the page shows for it now. Most tickets of a day end
+   * worth nothing, and "the money is paid once" says little about a ticket
+   * that pays $0. Nothing is carried on from the tries: a session is never
+   * changed by being used. Dear enough, too, that half its price is still a
+   * price a command may name.
+   */
+  function ticketTheBellPays(label: string, day: number): { id: number; priceCents: number } {
+    const frame = look();
+    const board = frame.board;
+    if (board === null) throw new Error(`${label}: the frame has no board`);
+    const afterTheBell = nowMs + (DAY_STEPS * day - sessionStep(session, nowMs)) * STEP_MS - STEP_MS;
+    for (let id = 0; id < frame.quotes.length; id += 1) {
+      const priceCents = frame.quotes[id];
+      if (priceCents === undefined || priceCents < Math.max(frame.minTicketCents, 300) || !isOffered(board, id)) continue;
+      const tried = handle({
+        session,
+        playerId: FIRST_PLAYER_ID,
+        command: { t: 'buy', commandId: 'transcript-try-0001', day, contractId: id, spendCents: SPEND, seenPriceCents: priceCents },
+        nowMs,
+        draft: null,
+      });
+      if (tried.reply.receipt.outcome !== 'accepted') continue;
+      const exit = frameFor(tried.session, FIRST_PLAYER_ID, afterTheBell, { history: false, sections: 'full' }).frame.positions.find((position) => position.day === day)?.exit;
+      if (exit?.kind === 'bell' && exit.proceedsCents > 0) return { id, priceCents };
+    }
+    throw new Error(`${label}: no ticket of day ${String(day)} pays anything at the bell`);
   }
 
   send('start the game', { t: 'start', commandId: 'transcript-start-01', pace: 1 }, 'accepted');
@@ -150,6 +186,59 @@ export function buildTranscript(): Transcript {
     { t: 'buy', commandId: 'transcript-buy-d1-02', day: 1, contractId: second.id, spendCents: SPEND, seenPriceCents: second.priceCents },
     'alreadyBought',
   );
+
+  // Day 1, the open market: sell the ticket, press sell again, and go to the bell.
+  wait(10);
+  send('ring the opening bell early', { t: 'openBell', commandId: 'transcript-open-d1-01', day: 1 }, 'accepted');
+  wait(50);
+  send('a cash-out in the open market', { t: 'cashOut', commandId: 'transcript-cash-d1-01', positionId: 'd1' }, 'accepted');
+  wait(5);
+  send('a second cash-out of the same ticket', { t: 'cashOut', commandId: 'transcript-cash-d1-02', positionId: 'd1' }, 'alreadyClosed');
+  wait(5);
+  send('skip to the closing bell', { t: 'skipToBell', commandId: 'transcript-skip-d1-01', day: 1 }, 'accepted');
+  wait(10);
+  send('on to the next day', { t: 'nextDay', commandId: 'transcript-next-d1-01', day: 1 }, 'accepted');
+
+  // Day 2, before the bell: three buys of one ticket. Too much money; a page
+  // that claims to have seen half the real price; and a page that claims to
+  // have seen $50 more than the real price, which fills at the real one.
+  wait(10);
+  const held = ticketTheBellPays('day 2', 2);
+  const capCents = look().account.capCents;
+  send(
+    'a buy over the spending cap',
+    { t: 'buy', commandId: 'transcript-buy-d2-01', day: 2, contractId: held.id, spendCents: capCents + 100_000, seenPriceCents: held.priceCents },
+    'overCap',
+  );
+  wait(10);
+  send(
+    'a buy that saw half the real price',
+    { t: 'buy', commandId: 'transcript-buy-d2-02', day: 2, contractId: held.id, spendCents: SPEND, seenPriceCents: Math.floor(held.priceCents / 2) },
+    'priceMoved',
+  );
+  wait(10);
+  const filled = send(
+    'a buy that saw $50 more than the real price',
+    { t: 'buy', commandId: 'transcript-buy-d2-03', day: 2, contractId: held.id, spendCents: SPEND, seenPriceCents: held.priceCents + 5_000 },
+    'accepted',
+  );
+  if (filled.tickets.find((ticket) => ticket.id === 'd2')?.priceCents !== held.priceCents) {
+    throw new Error('a buy that saw $50 more than the real price: it was not filled at the real price');
+  }
+
+  // Day 2, the closing bell: nothing is pressed until the very step the bell
+  // rings at. A buy there is too late; a cash-out there, and again after it,
+  // is answered with the sale the bell already made.
+  wait(DAY_STEPS + BELL_STEP_IN_DAY - sessionStep(session, nowMs));
+  send(
+    'a buy at the closing bell',
+    { t: 'buy', commandId: 'transcript-buy-d2-04', day: 2, contractId: held.id, spendCents: SPEND, seenPriceCents: held.priceCents },
+    'marketClosed',
+  );
+  wait(10);
+  send('a cash-out after the bell', { t: 'cashOut', commandId: 'transcript-cash-d2-01', positionId: 'd2' }, 'accepted');
+  wait(5);
+  send('a cash-out after the bell, pressed again', { t: 'cashOut', commandId: 'transcript-cash-d2-02', positionId: 'd2' }, 'accepted');
 
   return { recordedWith: { protocol: PROTOCOL_VERSION, engine: ENGINE_VERSION }, entries };
 }

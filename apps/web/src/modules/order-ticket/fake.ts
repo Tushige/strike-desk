@@ -298,3 +298,140 @@ export function createFakeTicketDesk(): FakeTicketDesk {
     },
   };
 }
+
+/**
+ * The open ticket once RoboPup's ticket price has moved to the second level,
+ * $120.00. Typed in: 423 tickets at $120.00 are worth $50,760.00, which is
+ * $846.00 more than the $49,914.00 paid. The share price is still under the
+ * $85.00 target, so all of the price is hope value.
+ */
+export const FAKE_OPEN_TICKET_LEVEL_2: OpenTicket = {
+  ...FAKE_OPEN_TICKET,
+  valueCents: 5_076_000,
+  profitCents: 84_600,
+  realCents: 0,
+  hopeCents: 12_000,
+};
+
+/** The account after the ticket was sold for what it cost: the $950,086 left after the buy and the $49,914 back, and no second ticket today. */
+export const FAKE_ACCOUNT_AFTER_CASH_OUT: TicketAccount = { cashCents: 100_000_000, capCents: 50_000_000, canBuy: false, minTicketCents: 500 };
+
+export interface HeldTicketDeskOptions {
+  /** Start with quotes held back until `release()`. */
+  holding?: boolean;
+  /** Hold every quote back this long. Needs `schedule`. */
+  delayMs?: number;
+  /** Runs `run` after `delayMs`; returns the way to call it off. The desk has no timer of its own. */
+  schedule?: (run: () => void, delayMs: number) => () => void;
+}
+
+export interface HeldTicketDeskControls {
+  setHolding: (holding: boolean) => void;
+  setDelay: (delayMs: number | null) => void;
+  /** True while the server has a newer quote than the one the form can see. */
+  waiting: () => boolean;
+  /** Lets the newest quote through now. */
+  release: () => void;
+  /** The scripted desk is always on day 1; this one can start the next day. */
+  setDay: (day: number) => void;
+  /** Hands the form an account, an open ticket, or the news that the ticket is gone, as a frame from the server would. */
+  hand: (over: { account?: TicketAccount; position?: OpenTicket | null }) => void;
+}
+
+export interface HeldTicketDesk extends FakeTicketDesk {
+  held: HeldTicketDeskControls;
+}
+
+/**
+ * The scripted desk, with the one thing a real server adds: time between a
+ * draft and its quote. Quotes can be held back until a button is pressed or
+ * a wait has run, so that the rule "a buy is built only while the quote
+ * echoes the form" can be driven and seen. Everything else passes through to
+ * `createFakeTicketDesk`, which is unchanged.
+ */
+export function createHeldTicketDesk(options: HeldTicketDeskOptions): HeldTicketDesk {
+  const inner = createFakeTicketDesk();
+  // The scripted desk's three slices are the same objects for its whole life.
+  const source = inner.props();
+  const quote = createSlice<TicketQuote | null>(source.quote.get());
+  const account = createSlice<TicketAccount>(source.account.get());
+  const position = createSlice<OpenTicket | null>(source.position.get());
+  const listeners = new Set<() => void>();
+
+  const schedule = options.schedule ?? null;
+  let holding = options.holding ?? false;
+  let delayMs = options.delayMs ?? null;
+  let waiting = false;
+  let callOff: (() => void) | null = null;
+  let day = source.day;
+  let current: OrderTicketProps | null = null;
+  let builtFrom: OrderTicketProps | null = null;
+
+  function tell(): void {
+    current = null;
+    for (const listener of [...listeners]) listener();
+  }
+
+  function letThrough(): void {
+    callOff?.();
+    callOff = null;
+    waiting = false;
+    quote.set(source.quote.get());
+  }
+
+  source.quote.subscribe(() => {
+    if (holding) {
+      waiting = true;
+    } else if (delayMs !== null && schedule !== null) {
+      waiting = true;
+      callOff ??= schedule(letThrough, delayMs);
+    } else {
+      letThrough();
+    }
+  });
+  source.account.subscribe(() => {
+    account.set(source.account.get());
+  });
+  source.position.subscribe(() => {
+    position.set(source.position.get());
+  });
+  inner.subscribe(tell);
+
+  return {
+    props: () => {
+      const now = inner.props();
+      if (current === null || builtFrom !== now) {
+        builtFrom = now;
+        current = { ...now, quote, account, position, day };
+      }
+      return current;
+    },
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    controls: inner.controls,
+    held: {
+      setHolding: (next) => {
+        holding = next;
+        if (!holding && waiting && callOff === null) letThrough();
+      },
+      setDelay: (next) => {
+        delayMs = next;
+      },
+      waiting: () => waiting,
+      release: letThrough,
+      setDay: (next) => {
+        if (next === day) return;
+        day = next;
+        tell();
+      },
+      hand: (over) => {
+        if (over.account !== undefined) account.set(over.account);
+        if (over.position !== undefined) position.set(over.position);
+      },
+    },
+  };
+}

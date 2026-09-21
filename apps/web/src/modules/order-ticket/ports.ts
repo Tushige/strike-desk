@@ -165,6 +165,28 @@ export type LineState = 'live' | 'stale' | 'offline';
  *   day's ticket still to be bought.
  *
  * A `lost` outcome returns to `draft`.
+ *
+ * The way back to `draft` follows the server's data. There is no timer and
+ * no extra press:
+ *
+ * - `rejected` lasts until a quote that echoes the form arrives, or the
+ *   player changes the contract or the spend, whichever comes first. The
+ *   reason stays on screen as a notice until the next press or change, so
+ *   one press tries again.
+ * - `accepted` after a buy lasts until the open ticket arrives. The form is
+ *   then the cash-out form, in `draft`.
+ * - `accepted` after a cash-out lasts until the day changes.
+ * - `lost` returns at once.
+ * - A change of day returns `accepted` and `rejected` to `draft`, and leaves
+ *   `pending` and `checking` alone.
+ *
+ * Two cases the list above leaves open are settled the same way, by the
+ * server's data. When the data that would move the form on is already there
+ * as the answer arrives, the form is in `draft` at once and the answer stays
+ * on screen as a notice: that is the open ticket, for an accepted buy, and a
+ * day that changed while the command was unanswered, for a buy or a cash-out,
+ * accepted or rejected. A rejected cash-out has no quote to wait for: it
+ * returns on the open ticket's next update, or when the day changes.
  */
 export type TicketFormState = 'draft' | 'pending' | 'checking' | 'accepted' | 'rejected';
 

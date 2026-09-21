@@ -7,6 +7,7 @@ const entry: LabEntry = {
   summary:
     'One form for buying and cashing out: draft, pending, accepted, rejected with a reason, disabled while prices are stale. It shows the cost and the most you can lose.',
   builtAgainst: "submit(command) -> outcome, the selected contract's quote, cash",
+  demo: () => import('./order-ticket.demo'),
 };
 
 export default entry;

@@ -1,3 +1,4 @@
+export { OrderTicket } from './OrderTicket';
 export type {
   LineState,
   OpenTicket,

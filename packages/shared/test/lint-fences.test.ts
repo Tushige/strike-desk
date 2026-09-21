@@ -323,4 +323,42 @@ describe('web app lint fences', () => {
     },
     LINT_TIMEOUT_MS * 2,
   );
+
+  it(
+    'web fences: a dynamic import of the running game is refused from a block, its stand-in and the lab',
+    async () => {
+      // A block hands the lab its demo as `() => import('…')`, and the import
+      // fence never sees a dynamic import: it visits import and export
+      // declarations only. So the same names are refused a second time, by
+      // shape, or the one import every block writes would pass every fence.
+      const refused = [
+        "void import('../../boot');",
+        "void import('../../store');",
+        "void import('../../store/hooks');",
+        "void import('../../feed');",
+        "void import('../../feed/wsFeed');",
+        "void import('../../autoStart');",
+        "void import('../../App');",
+        "void import('@strike-desk/shared/engine');",
+        "void import('@strike-desk/shared/engine/market');",
+      ];
+      // What a demo actually loads: another block through its public entry or
+      // its stand-in source, its own files, and the client-safe entry points.
+      const allowed = [
+        "void import('../../modules/live-grid');",
+        "void import('../../modules/live-grid/index');",
+        "void import('../../modules/live-grid/fake');",
+        "void import('./fake');",
+        "void import('./inner/thing');",
+        "void import('@strike-desk/shared/feed');",
+        "void import('@strike-desk/shared/protocol');",
+      ];
+
+      for (const filePath of [webBlockPath, webBlockFakePath, webLabPath]) {
+        expect(await linesReported(refused, filePath, 'no-restricted-syntax')).toEqual(everyLine(refused));
+        expect(await linesReported(allowed, filePath, 'no-restricted-syntax')).toEqual([]);
+      }
+    },
+    LINT_TIMEOUT_MS * 2,
+  );
 });

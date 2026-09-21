@@ -100,6 +100,27 @@ const runningGameGroup = {
     'A building block and the lab never reach the running game: no boot, no store, no socket feed, no App. A block is built against its port and shown against its stand-in source.',
 };
 
+// The group above never sees a dynamic `import()`: no-restricted-imports
+// visits import and export declarations and nothing else. A block registers
+// the demo the lab shows as exactly that — `demo: () => import('./…')` — so
+// the one import shape the lab's contract asks for would otherwise pass every
+// fence, and a demo could open a socket and start a real game from a page that
+// is supposed to talk to nothing.
+//
+// The same names as the group above, read off the text of the specifier: a
+// relative path whose last step is boot, App or autoStart; a relative path
+// with a store or feed step anywhere in it; and the shared package's engine
+// entry. Whole steps only, so `../feeds/x` and `../my-store/x` are somebody
+// else's folders and are left alone — as are the shared package's client-safe
+// entry points, `@strike-desk/shared/feed` (the interface a block is built
+// against) included, since those are not relative paths.
+const RUNNING_GAME_SPECIFIER = String.raw`^\.{1,2}\/(?:.*\/)?(?:boot|App|autoStart)(?:\.[jt]sx?)?$|^\.{1,2}\/(?:.*\/)?(?:store|feed)(?:\/|$)|^@strike-desk\/shared\/engine(?:\/|$)`;
+
+const runningGameDynamicImport = {
+  selector: `ImportExpression > Literal[value=/${RUNNING_GAME_SPECIFIER}/]`,
+  message: runningGameGroup.message,
+};
+
 // Matched as a regular expression rather than by the gitignore rules the
 // other groups use, because this fence has to say "exactly these three steps
 // and no more". A gitignore pattern always matches everything beneath what it
@@ -229,11 +250,14 @@ export default tseslint.config(
           patterns: [...webSharedImportFence.patterns, runningGameGroup, siblingBlockGroup],
         },
       ],
+      'no-restricted-syntax': ['error', runningGameDynamicImport],
     },
   },
   {
     // A stand-in data source lives outside React, like every other module
-    // that holds or moves data.
+    // that holds or moves data. Both fences are repeated whole, for the same
+    // reason: a later block replaces a rule's options rather than adding to
+    // them, so anything left out here is lost for these files.
     files: ['apps/web/src/modules/*/fake.ts', 'apps/web/src/fixtures/**/*.ts'],
     rules: {
       'no-restricted-imports': [
@@ -243,6 +267,7 @@ export default tseslint.config(
           patterns: [...webSharedImportFence.patterns, runningGameGroup, siblingBlockGroup, reactFreeGroup],
         },
       ],
+      'no-restricted-syntax': ['error', runningGameDynamicImport],
     },
   },
   {

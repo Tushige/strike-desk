@@ -430,7 +430,13 @@ export const frameSchema = z.object({
    */
   history: z.array(z.array(cents)).optional(),
   final: finalViewSchema.optional(),
-  /** The quote of the ticket being built. Only in the full form of a started game, only while this connection has a draft. */
+  /**
+   * The quote of the ticket being built. Only in the full form of a started
+   * game, only while this connection has a draft. It belongs to the connection
+   * that sent the `draft` message, a third scope beside the session's and the
+   * player's: a server that caches one frame text per player must not hand
+   * one connection's draft to another.
+   */
   draft: draftViewSchema.optional(),
 });
 export type Frame = z.infer<typeof frameSchema>;

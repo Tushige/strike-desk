@@ -24,6 +24,11 @@ import { seedToMarketCode } from './rng';
  * prices, the clock, the board, the quotes and the news are the same for
  * every player of the session.
  *
+ * The `draft` section is a third scope, neither the session's nor the
+ * player's: it belongs to the connection that sent the `draft` message. A
+ * server that caches one frame text per player must not hand one connection's
+ * draft to another.
+ *
  * `game` must already be advanced to the step (see `advanceTo`).
  */
 

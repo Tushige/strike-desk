@@ -496,6 +496,36 @@ describe('the order ticket: the way back to draft follows the server', () => {
     expect(answered(nextDay, 'accepted', 'cashOut').form).toBe('draft');
   });
 
+  it('returns at once from a buy accepted after its day was over, and still says it was accepted', () => {
+    // Pressed on day 1 near the bell; the answer lands on day 2. No open ticket will ever arrive for day 1.
+    const nextDay = ticketReducer(pressed('buy'), { type: 'day', day: 2 });
+    expect(nextDay.form).toBe('pending');
+
+    const next = answered(nextDay, 'accepted', 'buy');
+
+    expect(next.form).toBe('draft');
+    expect(next.command).toBeNull();
+    expect(next.notice).toEqual({ kind: 'accepted', of: 'buy' });
+  });
+
+  it('returns at once from a buy rejected after its day was over, and keeps the reason on screen', () => {
+    const nextDay = ticketReducer(pressed('buy'), { type: 'day', day: 2 });
+
+    const next = answered(nextDay, 'rejected', 'buy');
+
+    expect(next.form).toBe('draft');
+    expect(next.command).toBeNull();
+    expect(next.notice).toEqual({ kind: 'rejected', of: 'buy', reason: 'priceMoved' });
+  });
+
+  it('returns at once from a command that was being checked when its day ended', () => {
+    const checking = ticketReducer(pressed('buy'), { type: 'line', line: 'offline' });
+    const nextDay = ticketReducer(checking, { type: 'day', day: 2 });
+    expect(nextDay.form).toBe('checking');
+
+    expect(answered(nextDay, 'accepted', 'buy').form).toBe('draft');
+  });
+
   it('leaves pending alone when the day changes', () => {
     const pending = pressed('buy');
 

@@ -98,17 +98,21 @@ function backToDraft(state: TicketState, notice: TicketNotice | null): TicketSta
 /**
  * The answer is in. `accepted` and `rejected` are states the form stays in
  * until the server's data moves it on (see the reducer). When that data is
- * already here, because the open ticket arrived before the answer did or the
- * day changed while the command was in flight, the form is back in `draft`
- * at once with the answer still on screen.
+ * already here as the answer arrives, the form is back in `draft` at once
+ * with the answer still on screen: for a buy, the open ticket came first; for
+ * either command, the day it was pressed on is over. A form that waited then
+ * would wait for a ticket, a quote or a day that belongs to yesterday.
  */
 function afterOutcome(state: TicketState, command: NonNullable<TicketState['command']>, outcome: SubmitOutcome): TicketState {
   if (outcome.outcome === 'lost') return backToDraft(state, { kind: 'lost' });
+  // The day the command was pressed on is over: the answer is news, not a state to wait in.
+  const dayOver = state.day !== command.day;
   if (outcome.outcome === 'rejected') {
-    return { ...state, form: 'rejected', notice: { kind: 'rejected', of: command.kind, reason: outcome.receipt.reason ?? null } };
+    const notice: TicketNotice = { kind: 'rejected', of: command.kind, reason: outcome.receipt.reason ?? null };
+    return dayOver ? backToDraft(state, notice) : { ...state, form: 'rejected', notice };
   }
   const notice: TicketNotice = { kind: 'accepted', of: command.kind };
-  const alreadySettled = command.kind === 'buy' ? state.held : state.day !== command.day;
+  const alreadySettled = dayOver || (command.kind === 'buy' && state.held);
   return alreadySettled ? backToDraft(state, notice) : { ...state, form: 'accepted', notice };
 }
 

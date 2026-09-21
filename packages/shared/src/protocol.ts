@@ -68,6 +68,18 @@ export const buyCommandSchema = z.strictObject({
   seenPriceCents: cents.positive(),
 });
 
+/**
+ * The buy tolerance. A buy names the ticket price the player saw. The server
+ * fills at its own current price when that is at most the larger of these two
+ * above the price seen (2% of it, or $1), and refuses with `priceMoved`
+ * otherwise. A price that fell always fills. The floor exists because ticket
+ * prices are whole dollars, so the smallest possible move is $1. Both numbers
+ * are the owner's. Once buying is live, changing either needs an
+ * engine-version bump, because a recorded game would replay differently.
+ */
+export const BUY_TOLERANCE_BPS = 200;
+export const BUY_TOLERANCE_FLOOR_CENTS = 100;
+
 export const cashOutCommandSchema = z.strictObject({
   t: z.literal('cashOut'),
   commandId,

@@ -38,6 +38,7 @@ function harness(over: Partial<WsFeedOptions> & { stored?: string } = {}): Harne
     schedule: (run, ms) => scheduler.schedule(run, ms),
     storage,
     random: () => 0.5,
+    now: () => 0,
     ...over,
   });
   feed.subscribe((event) => events.push(event));
@@ -56,9 +57,9 @@ function helloTexts(sent: string[]): unknown[] {
 }
 
 describe('the WebSocket feed', () => {
-  it('has exactly the four methods of the interface', () => {
+  it('has exactly the five methods of the interface', () => {
     const { feed } = harness();
-    expect(Object.keys(feed).sort()).toEqual(['close', 'connect', 'send', 'subscribe']);
+    expect(Object.keys(feed).sort()).toEqual(['close', 'connect', 'send', 'simulateDrop', 'subscribe']);
   });
 
   it('opens one socket however often connect is called', () => {
@@ -134,8 +135,9 @@ describe('the WebSocket feed', () => {
     const frame = testFrame({ session: 's-1', step: 4 });
     sockets.last().fireMessage(JSON.stringify(frame));
 
-    expect(seen.filter((event) => event.type === 'message')).toEqual([{ type: 'message', message: frame }]);
-    expect(alsoSeen.filter((event) => event.type === 'message')).toEqual([{ type: 'message', message: frame }]);
+    const expected = [{ type: 'message', message: frame, receivedAt: 0 }];
+    expect(seen.filter((event) => event.type === 'message')).toEqual(expected);
+    expect(alsoSeen.filter((event) => event.type === 'message')).toEqual(expected);
   });
 
   it('stops telling an unsubscribed listener', () => {
@@ -319,5 +321,130 @@ describe('the WebSocket feed', () => {
     const { feed, sockets } = harness();
     feed.connect();
     expect(() => sockets.last().fireError()).not.toThrow();
+  });
+
+  it('says whether a message was handed to an open socket', () => {
+    const { feed, sockets } = harness();
+    const command = { t: 'start', commandId: 'command-1', pace: 3 } as const;
+
+    expect(feed.send(command)).toBe(false);
+
+    feed.connect();
+    expect(feed.send(command)).toBe(false);
+    expect(sockets.last().sent).toEqual([]);
+
+    sockets.last().fireOpen();
+    expect(feed.send(command)).toBe(true);
+    expect(sockets.last().sent.at(-1)).toBe('{"t":"start","commandId":"command-1","pace":3}');
+
+    sockets.last().fireClose();
+    expect(feed.send(command)).toBe(false);
+  });
+
+  it('stamps every message with the time it arrived on its own clock', () => {
+    let clock = 0;
+    const { feed, sockets, events } = harness({ now: () => clock });
+    feed.connect();
+    sockets.last().fireOpen();
+
+    clock = 5000;
+    sockets.last().fireMessage(JSON.stringify(testFrame({ step: 1 })));
+    clock = 5200;
+    sockets.last().fireMessage(JSON.stringify(testFrame({ step: 2 })));
+
+    const times = events.flatMap((event) => (event.type === 'message' ? [event.receivedAt] : []));
+    expect(times).toEqual([5000, 5200]);
+  });
+
+  it('drops the line on purpose the way the network would', () => {
+    const { feed, sockets, scheduler, events, statuses } = harness();
+    feed.connect();
+    sockets.last().fireOpen();
+    sockets.last().fireMessage(JSON.stringify(testFrame({ session: 's-1' })));
+    const dropped = sockets.last();
+    const messagesBefore = events.filter((event) => event.type === 'message').length;
+
+    feed.simulateDrop();
+
+    expect(statuses()).toEqual(['connecting', 'live', 'reconnecting']);
+    expect(scheduler.delays()).toEqual([1000]);
+    expect(dropped.closeCalls).toBe(1);
+
+    // Whatever the dropped socket still says, late close included, is ignored.
+    dropped.fireMessage(JSON.stringify(testFrame({ session: 's-1', step: 9 })));
+    dropped.fireClose();
+    expect(events.filter((event) => event.type === 'message')).toHaveLength(messagesBefore);
+    expect(statuses()).toEqual(['connecting', 'live', 'reconnecting']);
+    expect(scheduler.delays()).toEqual([1000]);
+
+    scheduler.runNext();
+    expect(sockets.made).toHaveLength(2);
+    sockets.last().fireOpen();
+    expect(helloTexts(sockets.last().sent)).toEqual([{ t: 'hello', v: 1, session: 's-1' }]);
+  });
+
+  it('ignores a drop on purpose while it is not live', () => {
+    const { feed, sockets, scheduler, events } = harness();
+
+    feed.simulateDrop();
+    expect(events).toEqual([]);
+
+    feed.connect();
+    feed.simulateDrop();
+    expect(events).toEqual([{ type: 'status', status: 'connecting' }]);
+    expect(sockets.last().closeCalls).toBe(0);
+    expect(scheduler.delays()).toEqual([]);
+
+    sockets.last().fireOpen();
+    sockets.last().fireClose();
+    feed.simulateDrop();
+    expect(scheduler.delays()).toEqual([1000]);
+    expect(sockets.made).toHaveLength(1);
+  });
+
+  it('gives every listener its event even when an earlier one throws, and still throws', () => {
+    const { feed, sockets } = harness();
+    const seen: FeedEvent[] = [];
+    // Subscribed before the recorder below, so it throws first on every event.
+    feed.subscribe(() => {
+      throw new Error('listener failed');
+    });
+    feed.subscribe((event) => seen.push(event));
+
+    expect(() => {
+      feed.connect();
+    }).toThrow('listener failed');
+    expect(() => {
+      sockets.last().fireOpen();
+    }).toThrow('listener failed');
+    expect(() => {
+      sockets.last().fireMessage(JSON.stringify(testFrame()));
+    }).toThrow('listener failed');
+
+    expect(seen.map((event) => (event.type === 'status' ? event.status : event.message.t))).toEqual([
+      'connecting',
+      'live',
+      'frame',
+    ]);
+  });
+
+  it('still says hello and still retries when a listener throws', () => {
+    const { feed, sockets, scheduler } = harness();
+    feed.subscribe(() => {
+      throw new Error('listener failed');
+    });
+
+    expect(() => {
+      feed.connect();
+    }).toThrow('listener failed');
+    expect(() => {
+      sockets.last().fireOpen();
+    }).toThrow('listener failed');
+    expect(sockets.last().sent).toEqual(['{"t":"hello","v":1}']);
+
+    expect(() => {
+      sockets.last().fireClose();
+    }).toThrow('listener failed');
+    expect(scheduler.delays()).toEqual([1000]);
   });
 });

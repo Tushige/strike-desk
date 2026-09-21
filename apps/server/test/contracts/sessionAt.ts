@@ -9,6 +9,7 @@ import {
   createSession,
   frameFor,
   handleCommand,
+  isOffered,
 } from '@strike-desk/shared/engine';
 import type { Frame, Session } from '@strike-desk/shared/engine';
 
@@ -70,6 +71,21 @@ export function sessionAt(moment: Moment, options: { targetsPerCompany?: number 
 /** The player's whole public picture of a session at a clock reading. The session itself is left alone. */
 export function frameAt(session: Session, nowMs: number): Frame {
   return frameFor(session, PLAYER, nowMs, { history: false, sections: 'full' }).frame;
+}
+
+/**
+ * The ticket a frame offers at exactly this price, lowest contract id first.
+ * A case that reasons about a named price asks for one this way, so that it
+ * fails loudly if the fixed game no longer has a ticket there, rather than
+ * quietly testing something else.
+ */
+export function quotedAt(frame: Frame, priceCents: number): { contractId: number; priceCents: number } {
+  const board = frame.board;
+  if (board === null) throw new Error('this frame has no board to pick a ticket from');
+  for (let id = 0; id < frame.quotes.length; id += 1) {
+    if (frame.quotes[id] === priceCents && isOffered(board, id)) return { contractId: id, priceCents };
+  }
+  throw new Error(`this frame offers no ticket quoted at ${priceCents}`);
 }
 
 /** Close UP of company 0 on a frame's board, with the price the frame shows for it. */

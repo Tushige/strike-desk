@@ -240,6 +240,10 @@ it.each([null, 2500])('selects and previews a live contract through boot and the
       }
     }
 
+    fireEvent.click(disclosure!);
+    fireEvent.click(disclosure!);
+    expect(grid.querySelector('.ag-header-cell[col-id="hopeCents"]')?.getAttribute('aria-sort')).toBe('ascending');
+    expect(view.getByRole('grid', { name: 'Contracts' })).toBe(grid);
     fireEvent.change(slider, { target: { value: '0' } });
     const openFrame = await sample(23000); // The price path moves into the open market at pace three.
     expect((input as HTMLInputElement).value).toBe('50000');

@@ -70,7 +70,9 @@ const GameCompanies = memo(function GameCompanies({ game, news, companyId, onSel
     key={id} game={game} companyId={id} company={company} selected={id === companyId}
     hasNews={snapshot.news.some((item) => item.companyId === id)} onSelect={onSelect}
   />), [companies, game, snapshot.news, companyId, onSelect]);
-  return <CompanyStrip label={stripWords.label}>{children}</CompanyStrip>;
+  return <div className="relative shrink-0 overflow-x-auto overscroll-contain">
+    <div className="min-w-[36rem]"><CompanyStrip label={stripWords.label}>{children}</CompanyStrip></div>
+  </div>;
 });
 
 function DayDesk({ loop, game, comparison, news }: GameDeskProps) {

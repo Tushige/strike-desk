@@ -110,6 +110,7 @@ it.each([null, 2500])('boot delivers three actual headlines beside the mounted l
       expect(card.getByText(news.direction === 'up' ? 'This news says UP' : 'This news says DOWN')).toBeTruthy();
       expect(article.querySelector('header svg')).not.toBeNull();
     }
+    fireEvent.click(view.getByRole('button', { name: 'Compare options' }));
     const grid = await view.findByRole('grid', { name: 'Contracts' });
     const before = store.price(0).get();
     const quotesBefore = store.currentRows();

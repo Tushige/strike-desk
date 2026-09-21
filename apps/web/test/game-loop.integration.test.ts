@@ -24,10 +24,11 @@ afterEach(() => {
 });
 
 it.each([
-  [1, 'Start at normal speed'], [3, 'Start fast (3x)'], [7.5, 'Start turbo (7.5x)'],
-] as const)('waits for an explicit start at pace %s and opens the server bell', async (pace, label) => {
+  [1, 'Start at normal speed', null], [3, 'Start fast (3x)', null], [7.5, 'Start turbo (7.5x)', null],
+  [3, 'Start fast (3x)', 2500],
+] as const)('waits for an explicit start at pace %s and opens the server bell (%s, board %s)', async (pace, label, board) => {
   vi.resetModules();
-  window.history.replaceState(null, '', '/');
+  window.history.replaceState(null, '', board === null ? '/' : '/?board=2500');
   const child = spawn('pnpm', ['--filter', '@strike-desk/server', 'exec', 'tsx', 'test/news-app.ts'], { stdio: 'pipe' });
   const lines = createInterface({ input: child.stdout });
   let errors = '';
@@ -47,6 +48,7 @@ it.each([
   const outbound: Outbound[] = [];
   let feed: ReturnType<typeof createWsFeed> | undefined;
   let sockets = 0;
+  let receiveFrames = true;
   try {
     const url = await ready;
     vi.doMock('../src/feed/wsFeed', () => ({ createWsFeed: (options: WsFeedOptions) => {
@@ -55,10 +57,14 @@ it.each([
       } });
       feed = live;
       live.subscribe((event) => { if (event.type === 'message') messages.push(event.message); });
-      return { ...live, send: (message: Outbound) => { outbound.push(message); return live.send(message); } };
+      return { ...live,
+        subscribe: (listener: Parameters<typeof live.subscribe>[0]) => live.subscribe((event) => {
+          if (receiveFrames || event.type !== 'message') listener(event);
+        }),
+        send: (message: Outbound) => { outbound.push(message); return live.send(message); } };
     } }));
     const { default: App } = await import('../src/App');
-    const view = render(createElement(App));
+    let view = render(createElement(App));
     await waitFor(() => expect(messages[0]?.t).toBe('frame'));
     expect(outbound).toEqual([]);
     expect(view.getByText('Five trading days. Read the news, follow prices, and explore tickets.')).toBeTruthy();
@@ -66,7 +72,7 @@ it.each([
     async function sample(ms: number): Promise<Frame> {
       const count = messages.length;
       await act(async () => {
-        child.stdin.write(`${String(ms)}\n`);
+        child.stdin.write(`${String(board === null ? ms : Math.max(ms, 1500))}\n`);
         await waitFor(() => expect(messages.length).toBe(count + 1));
       });
       const newest = messages.at(-1);
@@ -107,6 +113,14 @@ it.each([
     expect(view.getByRole('textbox', { name: 'How much to spend' })).toBe(spend);
     expect(spend.value).toBe('1000.50');
     await waitFor(() => expect(chart?.querySelector('path')?.getAttribute('d')?.split('L')).toHaveLength(40 + chartFrame.clock.priceIndex + 1));
+    const { chartStore } = await import('../src/boot');
+    const heldHistory = chartStore.source(0).series();
+    receiveFrames = false;
+    await sample(1500);
+    expect(chartStore.source(0).series()).toBe(heldHistory);
+    receiveFrames = true;
+    const repaired = await sample(1500);
+    expect(chartStore.source(0).series().values).toEqual([...repaired.leadIn![0]!, ...repaired.history![0]!]);
     expect(view.queryByText('Market number')).toBeNull();
     expect(view.queryByRole('button', { name: /Buy ticket|Cash out/ })).toBeNull();
     expect(sockets).toBe(1);
@@ -141,12 +155,24 @@ it.each([
         expect(next.frame.history?.[0]).toEqual([closing.frame.history?.[0]?.[500]]);
         const nextChart = view.getByRole('img', { name: next.frame.companies[0]?.name });
         await waitFor(() => expect(nextChart.querySelector('path')?.getAttribute('d')?.split('L')).toHaveLength(41));
+        if (day === 1) {
+          const session = next.frame.session;
+          view.unmount(); feed?.close();
+          vi.resetModules();
+          const { default: ResumedApp } = await import('../src/App');
+          view = render(createElement(ResumedApp));
+          await view.findByRole('heading', { name: 'Day 2: before the bell' });
+          const resumed = messages.at(-1);
+          expect(resumed).toMatchObject({ t: 'frame', session, clock: { day: 2, phase: 'preBell' } });
+          expect(outbound.filter((message) => message.t === 'start')).toHaveLength(1);
+        }
       }
     }
     expect(view.getByText('You finished with').nextElementSibling?.textContent).toBe('$1,000,000');
     expect(view.getByText('Since the start').nextElementSibling?.textContent).toBe('$0');
     expect(view.getByText('Market number').nextElementSibling?.textContent).toMatch(/^[2-9A-HJ-NP-Z]{3}-[2-9A-HJ-NP-Z]{3}-[2-9A-HJ-NP-Z]{4}$/);
     expect(view.getByRole('table', { name: 'Day by day' }).querySelectorAll('tbody tr')).toHaveLength(5);
+    expect((await sample(1500)).clock.phase).toBe('final');
     const oldSession = reply.frame.session;
     const reload = vi.fn();
     const realWindow = window;

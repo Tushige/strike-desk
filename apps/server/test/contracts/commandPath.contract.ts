@@ -2,17 +2,26 @@ import { describe, expect, it } from 'vitest';
 import { BELL_STEP_IN_DAY, contractId, playerOf, replySchema } from '@strike-desk/shared/engine';
 import type { Command, DraftRequest, Frame, Session } from '@strike-desk/shared/engine';
 import type { HandleCommand, Handled } from '../../src/modules/command-path/index';
-import { PLAYER, closeUp, frameAt, msAtStep, newId, sessionAt } from './sessionAt';
+import { PLAYER, closeUp, frameAt, msAtStep, newId, quotedAt, sessionAt, tradableTicket } from './sessionAt';
 
 /**
  * What any command path must do, whatever is behind it. Every case stands on
  * the same fixed game at a named moment and sends schema-valid commands with
  * fresh ids.
  *
- * No case names a ticket price, a share price or a quantity of that game:
- * the expected values are rules between numbers of the same reply, and codes.
- * The only money typed in here is the starting cash, what a case spends, and
- * how far a case's claimed price is from the real one.
+ * No case names a share price or a quantity of that game, and almost none
+ * names a ticket price: the expected values are rules between numbers of the
+ * same reply, and codes. The money typed in is the starting cash, what a case
+ * spends, and how far a case's claimed price is from the real one.
+ *
+ * The tolerance cases are the exception, and have to be: what they are for is
+ * the exact cent at which a fill becomes a refusal, which cannot be said
+ * without naming a price. They name three of the fixed game's own quotes
+ * ($91.00, $6.00 and $7.00) and work every other number out by hand from the
+ * rule the game states: a buy fills when the price has moved against the
+ * player by no more than $1 or 2% of the price he saw, whichever is larger,
+ * in whole cents. Should a price of the fixed game change, work those numbers
+ * out from that rule again; never read them off the code.
  *
  * Left open on purpose, so nothing here says either way: whether a refused
  * command moves the revision, and whether a refused command is logged.
@@ -221,19 +230,76 @@ export function describeCommandPathContract(name: string, handle: HandleCommand)
         expect(position.entryPriceCents).toBe(ticket.priceCents);
         expect(position.costCents).toBe(ticket.priceCents * position.quantity);
       });
+
+      it('fills however far the price has fallen since', () => {
+        const { session, nowMs } = sessionAt('open');
+        const ticket = closeUp(frameAt(session, nowMs));
+        // $91.00 now, and the player saw $182.00: the price halved while he
+        // read it. A move his way is always inside the tolerance, however big.
+        expect(ticket.priceCents).toBe(9_100);
+
+        const { reply } = send(session, buy(ticket, { seenPriceCents: 18_200 }), nowMs);
+
+        expect(reply.receipt.outcome).toBe('accepted');
+        expect(onlyPosition(reply.frame).entryPriceCents).toBe(9_100);
+      });
+
+      it('fills at the last cent the tolerance allows, and refuses the next one', () => {
+        const { session, nowMs } = sessionAt('open');
+        const ticket = closeUp(frameAt(session, nowMs));
+        // $91.00 now. Seen $89.22, 2% of it is 178 cents (178.44, whole cents
+        // only), which beats the $1 floor, so the dearest fill it admits is
+        // 8_922 + 178 = 9_100: exactly the quote, and therefore a fill.
+        expect(ticket.priceCents).toBe(9_100);
+
+        const edge = send(session, buy(ticket, { seenPriceCents: 8_922 }), nowMs);
+        expect(edge.reply.receipt.outcome).toBe('accepted');
+        expect(onlyPosition(edge.reply.frame).entryPriceCents).toBe(9_100);
+
+        // Seen $89.21, one cent lower: 2% is 178 cents again (178.42), so the
+        // dearest fill is 9_099, a cent under the quote. Sent at the same
+        // moment, from the same untouched session.
+        const past = send(session, buy(ticket, { seenPriceCents: 8_921 }), nowMs);
+        expect(past.reply.receipt).toMatchObject({ outcome: 'rejected', reason: 'priceMoved' });
+        expect(past.reply.frame.positions).toEqual([]);
+      });
+
+      it('lets the dollar floor decide on a cheap ticket, where 2% is pennies', () => {
+        const { session, nowMs } = sessionAt('open');
+        const frame = frameAt(session, nowMs);
+        // The player saw $5.00. 2% of that is 10 cents, so the $1 floor is the
+        // larger of the two and decides: $6.00 still fills, $7.00 does not.
+        const six = quotedAt(frame, 600);
+        const seven = quotedAt(frame, 700);
+
+        const fills = send(session, buy(six, { seenPriceCents: 500 }), nowMs);
+        expect(fills.reply.receipt.outcome).toBe('accepted');
+        expect(onlyPosition(fills.reply.frame).entryPriceCents).toBe(600);
+
+        const refused = send(session, buy(seven, { seenPriceCents: 500 }), nowMs);
+        expect(refused.reply.receipt).toMatchObject({ outcome: 'rejected', reason: 'priceMoved' });
+        expect(refused.reply.frame.positions).toEqual([]);
+      });
     });
 
     describe('the bell rule: the step the command arrives at decides', () => {
-      // A ticket can be worth nothing at the bell, and a command has to name a price above zero.
-      const claimable = (ticket: { contractId: number; priceCents: number }) => ({ ...ticket, priceCents: Math.max(ticket.priceCents, 100) });
+      // Every case here buys a ticket the board would really sell at that very
+      // moment, priced at what the frame shows for it, so the only thing that
+      // can stand between the buy and a fill is the bell. By the last steps of
+      // the day many tickets are worth nothing, so which ticket that is has to
+      // be asked of the moment rather than fixed in advance.
 
-      it('does not call the market closed one step before the bell', () => {
+      it('still fills a buy one step before the bell', () => {
         const { session, nowMs } = sessionAt('lastOpenStep');
+        const ticket = tradableTicket(frameAt(session, nowMs));
 
-        const { reply } = send(session, buy(claimable(closeUp(frameAt(session, nowMs)))), nowMs);
+        const { reply } = send(session, buy(ticket), nowMs);
 
         expect(reply.receipt.step).toBe(BELL_STEP_IN_DAY - 1);
-        expect(reply.receipt.reason).not.toBe('marketClosed');
+        expect(reply.receipt.outcome).toBe('accepted');
+        const position = onlyPosition(reply.frame);
+        expect(position.contractId).toBe(ticket.contractId);
+        expect(position.entryPriceCents).toBe(ticket.priceCents);
       });
 
       it.each([
@@ -244,7 +310,7 @@ export function describeCommandPathContract(name: string, handle: HandleCommand)
         const nowMs = msAtStep(step);
         const before = frameAt(session, nowMs);
 
-        const { reply } = send(session, buy(claimable(closeUp(before))), nowMs);
+        const { reply } = send(session, buy(tradableTicket(before)), nowMs);
 
         expect(reply.receipt).toMatchObject({ outcome: 'rejected', reason: 'marketClosed', step });
         expect(reply.frame.positions).toEqual([]);
@@ -275,7 +341,7 @@ export function describeCommandPathContract(name: string, handle: HandleCommand)
     it.each([
       ['at the bell', BELL_STEP_IN_DAY],
       ['after the bell', BELL_STEP_IN_DAY + 10],
-    ])('settles a cash-out that arrives %s at the bell value, and pays it once', (_when, step) => {
+    ])('settles a cash-out that arrives %s at the bell value, accepts a later one and pays it once', (_when, step) => {
       const { session, afterBuy } = holding();
       const bought = onlyPosition(afterBuy);
 
@@ -290,9 +356,20 @@ export function describeCommandPathContract(name: string, handle: HandleCommand)
       expect(late.reply.frame.account.cashCents).toBe(afterBuy.account.cashCents + proceeds);
       expect(position.profitCents).toBe(proceeds - position.costCents);
 
+      // A press after the bell is honest: the ticket really was sold, at the
+      // bell value, and the receipt points at that same sale. So the answer is
+      // accepted, every time it is asked with a fresh id, and the money is
+      // paid once. (What that does to the revision, and whether the answer is
+      // logged, is still left open here.)
       const again = send(late.session, cashOut(bought.id), nowMs + 1_000);
+      expect(again.reply.receipt).toMatchObject({ outcome: 'accepted', kind: 'cashOut', positionId: bought.id });
       expect(again.reply.frame.account.cashCents).toBe(late.reply.frame.account.cashCents);
       expect(onlyPosition(again.reply.frame)).toEqual(position);
+
+      const third = send(again.session, cashOut(bought.id), nowMs + 2_000);
+      expect(third.reply.receipt).toMatchObject({ outcome: 'accepted', kind: 'cashOut', positionId: bought.id });
+      expect(third.reply.frame.account.cashCents).toBe(late.reply.frame.account.cashCents);
+      expect(onlyPosition(third.reply.frame)).toEqual(position);
     });
 
     it('gives every schema-valid command an explicit outcome and never throws', () => {

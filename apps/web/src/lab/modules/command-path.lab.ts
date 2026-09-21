@@ -7,6 +7,7 @@ const entry: LabEntry = {
   summary:
     "One pure function from the game's state and a command to the next state and a reply: safe retries by command id, explicit outcomes, every input logged.",
   builtAgainst: 'the game state in shared code, no sockets',
+  demo: () => import('./command-path.demo'),
 };
 
 export default entry;

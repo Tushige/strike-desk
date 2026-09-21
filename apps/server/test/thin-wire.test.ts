@@ -12,6 +12,7 @@ import {
   buildMarket,
   frameSchema,
   handleCommand,
+  momentAt,
   parseServerMessage,
   playerOf,
   seedToMarketCode,
@@ -161,6 +162,51 @@ function thinAt(where: string): Record<string, unknown> {
 }
 
 describe('every frame this service emits', () => {
+  it.each([undefined, 209])('keeps serialized history secret at every reveal and day boundary (targets %s)', (targets) => {
+    const original = buildMarket({ seed: SEED, engine: ENGINE_VERSION, content: CONTENT_VERSION });
+    const firstReveal = Math.min(...original.days[0]!.news.map((item) => item.hidden.revealIndex));
+    function emitted(market: Market, step: number): string {
+      const registry = createRegistry({ drawSeed: () => SEED, drawId: () => 'serialized-history', limits: LIMITS });
+      const entry = registry.create(0, targets)!;
+      registry.replace(entry.session.id, { ...handleCommand(entry.session, FIRST_PLAYER_ID, { t: 'start', commandId: 'history-secrecy', pace: 1 }, 0).session, market });
+      const sent: string[] = [];
+      const socket: FrameSocket = { OPEN: 1, readyState: 1, bufferedAmount: 0, send: (text) => { sent.push(text); } };
+      registry.attach(entry.session.id, FIRST_PLAYER_ID, socket);
+      sampleSessions(registry, step * 200, { sent: 0, skipped: 0 }, 1500);
+      return sent[0]!;
+    }
+    for (const step of [0, 300 + firstReveal - 1, 300 + firstReveal, 800, 900, 4500]) {
+      const changed = structuredClone(original);
+      const moment = momentAt(step);
+      for (const day of changed.days) {
+        if (day.day < moment.day) continue;
+        const today = day.day === moment.day;
+        day.paths = day.paths.map((path) => path.map((price, index) => today && index <= moment.priceIndex ? price : price * 1.37 + 11 + index));
+        if (!today) day.leadIn = day.leadIn.map((path) => path.map((price) => price + 17));
+        for (const item of day.news) {
+          if (today && item.hidden.revealIndex <= moment.priceIndex) continue;
+          const next = today ? moment.priceIndex + 1 : 1;
+          item.hidden.revealIndex = item.hidden.revealIndex === next ? next + 1 : next;
+          item.hidden.wasTrue = !item.hidden.wasTrue;
+          item.hidden.move = -item.hidden.move + 0.01;
+          if (!today) item.headline.body = 'Changed future body';
+        }
+      }
+      const raw = emitted(original, step);
+      expect(emitted(changed, step)).toBe(raw);
+      const parsed = frameSchema.parse(JSON.parse(raw));
+      expect(parsed.leadIn?.[0]).toHaveLength(40);
+      expect(parsed.history?.[0]).toHaveLength(moment.priceIndex + 1);
+      expect(JSON.parse(raw)).toEqual(parsed);
+      if (step < 4500) {
+        expect(raw).not.toContain('marketCode');
+        expect(raw).not.toContain(String(SEED));
+      }
+      const present = structuredClone(original);
+      present.days[moment.day - 1]!.leadIn[0]![0] = 1;
+      expect(emitted(present, step)).not.toBe(raw);
+    }
+  });
   it('was collected at every moment of the game', () => {
     expect(collected.map(({ where }) => where)).toEqual([LOBBY, ...MOMENTS.map(([where]) => where)]);
   });
@@ -203,6 +249,14 @@ describe('every frame this service emits', () => {
   it('round-trips the shared schema unchanged', () => {
     for (const { where, frame } of collected) {
       expect({ where, frame: frameSchema.parse(frame) }).toEqual({ where, frame });
+      expect(frame.leadIn !== undefined).toBe(frame.history !== undefined);
+      if (frame.leadIn !== undefined) {
+        expect(frame.leadIn).toHaveLength(6);
+        for (const path of frame.leadIn) {
+          expect(path).toHaveLength(40);
+          expect(wholeCentsFromZero(path)).toBe(true);
+        }
+      }
     }
   });
 
@@ -453,6 +507,8 @@ function expectDraftAtFrame(frame: Frame, contractId: number, spendCents: number
   expect(frame.receipts).toHaveLength(1);
   expect(frame.receipts[0]).toMatchObject({ kind: 'start', step: 0, outcome: 'accepted' });
   if (frame.history !== undefined) {
+    expect(frame.leadIn).toHaveLength(6);
+    frame.leadIn?.forEach((path) => expect(path).toHaveLength(40));
     expect(frame.history).toHaveLength(6);
     frame.history.forEach((path, companyId) => {
       expect(path).toHaveLength(frame.clock.priceIndex + 1);
@@ -460,6 +516,7 @@ function expectDraftAtFrame(frame: Frame, contractId: number, spendCents: number
       expect(wholeCentsFromZero(path)).toBe(true);
     });
   }
+  else expect(frame).not.toHaveProperty('leadIn');
   expect(frame).not.toHaveProperty('final');
   for (const news of frame.news) expect(news).not.toHaveProperty('wasTrue');
   expect(JSON.stringify(frame)).not.toContain(seedToMarketCode(SEED));

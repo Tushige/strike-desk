@@ -5,7 +5,7 @@ import type { Series, SeriesSource } from '../modules/price-chart/index';
 export interface ChartView {
   readonly session: string | null;
   readonly day: number;
-  readonly companies: readonly { name: string; yMinCents: number; yMaxCents: number }[];
+  readonly companies: readonly { name: string; yMinCents: number; yMaxCents: number; xMin: number }[];
 }
 
 export interface ChartStore {
@@ -39,25 +39,29 @@ export function createChartStore(): ChartStore {
     return current;
   }
 
-  function publish(companyId: number, values: readonly number[]): void {
+  function publish(companyId: number, today: readonly number[], leadIn: readonly number[] = []): void {
     const current = entry(companyId);
-    if (values.length === current.value.values.length && values.every((price, index) => price === current.value.values[index])) return;
-    current.value = { startIndex: 0, values: [...values] };
+    const startIndex = leadIn.length === 0 ? 0 : -leadIn.length;
+    const values = [...leadIn, ...today];
+    if (startIndex === current.value.startIndex && values.length === current.value.values.length && values.every((price, index) => price === current.value.values[index])) return;
+    current.value = { startIndex, values };
     for (const listener of [...current.listeners]) listener();
   }
 
-  function observe(prices: readonly number[], index: number, history?: readonly (readonly number[])[]): void {
+  function observe(prices: readonly number[], index: number, history?: readonly (readonly number[])[], leadIns?: readonly (readonly number[])[]): void {
     prices.forEach((price, companyId) => {
+      const previous = entry(companyId).value;
+      const leadIn = leadIns?.[companyId] ?? previous.values.slice(0, -previous.startIndex);
       const complete = history?.[companyId];
       if (complete !== undefined && complete.length === index + 1) {
-        publish(companyId, complete);
+        publish(companyId, complete, leadIn);
         return;
       }
-      const values = entry(companyId).value.values;
+      const values = previous.values.slice(-previous.startIndex);
       if (index > values.length) return;
       const next = [...values];
       next[index] = price;
-      publish(companyId, next);
+      publish(companyId, next, leadIn);
     });
   }
 
@@ -74,7 +78,8 @@ export function createChartStore(): ChartStore {
       }
       const frame = message.t === 'frame' ? message : message.t === 'reply' ? message.frame : null;
       if (frame === null || !isNewerFrame(held, frame)) return;
-      if (view.session !== frame.session || view.day !== frame.clock.day) {
+      const reset = view.session !== frame.session || view.day !== frame.clock.day;
+      if (reset) {
         for (const companyId of sources.keys()) publish(companyId, []);
       }
       held = { session: frame.session, rev: frame.rev, step: frame.step };
@@ -82,13 +87,15 @@ export function createChartStore(): ChartStore {
         name: frame.companies[companyId]?.name ?? '',
         yMinCents: Math.min(...company.targets),
         yMaxCents: Math.max(...company.targets),
+        xMin: frame.history !== undefined && frame.leadIn?.[companyId] !== undefined
+          ? -frame.leadIn[companyId].length : reset ? 0 : view.companies[companyId]?.xMin ?? 0,
       })) ?? [];
       const next = { session: frame.session, day: frame.clock.day, companies };
       if (JSON.stringify(view) !== JSON.stringify(next)) {
         view = next;
         for (const listener of [...listeners]) listener();
       }
-      if (frame.clock.day > 0) observe(frame.prices, frame.clock.priceIndex, frame.history);
+      if (frame.clock.day > 0) observe(frame.prices, frame.clock.priceIndex, frame.history, frame.history === undefined ? undefined : frame.leadIn);
     },
   };
 }

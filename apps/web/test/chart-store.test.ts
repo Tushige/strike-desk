@@ -61,7 +61,7 @@ it('preserves unchanged source and structural identity and replaces a duplicate 
   expect(source.series().values).toEqual([10100]);
   expect(changed).toHaveBeenCalledOnce();
   expect(store.get()).toBe(view);
-  expect(view.companies[0]).toEqual({ name: 'First company', yMinCents: 9000, yMaxCents: 11000 });
+  expect(view.companies[0]).toEqual({ name: 'First company', yMinCents: 9000, yMaxCents: 11000, xMin: 0 });
   stop(); stop();
   store.ingest(frame(1, [9900, 20000]));
   expect(changed).toHaveBeenCalledOnce();
@@ -93,4 +93,25 @@ it('clears unrelated day and session data, including when the first observation 
   expect(store.get()).toMatchObject({ session: 'new-session', day: 1 });
   expect(store.source(0).series().values).toEqual([10000]);
   expect(old.values).toEqual([10000]);
+});
+
+it('joins earlier points at negative indexes to one opening point and retains them through repair', () => {
+  const store = createChartStore();
+  const initial = { ...frame(0, [10000, 20000], [[10000], [20000]]), leadIn: [[9800, 9900], [19800, 19900]] };
+  store.ingest(initial);
+  const source = store.source(0);
+  const before = source.series();
+  expect(before).toEqual({ startIndex: -2, values: [9800, 9900, 10000] });
+  store.ingest(initial);
+  expect(source.series()).toBe(before);
+  store.ingest(batch(1, 10100));
+  expect(source.series()).toEqual({ startIndex: -2, values: [9800, 9900, 10000, 10100] });
+  store.ingest(batch(3, 9900));
+  expect(source.series().values).toEqual([9800, 9900, 10000, 10100]);
+  store.ingest(frame(3, [9900, 20000], [[10000, 10100, 10200, 9900]]));
+  expect(source.series()).toEqual({ startIndex: -2, values: [9800, 9900, 10000, 10100, 10200, 9900] });
+  const later = frame(0, [9900, 20000]);
+  store.ingest({ ...later, step: 900, clock: { ...later.clock, day: 2 } });
+  expect(source.series()).toEqual({ startIndex: 0, values: [9900] });
+  expect(before).toEqual({ startIndex: -2, values: [9800, 9900, 10000] });
 });

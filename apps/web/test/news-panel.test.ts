@@ -17,16 +17,19 @@ vi.mock('../src/boot', async () => {
   const { createNewsStore } = await import('../src/news/newsStore');
   const { createComparisonStore } = await import('../src/comparison/comparisonStore');
   const { createGameLoop } = await import('../src/gameplay/gameLoop');
+  const { createChartStore } = await import('../src/gameplay/chartStore');
   const { createWsFeed } = await import('../src/feed/wsFeed');
   const { createFakeSocket } = await import('./fakeSocket');
   const socket = createFakeSocket();
   const feed = createWsFeed({ url: 'ws://example.test/ws', createSocket: () => socket });
   const gameLoop = createGameLoop(feed, () => 'render-control');
+  const chartStore = createChartStore();
+  feed.subscribe((event) => { if (event.type === 'message') chartStore.ingest(event.message); });
   feed.connect();
   socket.fireOpen();
   bootFixture.receive = (frame) => { socket.fireMessage(JSON.stringify(frame)); };
   bootFixture.close = () => { gameLoop.dispose(); feed.close(); };
-  return { store: createGameStore(), newsStore: createNewsStore(), comparisonStore: createComparisonStore(() => true), gameLoop };
+  return { store: createGameStore(), newsStore: createNewsStore(), comparisonStore: createComparisonStore(() => true), gameLoop, chartStore };
 });
 
 afterEach(cleanup);

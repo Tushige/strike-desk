@@ -39,7 +39,13 @@ describe('the five-day socket game', () => {
       expect(repeat.receipt).toEqual(first.receipt);
       expect(repeat.frame).toMatchObject({ step: 950, rev: 2, clock: { day: 2, phase: 'preBell' } });
       expect(repeat.frame.days).toEqual(days.slice(0, 1));
-      harness.sample(); expect(await client.nextFrame()).toEqual(repeat.frame);
+      expect(repeat.frame.history?.[0]).toHaveLength(1);
+      expect(repeat.frame.leadIn?.[0]).toHaveLength(40);
+      harness.sample();
+      const sampled = await client.nextFrame();
+      expect(sampled).not.toHaveProperty('history');
+      expect(sampled).not.toHaveProperty('leadIn');
+      expect({ ...sampled, history: undefined, leadIn: undefined }).toEqual({ ...repeat.frame, history: undefined, leadIn: undefined });
       client.send({ ...command, commandId: 'new-wrong-day' });
       const refused = await client.nextReply();
       expect(refused.receipt).toMatchObject({ reason: 'wrongDay', step: 950 });

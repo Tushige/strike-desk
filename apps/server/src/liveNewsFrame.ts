@@ -58,6 +58,9 @@ export function previewFrame(source: Frame): Frame {
   };
   if (source.clock.phase === 'final' && source.final !== undefined) frame.final = source.final;
   if (source.draft !== undefined) frame.draft = source.draft;
-  if (source.history !== undefined) frame.history = source.history;
+  if (source.history !== undefined) {
+    frame.history = source.history;
+    if (source.leadIn !== undefined) frame.leadIn = source.leadIn;
+  }
   return frame;
 }

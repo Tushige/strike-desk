@@ -84,6 +84,8 @@ it.each([
     if (reply?.t !== 'reply') throw new Error('missing start reply');
     // $1,000,000 in cents; half is available as the cap. Preview spends nothing.
     expect(reply.frame.account).toEqual({ cashCents: 100000000, worthCents: 100000000, capCents: 50000000, canBuy: false });
+    expect(reply.frame.leadIn?.[0]).toHaveLength(40);
+    expect(reply.frame.history?.[0]).toHaveLength(1);
     expect(view.getAllByText('$1,000,000').length).toBeGreaterThanOrEqual(2);
     const beforeBell = await sample(200);
     expect(beforeBell.prices).toEqual(reply.frame.prices);
@@ -95,7 +97,8 @@ it.each([
     const chart = view.queryByRole('img', { name: chartFrame.companies[0]?.name });
     expect(chart).not.toBeNull();
     expect(chartFrame.history?.[0]).toHaveLength(chartFrame.clock.priceIndex + 1);
-    await waitFor(() => expect(chart?.querySelector('path')?.getAttribute('d')?.split('L')).toHaveLength(chartFrame.clock.priceIndex + 1));
+    expect(chartFrame.leadIn?.[0]).toHaveLength(40);
+    await waitFor(() => expect(chart?.querySelector('path')?.getAttribute('d')?.split('L')).toHaveLength(40 + chartFrame.clock.priceIndex + 1));
     expect(view.queryByText('Market number')).toBeNull();
     expect(view.queryByRole('button', { name: /Buy ticket|Cash out/ })).toBeNull();
     expect(sockets).toBe(1);
@@ -114,8 +117,18 @@ it.each([
       expect(view.getByText('Change today').nextElementSibling?.textContent).toBe('$0');
       expect(view.getByText('Ended the day with').nextElementSibling?.textContent).toBe('$1,000,000');
       expect(view.queryByText('Market number')).toBeNull();
+      const closing = messages.at(-1);
+      if (closing?.t !== 'reply') throw new Error('missing closing history');
       fireEvent.click(view.getByRole('button', { name: day === 5 ? 'See your final result' : `Go to day ${String(day + 1)}` }));
       await view.findByRole('heading', { name: day === 5 ? 'That was the final bell!' : `Day ${String(day + 1)}: before the bell` });
+      if (day < 5) {
+        const next = messages.at(-1);
+        if (next?.t !== 'reply') throw new Error('missing next day history');
+        expect(next.frame.leadIn?.[0]).toEqual(closing.frame.history?.[0]?.slice(460, 500));
+        expect(next.frame.history?.[0]).toEqual([closing.frame.history?.[0]?.[500]]);
+        const nextChart = view.getByRole('img', { name: next.frame.companies[0]?.name });
+        await waitFor(() => expect(nextChart.querySelector('path')?.getAttribute('d')?.split('L')).toHaveLength(41));
+      }
     }
     expect(view.getByText('You finished with').nextElementSibling?.textContent).toBe('$1,000,000');
     expect(view.getByText('Since the start').nextElementSibling?.textContent).toBe('$0');
@@ -221,6 +234,8 @@ it.each(['before delivery', 'after acceptance'] as const)('recovers an opening b
     const frame = current?.t === 'reply' ? current.frame : current?.t === 'frame' ? current : null;
     expect(frame?.rev).toBe(2);
     expect(frame?.receipts.filter((receipt) => receipt.kind === 'openBell')).toHaveLength(1);
+    expect(frame?.leadIn?.[0]).toHaveLength(40);
+    expect(frame?.history?.[0]).toHaveLength(1);
   } finally {
     cleanup(); feed?.close(); child.stdin.end('close\n');
     await new Promise<void>((resolve) => {

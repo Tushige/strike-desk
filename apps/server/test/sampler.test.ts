@@ -475,7 +475,7 @@ describe('commands this service does not take yet', () => {
     expect(await client.nextError()).toEqual({ t: 'error', code: 'badMessage', commandId: command.commandId });
 
     const after = await sampleFrame(running, client);
-    expect({ ...after, history: undefined }).toEqual({ ...before, history: undefined });
+    expect({ ...after, history: undefined, leadIn: undefined }).toEqual({ ...before, history: undefined, leadIn: undefined });
   });
 
   it('openBell opens the current day and later reads keep that jump', async () => {

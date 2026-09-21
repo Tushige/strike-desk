@@ -181,6 +181,7 @@ export function sampleSessions(registry: SessionRegistry, nowMs: number, stats: 
       if (delivered !== null && !entry.session.game.stress && !needsHistory) {
         const plain = { ...delivered };
         delete plain.history;
+        delete plain.leadIn;
         delivered = plain;
         sample.plain ??= JSON.stringify(plain);
         text = sample.plain;

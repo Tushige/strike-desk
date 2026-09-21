@@ -36,7 +36,7 @@ export function GameChart({ loop, companyId = 0 }: { loop: GameLoop; companyId?:
   const company = view.companies[companyId];
   return company === undefined ? null : <PriceChart
     key={`${view.session}:${String(view.day)}:${String(companyId)}`}
-    source={chartStore.source(companyId)} xMin={0} xMax={OPEN_STEPS}
+    source={chartStore.source(companyId)} xMin={company.xMin} xMax={OPEN_STEPS}
     yMinCents={company.yMinCents} yMaxCents={company.yMaxCents}
     lines={NO_LINES} markers={NO_MARKERS} stale={!controls.ready} label={company.name}
   />;

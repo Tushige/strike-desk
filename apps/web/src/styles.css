@@ -211,10 +211,23 @@ main {
   color: var(--down);
 }
 
-/* The column that flashes is the one the eye should land on. */
+/*
+ * The target stands still all day, but it sits in a column of money: its
+ * digits are of a single width, like the rest of the column.
+ */
+.sd-target {
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The column that flashes is the one the eye should land on. Its number
+ * changes several times a second, so its digits keep one width and the
+ * number does not shift sideways while it is being read.
+ */
 .sd-price {
   color: var(--foreground);
   font-weight: 500;
+  font-variant-numeric: tabular-nums;
 }
 
 /*

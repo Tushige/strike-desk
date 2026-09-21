@@ -3,6 +3,7 @@ import type { CellClassParams, ColDef, ValueFormatterParams, ValueGetterParams }
 import { COLUMNS, DEFAULT_COL_DEF } from '../src/board/columns';
 import { ValueCell } from '../src/board/ValueCell';
 import type { ContractRow } from '../src/store/contractRows';
+import sheet from '../src/styles.css?raw';
 
 function column(headerName: string): ColDef<ContractRow> {
   const found = COLUMNS.find((one) => one.headerName === headerName);
@@ -49,6 +50,45 @@ function ruleClasses(headerName: string, row: ContractRow): string[] {
   return Object.entries(rules)
     .filter(([, rule]) => typeof rule === 'function' && rule({ data: row } as CellClassParams<ContractRow>))
     .map(([name]) => name);
+}
+
+/** The class the table itself puts on a right-aligned cell. */
+const GRID_ALIGNMENT_CLASS = 'ag-right-aligned-cell';
+
+/** The page's stylesheet with its comments taken out, so a class named in prose is not read as a rule. */
+const SHEET = sheet.replace(/\/\*[\s\S]*?\*\//g, '');
+
+/**
+ * Does the page's stylesheet give this class digits of one width? Whole
+ * selectors only, so a longer selector that happens to contain the name does
+ * not answer for it.
+ */
+function oneWidthDigits(className: string): boolean {
+  // Blocks with no brace inside them: some selectors, then a body. That
+  // reaches the rules nested in a media query as well as the plain ones.
+  for (const block of SHEET.matchAll(/([^{}]*)\{([^{}]*)\}/g)) {
+    const [, selectors = '', body = ''] = block;
+    if (!selectors.split(',').some((one) => one.trim() === `.${className}`)) continue;
+    if (/font-variant-numeric\s*:\s*tabular-nums/.test(body)) return true;
+  }
+  return false;
+}
+
+const ONE_WIDTH = 'digits of one width';
+
+/**
+ * What a money column does for its digits, in a few words: the class it puts
+ * on its own cells, and what the stylesheet then does with that class. A
+ * sentence rather than a yes or no, so a failure says which column and why.
+ */
+function digitsVerdict(headerName: string): string {
+  const cellClass = column(headerName).cellClass;
+  if (!Array.isArray(cellClass)) return 'no cell class of its own';
+  if (!cellClass.includes(GRID_ALIGNMENT_CLASS)) return `its cell class drops ${GRID_ALIGNMENT_CLASS}`;
+  const [own, ...rest] = cellClass.filter((one) => !one.startsWith('ag-'));
+  if (own === undefined) return 'the table class alone, none of its own';
+  if (rest.length > 0) return `${rest.length + 1} classes of its own, not one`;
+  return oneWidthDigits(own) ? ONE_WIDTH : `no rule gives .${own} ${ONE_WIDTH}`;
 }
 
 describe('the contract table columns', () => {
@@ -157,6 +197,21 @@ describe('the contract table columns', () => {
       'Real value',
       'Hope value',
     ]);
+  });
+
+  it('gives every money column digits of one width, by a class the stylesheet knows', () => {
+    // The page's stylesheet is read here as text. An empty import — which is
+    // what a test runner hands back for a stylesheet unless it is told
+    // otherwise — would blame every column below for something the page does.
+    expect(sheet).toContain('.sd-price');
+
+    const money = COLUMNS.filter((one) => one.type === 'rightAligned').map((one) => one.headerName ?? '');
+    expect(money.length).toBeGreaterThan(0);
+
+    const verdicts = Object.fromEntries(money.map((headerName) => [headerName, digitsVerdict(headerName)]));
+    const wanted = Object.fromEntries(money.map((headerName) => [headerName, ONE_WIDTH]));
+
+    expect(verdicts).toEqual(wanted);
   });
 
   it('leaves the two parts out of the flash, so only the price moves the eye', () => {

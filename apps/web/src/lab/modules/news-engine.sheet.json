@@ -1,0 +1,508 @@
+{
+  "recordedWith": {
+    "content": "c2"
+  },
+  "pool": {
+    "sources": {
+      "1": [
+        "Someone online says",
+        "A post going around online says",
+        "A friend of a friend says"
+      ],
+      "2": [
+        "A store manager says",
+        "A worker at the company says",
+        "A delivery driver says"
+      ],
+      "3": [
+        "The company itself says",
+        "The company's boss says",
+        "An official company report says"
+      ]
+    },
+    "situations": [
+      {
+        "direction": "up",
+        "title": "{name} sells out everywhere",
+        "body": "Shops cannot keep {product} on the shelves. More are being made right now."
+      },
+      {
+        "direction": "up",
+        "title": "{name} wins a big award",
+        "body": "Its {product} were picked as the best of the year by a panel of judges."
+      },
+      {
+        "direction": "up",
+        "title": "{name} video goes viral",
+        "body": "A clip about its {product} has millions of views, and everybody is talking about them."
+      },
+      {
+        "direction": "up",
+        "title": "Giant order lands at {name}",
+        "body": "A huge chain of shops wants {product} from {name} in every one of its stores."
+      },
+      {
+        "direction": "up",
+        "title": "{name} opens a huge new factory",
+        "body": "It can now make twice as many {product} as before."
+      },
+      {
+        "direction": "up",
+        "title": "A famous star loves {name}",
+        "body": "A famous singer was spotted with its {product}, and fans want the same."
+      },
+      {
+        "direction": "down",
+        "title": "{name} runs low on supplies",
+        "body": "Something needed to make {product} is hard to get, so fewer can be made this month."
+      },
+      {
+        "direction": "down",
+        "title": "{name} calls back a batch",
+        "body": "A batch of {product} did not pass its checks and is going back to the factory."
+      },
+      {
+        "direction": "down",
+        "title": "A new rival takes on {name}",
+        "body": "Another company has started selling its own {product} at a lower price."
+      },
+      {
+        "direction": "down",
+        "title": "Low scores pile up for {name}",
+        "body": "People who tried its newest {product} are giving them low scores."
+      },
+      {
+        "direction": "down",
+        "title": "{name} delays its big launch",
+        "body": "Its newest {product} will not be ready in time and are pushed back by months."
+      },
+      {
+        "direction": "down",
+        "title": "Factory trouble at {name}",
+        "body": "A big machine broke down, and no {product} can be made until it is fixed."
+      }
+    ]
+  },
+  "games": [
+    {
+      "label": "Game A",
+      "headlines": [
+        {
+          "day": 1,
+          "company": "ZapCharge",
+          "trust": 3,
+          "direction": "up",
+          "source": "The company itself says",
+          "title": "ZapCharge wins a big award",
+          "body": "Its super batteries were picked as the best of the year by a panel of judges."
+        },
+        {
+          "day": 1,
+          "company": "RoboPup",
+          "trust": 2,
+          "direction": "down",
+          "source": "A store manager says",
+          "title": "A new rival takes on RoboPup",
+          "body": "Another company has started selling its own robot pets at a lower price."
+        },
+        {
+          "day": 1,
+          "company": "PixelPals",
+          "trust": 1,
+          "direction": "down",
+          "source": "A post going around online says",
+          "title": "Low scores pile up for PixelPals",
+          "body": "People who tried its newest video games are giving them low scores."
+        },
+        {
+          "day": 2,
+          "company": "RoboPup",
+          "trust": 3,
+          "direction": "up",
+          "source": "An official company report says",
+          "title": "A famous star loves RoboPup",
+          "body": "A famous singer was spotted with its robot pets, and fans want the same."
+        },
+        {
+          "day": 2,
+          "company": "JetKicks",
+          "trust": 2,
+          "direction": "up",
+          "source": "A store manager says",
+          "title": "Giant order lands at JetKicks",
+          "body": "A huge chain of shops wants jet sneakers from JetKicks in every one of its stores."
+        },
+        {
+          "day": 2,
+          "company": "ZapCharge",
+          "trust": 1,
+          "direction": "up",
+          "source": "A post going around online says",
+          "title": "ZapCharge video goes viral",
+          "body": "A clip about its super batteries has millions of views, and everybody is talking about them."
+        },
+        {
+          "day": 3,
+          "company": "PixelPals",
+          "trust": 3,
+          "direction": "up",
+          "source": "The company itself says",
+          "title": "PixelPals sells out everywhere",
+          "body": "Shops cannot keep video games on the shelves. More are being made right now."
+        },
+        {
+          "day": 3,
+          "company": "MoonMunch",
+          "trust": 2,
+          "direction": "down",
+          "source": "A delivery driver says",
+          "title": "MoonMunch runs low on supplies",
+          "body": "Something needed to make space snacks is hard to get, so fewer can be made this month."
+        },
+        {
+          "day": 3,
+          "company": "JetKicks",
+          "trust": 1,
+          "direction": "down",
+          "source": "A friend of a friend says",
+          "title": "JetKicks delays its big launch",
+          "body": "Its newest jet sneakers will not be ready in time and are pushed back by months."
+        },
+        {
+          "day": 4,
+          "company": "JetKicks",
+          "trust": 3,
+          "direction": "down",
+          "source": "An official company report says",
+          "title": "JetKicks calls back a batch",
+          "body": "A batch of jet sneakers did not pass its checks and is going back to the factory."
+        },
+        {
+          "day": 4,
+          "company": "MoonMunch",
+          "trust": 2,
+          "direction": "down",
+          "source": "A delivery driver says",
+          "title": "Factory trouble at MoonMunch",
+          "body": "A big machine broke down, and no space snacks can be made until it is fixed."
+        },
+        {
+          "day": 4,
+          "company": "RoboPup",
+          "trust": 1,
+          "direction": "down",
+          "source": "A friend of a friend says",
+          "title": "RoboPup runs low on supplies",
+          "body": "Something needed to make robot pets is hard to get, so fewer can be made this month."
+        },
+        {
+          "day": 5,
+          "company": "MoonMunch",
+          "trust": 3,
+          "direction": "up",
+          "source": "The company's boss says",
+          "title": "MoonMunch opens a huge new factory",
+          "body": "It can now make twice as many space snacks as before."
+        },
+        {
+          "day": 5,
+          "company": "RoboPup",
+          "trust": 2,
+          "direction": "down",
+          "source": "A worker at the company says",
+          "title": "Factory trouble at RoboPup",
+          "body": "A big machine broke down, and no robot pets can be made until it is fixed."
+        },
+        {
+          "day": 5,
+          "company": "JetKicks",
+          "trust": 1,
+          "direction": "down",
+          "source": "Someone online says",
+          "title": "JetKicks runs low on supplies",
+          "body": "Something needed to make jet sneakers is hard to get, so fewer can be made this month."
+        }
+      ]
+    },
+    {
+      "label": "Game B",
+      "headlines": [
+        {
+          "day": 1,
+          "company": "ZapCharge",
+          "trust": 3,
+          "direction": "down",
+          "source": "The company's boss says",
+          "title": "Low scores pile up for ZapCharge",
+          "body": "People who tried its newest super batteries are giving them low scores."
+        },
+        {
+          "day": 1,
+          "company": "Fizzly",
+          "trust": 2,
+          "direction": "down",
+          "source": "A delivery driver says",
+          "title": "Fizzly calls back a batch",
+          "body": "A batch of fizzy drinks did not pass its checks and is going back to the factory."
+        },
+        {
+          "day": 1,
+          "company": "JetKicks",
+          "trust": 1,
+          "direction": "down",
+          "source": "A friend of a friend says",
+          "title": "A new rival takes on JetKicks",
+          "body": "Another company has started selling its own jet sneakers at a lower price."
+        },
+        {
+          "day": 2,
+          "company": "MoonMunch",
+          "trust": 3,
+          "direction": "up",
+          "source": "The company itself says",
+          "title": "MoonMunch video goes viral",
+          "body": "A clip about its space snacks has millions of views, and everybody is talking about them."
+        },
+        {
+          "day": 2,
+          "company": "RoboPup",
+          "trust": 2,
+          "direction": "up",
+          "source": "A worker at the company says",
+          "title": "Giant order lands at RoboPup",
+          "body": "A huge chain of shops wants robot pets from RoboPup in every one of its stores."
+        },
+        {
+          "day": 2,
+          "company": "JetKicks",
+          "trust": 1,
+          "direction": "down",
+          "source": "Someone online says",
+          "title": "JetKicks runs low on supplies",
+          "body": "Something needed to make jet sneakers is hard to get, so fewer can be made this month."
+        },
+        {
+          "day": 3,
+          "company": "Fizzly",
+          "trust": 3,
+          "direction": "up",
+          "source": "An official company report says",
+          "title": "Fizzly sells out everywhere",
+          "body": "Shops cannot keep fizzy drinks on the shelves. More are being made right now."
+        },
+        {
+          "day": 3,
+          "company": "PixelPals",
+          "trust": 2,
+          "direction": "up",
+          "source": "A worker at the company says",
+          "title": "A famous star loves PixelPals",
+          "body": "A famous singer was spotted with its video games, and fans want the same."
+        },
+        {
+          "day": 3,
+          "company": "RoboPup",
+          "trust": 1,
+          "direction": "down",
+          "source": "A friend of a friend says",
+          "title": "RoboPup delays its big launch",
+          "body": "Its newest robot pets will not be ready in time and are pushed back by months."
+        },
+        {
+          "day": 4,
+          "company": "JetKicks",
+          "trust": 3,
+          "direction": "down",
+          "source": "The company's boss says",
+          "title": "Factory trouble at JetKicks",
+          "body": "A big machine broke down, and no jet sneakers can be made until it is fixed."
+        },
+        {
+          "day": 4,
+          "company": "Fizzly",
+          "trust": 2,
+          "direction": "up",
+          "source": "A store manager says",
+          "title": "Fizzly opens a huge new factory",
+          "body": "It can now make twice as many fizzy drinks as before."
+        },
+        {
+          "day": 4,
+          "company": "ZapCharge",
+          "trust": 1,
+          "direction": "down",
+          "source": "A friend of a friend says",
+          "title": "A new rival takes on ZapCharge",
+          "body": "Another company has started selling its own super batteries at a lower price."
+        },
+        {
+          "day": 5,
+          "company": "ZapCharge",
+          "trust": 3,
+          "direction": "up",
+          "source": "An official company report says",
+          "title": "ZapCharge wins a big award",
+          "body": "Its super batteries were picked as the best of the year by a panel of judges."
+        },
+        {
+          "day": 5,
+          "company": "PixelPals",
+          "trust": 2,
+          "direction": "down",
+          "source": "A delivery driver says",
+          "title": "Factory trouble at PixelPals",
+          "body": "A big machine broke down, and no video games can be made until it is fixed."
+        },
+        {
+          "day": 5,
+          "company": "JetKicks",
+          "trust": 1,
+          "direction": "up",
+          "source": "A post going around online says",
+          "title": "Giant order lands at JetKicks",
+          "body": "A huge chain of shops wants jet sneakers from JetKicks in every one of its stores."
+        }
+      ]
+    },
+    {
+      "label": "Game C",
+      "headlines": [
+        {
+          "day": 1,
+          "company": "Fizzly",
+          "trust": 3,
+          "direction": "down",
+          "source": "An official company report says",
+          "title": "Fizzly runs low on supplies",
+          "body": "Something needed to make fizzy drinks is hard to get, so fewer can be made this month."
+        },
+        {
+          "day": 1,
+          "company": "MoonMunch",
+          "trust": 2,
+          "direction": "up",
+          "source": "A delivery driver says",
+          "title": "MoonMunch video goes viral",
+          "body": "A clip about its space snacks has millions of views, and everybody is talking about them."
+        },
+        {
+          "day": 1,
+          "company": "JetKicks",
+          "trust": 1,
+          "direction": "down",
+          "source": "A friend of a friend says",
+          "title": "Low scores pile up for JetKicks",
+          "body": "People who tried its newest jet sneakers are giving them low scores."
+        },
+        {
+          "day": 2,
+          "company": "MoonMunch",
+          "trust": 3,
+          "direction": "up",
+          "source": "An official company report says",
+          "title": "Giant order lands at MoonMunch",
+          "body": "A huge chain of shops wants space snacks from MoonMunch in every one of its stores."
+        },
+        {
+          "day": 2,
+          "company": "ZapCharge",
+          "trust": 2,
+          "direction": "up",
+          "source": "A store manager says",
+          "title": "ZapCharge opens a huge new factory",
+          "body": "It can now make twice as many super batteries as before."
+        },
+        {
+          "day": 2,
+          "company": "JetKicks",
+          "trust": 1,
+          "direction": "up",
+          "source": "A post going around online says",
+          "title": "JetKicks sells out everywhere",
+          "body": "Shops cannot keep jet sneakers on the shelves. More are being made right now."
+        },
+        {
+          "day": 3,
+          "company": "PixelPals",
+          "trust": 3,
+          "direction": "down",
+          "source": "An official company report says",
+          "title": "A new rival takes on PixelPals",
+          "body": "Another company has started selling its own video games at a lower price."
+        },
+        {
+          "day": 3,
+          "company": "ZapCharge",
+          "trust": 2,
+          "direction": "up",
+          "source": "A delivery driver says",
+          "title": "A famous star loves ZapCharge",
+          "body": "A famous singer was spotted with its super batteries, and fans want the same."
+        },
+        {
+          "day": 3,
+          "company": "Fizzly",
+          "trust": 1,
+          "direction": "down",
+          "source": "A post going around online says",
+          "title": "Fizzly delays its big launch",
+          "body": "Its newest fizzy drinks will not be ready in time and are pushed back by months."
+        },
+        {
+          "day": 4,
+          "company": "RoboPup",
+          "trust": 3,
+          "direction": "up",
+          "source": "The company's boss says",
+          "title": "RoboPup wins a big award",
+          "body": "Its robot pets were picked as the best of the year by a panel of judges."
+        },
+        {
+          "day": 4,
+          "company": "Fizzly",
+          "trust": 2,
+          "direction": "up",
+          "source": "A store manager says",
+          "title": "Fizzly sells out everywhere",
+          "body": "Shops cannot keep fizzy drinks on the shelves. More are being made right now."
+        },
+        {
+          "day": 4,
+          "company": "ZapCharge",
+          "trust": 1,
+          "direction": "down",
+          "source": "A friend of a friend says",
+          "title": "ZapCharge calls back a batch",
+          "body": "A batch of super batteries did not pass its checks and is going back to the factory."
+        },
+        {
+          "day": 5,
+          "company": "PixelPals",
+          "trust": 3,
+          "direction": "up",
+          "source": "The company's boss says",
+          "title": "A famous star loves PixelPals",
+          "body": "A famous singer was spotted with its video games, and fans want the same."
+        },
+        {
+          "day": 5,
+          "company": "RoboPup",
+          "trust": 2,
+          "direction": "up",
+          "source": "A worker at the company says",
+          "title": "A famous star loves RoboPup",
+          "body": "A famous singer was spotted with its robot pets, and fans want the same."
+        },
+        {
+          "day": 5,
+          "company": "ZapCharge",
+          "trust": 1,
+          "direction": "up",
+          "source": "A friend of a friend says",
+          "title": "ZapCharge wins a big award",
+          "body": "Its super batteries were picked as the best of the year by a panel of judges."
+        }
+      ]
+    }
+  ]
+}

@@ -7,6 +7,7 @@ export * from './cast';
 export * from './board';
 export * from './pricing';
 export * from './protocol';
+export * from './news';
 export * from './market';
 export * from './game';
 export * from './draft';

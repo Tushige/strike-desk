@@ -174,6 +174,12 @@ export const newsViewSchema = z.object({
   source: z.string(),
   title: z.string(),
   body: z.string(),
+  /**
+   * What the headline claims: `'up'` for good news, `'down'` for bad. Public
+   * from the start of its day. It says nothing about whether the claim is
+   * true; `wasTrue` tells that, and only from the bell.
+   */
+  direction: side,
   /** True once the hidden reveal moment has passed. The banner is derived from this. */
   revealed: z.boolean(),
   /** Present only once revealed: where on today's path the move landed. */
@@ -258,6 +264,12 @@ export const positionViewSchema = z.object({
   status: z.enum(['open', 'cashedOut', 'settled']),
   /** Open: what it would sell for right now. Closed: what it paid. */
   valueCents: cents,
+  /**
+   * What the ticket has made so far, or lost when negative: `valueCents`
+   * minus `costCents`. For an open ticket at this frame's price; for a closed
+   * one, final.
+   */
+  profitCents: cents,
   /** Per-ticket split of the current (or exit) price. */
   realCents: cents,
   hopeCents: cents,
@@ -282,6 +294,8 @@ export const dayResultSchema = z.object({
   day,
   startCents: cents,
   endCents: cents,
+  /** What the day changed: `endCents` minus `startCents`. Negative for a losing day. */
+  changeCents: cents,
 });
 export type DayResult = z.infer<typeof dayResultSchema>;
 
@@ -291,6 +305,8 @@ export const finalViewSchema = z.object({
   engine: z.string(),
   content: z.string(),
   finalCents: cents,
+  /** What the whole game changed: `finalCents` minus the cash the game started with. */
+  changeCents: cents,
 });
 export type FinalView = z.infer<typeof finalViewSchema>;
 
@@ -335,23 +351,38 @@ export const frameSchema = z.object({
   stress: z.boolean(),
   /**
    * Today's share prices so far, by company id, from index 0 to the current
-   * priceIndex. Sent on connect, after a command and whenever the server
-   * skipped frames; otherwise the client appends `prices` itself.
+   * priceIndex. Sent on connect, after a command, on the first frame of each
+   * phase and whenever the server skipped frames; otherwise the client
+   * appends `prices` itself. A client that does so must key each point by
+   * `clock.priceIndex`: at a fast pace consecutive frames are several points
+   * apart.
    */
   history: z.array(z.array(cents)).optional(),
   final: finalViewSchema.optional(),
 });
 export type Frame = z.infer<typeof frameSchema>;
 
-/** Stress setting only: changed quotes between full frames. Ordered like frames. */
+/**
+ * Stress setting only: the tickets that changed between full frames. Ordered
+ * like frames.
+ *
+ * Each change is `[contractId, priceCents, realCents, hopeCents,
+ * breakEvenCents]`, in that order: a stress table shows the same columns as
+ * the game's table, and the page may not derive any of them.
+ *
+ * A batch belongs to one day's board. The server sends a whole frame first on
+ * a new day, and a client ignores a batch whose `day` is not the day of the
+ * frame it holds.
+ */
 export const quotesMessageSchema = z.object({
   t: z.literal('quotes'),
   session: z.string(),
   rev: count,
   step: count,
+  day,
   priceIndex: count,
   prices: z.array(cents),
-  changes: z.array(z.tuple([count, cents])),
+  changes: z.array(z.tuple([count, cents, cents, cents, cents])),
 });
 export type QuotesMessage = z.infer<typeof quotesMessageSchema>;
 

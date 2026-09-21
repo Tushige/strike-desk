@@ -177,6 +177,26 @@ describe('the news move', () => {
   });
 });
 
+describe('a headline\'s direction', () => {
+  const markets = marketsFor(1, 200);
+
+  it('is the way a true headline moves the price, and the opposite of the way a false one does', () => {
+    const seen = { upTrue: 0, upFalse: 0, downTrue: 0, downFalse: 0 };
+    for (const each of markets) {
+      for (const day of each.days) {
+        for (const { headline, hidden } of day.news) {
+          expect(['up', 'down']).toContain(headline.direction);
+          const claimed = headline.direction === 'up' ? 1 : -1;
+          expect(Math.sign(hidden.move)).toBe(hidden.wasTrue ? claimed : -claimed);
+          seen[`${headline.direction}${hidden.wasTrue ? 'True' : 'False'}`] += 1;
+        }
+      }
+    }
+    // The direction alone says nothing about the outcome: each claim comes true and comes false.
+    for (const [kind, count] of Object.entries(seen)) expect({ kind, often: count > 100 }).toEqual({ kind, often: true });
+  });
+});
+
 describe('the daily wobble', () => {
   it('is 3.3% to 3.7% on a quiet day, over the 500 steps the market is open', () => {
     const returns: number[] = [];

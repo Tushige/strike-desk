@@ -9,6 +9,7 @@ import {
   isNewerFrame,
   parseClientMessage,
   parseServerMessage,
+  quotesMessageSchema,
   receiptSchema,
   serverMessageSchema,
 } from '../src/protocol';
@@ -133,9 +134,20 @@ describe('server messages', () => {
   it('accepts a frame, a reply, a quotes batch and an error', () => {
     expect(parseServerMessage(frame)).toEqual(frame);
     expect(parseServerMessage({ t: 'reply', receipt, frame })).toEqual({ t: 'reply', receipt, frame });
-    const quotes = { t: 'quotes', session: 's1', rev: 3, step: 400, priceIndex: 100, prices: [1, 2, 3, 4, 5, 6], changes: [[0, 12_300], [7, 0]] };
+    const quotes = { t: 'quotes', session: 's1', rev: 3, step: 400, day: 1, priceIndex: 100, prices: [1, 2, 3, 4, 5, 6], changes: [[5, 1200, 300, 900, 8512], [7, 0, 0, 0, 8500]] };
     expect(parseServerMessage(quotes)).toEqual(quotes);
     expect(parseServerMessage({ t: 'error', code: 'badMessage' })).toEqual({ t: 'error', code: 'badMessage' });
+  });
+
+  it('a quotes batch names its day and carries every column of a changed ticket: id, price, real, hope, break-even', () => {
+    const batch = { t: 'quotes', session: 's1', rev: 3, step: 400, day: 1, priceIndex: 100, prices: [1, 2, 3, 4, 5, 6], changes: [[5, 1200, 300, 900, 8512]] };
+    expect(quotesMessageSchema.parse(batch)).toEqual(batch);
+    const withoutDay: Record<string, unknown> = { ...batch };
+    delete withoutDay.day;
+    expect(quotesMessageSchema.safeParse(withoutDay).success).toBe(false);
+    expect(quotesMessageSchema.safeParse({ ...batch, day: 6 }).success).toBe(false);
+    expect(quotesMessageSchema.safeParse({ ...batch, changes: [[5, 1200]] }).success).toBe(false);
+    expect(quotesMessageSchema.safeParse({ ...batch, changes: [[5, 1200, 300, 900, 8512.5]] }).success).toBe(false);
   });
 
   it('lets an older client read a message with a field it does not know', () => {

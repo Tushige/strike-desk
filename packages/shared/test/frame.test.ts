@@ -46,6 +46,7 @@ function scrambleFuture(source: Market, step: number): Market {
         item.headline.body = 'scrambled';
         item.headline.trust = item.headline.trust === 1 ? 3 : 1;
         item.headline.companyId = (item.headline.companyId + 1) % 6;
+        item.headline.direction = item.headline.direction === 'up' ? 'down' : 'up';
       }
     });
   });
@@ -166,7 +167,13 @@ describe('projectFrame keeps the future secret', () => {
     }
     const last = project(market, gameAt(GAME_STEPS), GAME_STEPS);
     expect(JSON.stringify(last)).not.toContain(String(TEST_SEED));
-    expect(last.final).toEqual({ marketCode: MARKET_CODE, engine: ENGINE_VERSION, content: CONTENT_VERSION, finalCents: last.account.cashCents });
+    expect(last.final).toEqual({
+      marketCode: MARKET_CODE,
+      engine: ENGINE_VERSION,
+      content: CONTENT_VERSION,
+      finalCents: last.account.cashCents,
+      changeCents: last.account.cashCents - 100_000_000,
+    });
     expect(project(market, gameAt(GAME_STEPS - 1), GAME_STEPS - 1).final).toBeUndefined();
   });
 });
@@ -440,6 +447,64 @@ describe('projectFrame, each ticket\'s break-even', () => {
       expect(position?.entryStep).toBe(step);
       expect(position?.breakEvenCents).toBe(frame.quoteBreakEvens[position?.contractId ?? -1]);
     }
+  });
+});
+
+describe('projectFrame, profit, a day\'s change and the headline\'s direction', () => {
+  it.each(STEPS)('%s: an open ticket has made its worth minus its cost, a closed one what it paid minus its cost', (_name, step) => {
+    for (const position of project(market, gameAt(step), step).positions) {
+      const made = position.exit === undefined ? position.valueCents : position.exit.proceedsCents;
+      expect({ id: position.id, profitCents: position.profitCents }).toEqual({ id: position.id, profitCents: made - position.costCents });
+    }
+  });
+
+  it('the sampled moments really hold an open, a cashed-out and a settled ticket', () => {
+    const statuses = new Set(STEPS.flatMap(([, step]) => project(market, gameAt(step), step).positions.map((position) => position.status)));
+    expect([...statuses].sort()).toEqual(['cashedOut', 'open', 'settled']);
+  });
+
+  it('a ticket that settled at $0 has lost exactly what it cost', () => {
+    const worthless = findContract(market, 1, (id) => isTradable(priceOf(market, 1, 10, id)) && priceOf(market, 1, OPEN_STEPS, id) === 0);
+    const held = applyCommand(market, startedGame(market), ME, buyCommand({ day: 1, contractId: worthless, spendCents: 5_000_000, seenPriceCents: priceOf(market, 1, 10, worthless) }), 310);
+    expect(held.receipt.outcome).toBe('accepted');
+    const position = project(market, advanceTo(market, held.game, 800), 800).positions[0];
+    expect(position).toMatchObject({ status: 'settled', valueCents: 0, exit: { kind: 'bell', proceedsCents: 0 } });
+    expect(position?.costCents).toBeGreaterThan(0);
+    expect(position?.profitCents).toBe(-(position?.costCents ?? NaN));
+  });
+
+  it('every finished day says what it changed, and the final screen what the whole game changed', () => {
+    const last = project(market, gameAt(GAME_STEPS), GAME_STEPS);
+    expect(last.days).toHaveLength(5);
+    for (const result of last.days) {
+      expect({ day: result.day, changeCents: result.changeCents }).toEqual({ day: result.day, changeCents: result.endCents - result.startCents });
+    }
+    expect(last.final?.changeCents).toBe((last.final?.finalCents ?? NaN) - 100_000_000);
+    expect(last.days.reduce((sum, result) => sum + result.changeCents, 0)).toBe(last.final?.changeCents);
+  });
+
+  it('every headline of every day points up or down', () => {
+    const game = startedGame(market);
+    const seen = new Set<string>();
+    for (let step = 0; step <= GAME_STEPS; step += 450) {
+      const frame = project(market, advanceTo(market, game, step), step, false);
+      expect(frame.news).toHaveLength(3);
+      for (const item of frame.news) {
+        expect(['up', 'down']).toContain(item.direction);
+        seen.add(item.direction);
+      }
+    }
+    expect([...seen].sort()).toEqual(['down', 'up']);
+  });
+
+  it('a headline\'s direction is public before the bell and does not move when its outcome is scrambled', () => {
+    const step = 300 + 60;
+    const game = gameAt(step);
+    const scrambled = scrambleFuture(market, step);
+    expect(marketDay(scrambled, 1).news.map((item) => item.hidden.wasTrue)).not.toEqual(marketDay(market, 1).news.map((item) => item.hidden.wasTrue));
+    const directions = (source: Market) => project(source, game, step).news.map((item) => item.direction);
+    expect(directions(scrambled)).toEqual(directions(market));
+    expect(directions(market)).toEqual(marketDay(market, 1).news.map((item) => item.headline.direction));
   });
 });
 

@@ -65,10 +65,12 @@ function projectPosition(market: Market, game: GameState, position: PositionReco
     breakEvenCents: breakEvenCents(position.targetCents, position.entryPriceCents, position.side),
   };
   if (position.exit === undefined) {
+    const valueCents = totalCents(livePriceCents, position.quantity);
     return {
       ...base,
       status: 'open',
-      valueCents: totalCents(livePriceCents, position.quantity),
+      valueCents,
+      profitCents: valueCents - position.costCents,
       realCents: live?.realCents ?? 0,
       hopeCents: live?.hopeCents ?? 0,
     };
@@ -78,6 +80,7 @@ function projectPosition(market: Market, game: GameState, position: PositionReco
     ...base,
     status: position.exit.kind === 'bell' ? 'settled' : 'cashedOut',
     valueCents: position.exit.proceedsCents,
+    profitCents: position.exit.proceedsCents - position.costCents,
     realCents: atExit?.realCents ?? 0,
     hopeCents: atExit?.hopeCents ?? 0,
     exit: position.exit,
@@ -95,11 +98,10 @@ export function projectFrame(market: Market, game: GameState, playerId: string, 
   const receipts = live ? [] : player.receipts.slice(-FRAME_RECEIPTS);
   const days = live
     ? []
-    : player.dayEndCents.map((endCents, index) => ({
-        day: index + 1,
-        startCents: index === 0 ? STARTING_CASH_CENTS : (player.dayEndCents[index - 1] ?? STARTING_CASH_CENTS),
-        endCents,
-      }));
+    : player.dayEndCents.map((endCents, index) => {
+        const startCents = index === 0 ? STARTING_CASH_CENTS : (player.dayEndCents[index - 1] ?? STARTING_CASH_CENTS);
+        return { day: index + 1, startCents, endCents, changeCents: endCents - startCents };
+      });
 
   if (!started) {
     return {
@@ -192,6 +194,7 @@ export function projectFrame(market: Market, game: GameState, playerId: string, 
       source: headline.source,
       title: headline.title,
       body: headline.body,
+      direction: headline.direction,
       revealed,
     };
     if (revealed) view.revealIndex = hidden.revealIndex;
@@ -241,6 +244,7 @@ export function projectFrame(market: Market, game: GameState, playerId: string, 
       engine: market.identity.engine,
       content: market.identity.content,
       finalCents: player.cashCents,
+      changeCents: player.cashCents - STARTING_CASH_CENTS,
     };
   }
   return frame;

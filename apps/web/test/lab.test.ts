@@ -45,18 +45,25 @@ const TITLES = [
 ];
 
 describe('the register of blocks', () => {
-  it('holds the seven blocks, in the order they claim, none of them built yet', () => {
+  /**
+   * Whether a block is built yet is its own file's business: a block turns
+   * itself from a placeholder into a built one by setting `demo` in its own
+   * `*.lab.ts`, and nothing here says how many have. Anything that counted
+   * them would make every block's branch edit this same file.
+   */
+  it('holds the seven blocks, in the order they claim, each one well formed', () => {
     expect(LAB_ENTRIES.map((one) => one.id)).toEqual(IDS);
     expect(LAB_ENTRIES.map((one) => one.order)).toEqual([1, 2, 3, 4, 5, 6, 7]);
-    expect(LAB_ENTRIES.map((one) => one.demo)).toEqual([
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-    ]);
+    expect(new Set(LAB_ENTRIES.map((one) => one.id)).size).toBe(IDS.length);
+    expect(new Set(LAB_ENTRIES.map((one) => one.order)).size).toBe(IDS.length);
+
+    for (const entry of LAB_ENTRIES) {
+      expect(entry.title, `${entry.id} has a name`).toBeTruthy();
+      expect(entry.summary, `${entry.id} says what it does`).toBeTruthy();
+      expect(entry.builtAgainst, `${entry.id} names the port it is built against`).toBeTruthy();
+      // Either it is not built yet, or it loads the demo that shows it.
+      expect(['undefined', 'function'], `${entry.id} either has no demo or loads one`).toContain(typeof entry.demo);
+    }
   });
 
   it('puts the blocks in the order each file claims, whatever order they arrive in', () => {
@@ -87,8 +94,10 @@ describe('the lab page', () => {
       expect(markup).toContain(title);
     }
     expect(markup).toContain('Built against');
-    // Seven in the list, once more in the selected block's panel.
-    expect(countOf(markup, 'not built yet')).toBe(8);
+    // The selected block's panel says where that block stands, whichever of
+    // the two states it is in. Which blocks are built is not this test's
+    // business: the two states are pinned on stand-in blocks below.
+    expect(markup).toMatch(/not built yet|Loading…/);
   });
 
   it('links nowhere but its own fragments', () => {
@@ -99,6 +108,16 @@ describe('the lab page', () => {
     for (const target of targets) {
       expect(target?.startsWith('#')).toBe(true);
     }
+  });
+
+  it('shows a block that is not built as not built yet, in the list and in its panel', () => {
+    const waiting = block({ id: 'a-waiting-block', order: 1 });
+
+    const markup = markupOf([waiting]);
+
+    // Once in the list, once more in the selected block's panel.
+    expect(countOf(markup, 'not built yet')).toBe(2);
+    expect(markup).not.toContain('Loading…');
   });
 
   it('shows a block that is built loading its demo, and not the not-built state', () => {

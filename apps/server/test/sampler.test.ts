@@ -57,17 +57,17 @@ async function sampleFrame(from: Harness, client: TestClient): Promise<Frame> {
 
 /**
  * Thin: the lobby has no board and no ticket price; a started game has the
- * whole board and 252 ticket prices, each with its real and hope value. At
- * every moment everything else is empty.
+ * whole board and 252 ticket prices, each with its real value, its hope value
+ * and its break-even. At every moment everything else is empty.
  */
 function expectThin(frame: Frame): void {
   expect(frame).toMatchObject({ news: [], positions: [], receipts: [], days: [], stress: false });
   if (frame.clock.phase === 'lobby') {
-    expect(frame).toMatchObject({ board: null, quotes: [], quoteReals: [], quoteHopes: [] });
+    expect(frame).toMatchObject({ board: null, quotes: [], quoteReals: [], quoteHopes: [], quoteBreakEvens: [] });
   } else {
     expect(frame.board?.targetsPerCompany).toBe(21);
     expect(frame.board?.companies.map((company) => company.targets.length)).toEqual([21, 21, 21, 21, 21, 21]);
-    expect([frame.quotes.length, frame.quoteReals.length, frame.quoteHopes.length]).toEqual([252, 252, 252]);
+    expect([frame.quotes.length, frame.quoteReals.length, frame.quoteHopes.length, frame.quoteBreakEvens.length]).toEqual([252, 252, 252, 252]);
     frame.quotes.forEach((price, id) => {
       expect(Number.isInteger(price) && price >= 0).toBe(true);
       expect({ id, sum: (frame.quoteReals[id] ?? NaN) + (frame.quoteHopes[id] ?? NaN) }).toEqual({ id, sum: price });

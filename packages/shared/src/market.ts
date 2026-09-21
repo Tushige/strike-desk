@@ -7,6 +7,7 @@ import { exactExp } from './exact';
 import { centsToDollars } from './money';
 import type { TicketValue, Trust } from './pricing';
 import { QUIET_MARKUP, TRUST_RULES, priceTicket } from './pricing';
+import type { Side } from './protocol';
 import { decodeContractId } from './protocol';
 import { createStream } from './rng';
 
@@ -59,6 +60,8 @@ export interface Headline {
   source: string;
   title: string;
   body: string;
+  /** What the headline claims, public from the start of its day. Whether it is true stays in the hidden half. */
+  direction: Side;
 }
 
 /** The half nobody sees until it has happened. */
@@ -122,6 +125,7 @@ function drawNews(cast: readonly Company[], seed: number, day: number, firstId: 
         source: trust === 3 ? 'Company statement' : trust === 2 ? 'A store manager says' : 'Someone online says',
         title: direction > 0 ? `Good news for ${name}?` : `Trouble at ${name}?`,
         body: direction > 0 ? `${name} may be about to have a very good day.` : `${name} may be about to have a very bad day.`,
+        direction: direction > 0 ? 'up' : 'down',
       },
       hidden: { revealIndex, wasTrue, move },
     };

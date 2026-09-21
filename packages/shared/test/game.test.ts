@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { isOffered } from '../src/board';
 import { GAME_STEPS } from '../src/clock';
 import type { GameState } from '../src/game';
-import { STARTING_CASH_CENTS, advanceTo, applyCommand, breakEvenCents, newGame, spendCapCents, withinTolerance } from '../src/game';
+import { STARTING_CASH_CENTS, advanceTo, applyCommand, breakEvenCents, newGame, spendCapCents, toleranceLimitCents, withinTolerance } from '../src/game';
 import { boardFor, buildMarket } from '../src/market';
 import { isTradable } from '../src/pricing';
 import type { Command } from '../src/protocol';
@@ -135,12 +135,49 @@ describe('buy', () => {
     expectRejected(startedGame(market), command, 750, 'tooCheap');
   });
 
-  it('refuses a price that moved against the player by more than the tolerance', () => {
-    const seen = Math.floor(PRICE / 1.03);
+  it.each([
+    [500, 600],
+    [4_900, 5_000],
+    [5_000, 5_100],
+    [10_000, 10_200],
+    [12_000, 12_240],
+  ])('a buy that saw %i cents still fills at up to %i cents: two percent or a dollar above, whichever is larger', (seen, limit) => {
+    expect(toleranceLimitCents(seen)).toBe(limit);
+  });
+
+  it.each([
+    [600, 500, true],
+    [700, 500, false],
+    [5_100, 5_000, true],
+    [5_200, 5_000, false],
+    [10_200, 10_000, true],
+    [10_201, 10_000, false],
+    [12_240, 12_000, true],
+    [12_241, 12_000, false],
+    [9_000, 10_000, true],
+    [400, 500, true],
+  ])('a fill at %i cents against %i cents seen is within tolerance: %s', (fill, seen, within) => {
+    expect(withinTolerance(fill, seen)).toBe(within);
+  });
+
+  it('refuses a price that moved against the player by more than the tolerance, and takes nothing', () => {
+    const seen = Math.floor(PRICE / 2);
     expectRejected(startedGame(market), buyCommand({ day: 1, contractId: CONTRACT, spendCents: SPEND, seenPriceCents: seen }), STEP, 'priceMoved');
-    expect(withinTolerance(10_200, 10_000)).toBe(true);
-    expect(withinTolerance(10_201, 10_000)).toBe(false);
-    expect(withinTolerance(9_000, 10_000)).toBe(true);
+  });
+
+  it('accepts a price that moved $1 against the player: the smallest move a whole-dollar ticket can make', () => {
+    const command = buyCommand({ day: 1, contractId: CONTRACT, spendCents: SPEND, seenPriceCents: PRICE - 100 });
+    const result = applyCommand(market, startedGame(market), ME, command, STEP);
+    expect(result.receipt.outcome).toBe('accepted');
+    expect(me(result.game).positions[0]?.entryPriceCents).toBe(PRICE);
+  });
+
+  it('pays the server\'s price, not the price claimed, when the claim is $50 above it', () => {
+    const command = buyCommand({ day: 1, contractId: CONTRACT, spendCents: SPEND, seenPriceCents: PRICE + 5_000 });
+    const result = applyCommand(market, startedGame(market), ME, command, STEP);
+    expect(result.receipt.outcome).toBe('accepted');
+    expect(me(result.game).positions[0]?.entryPriceCents).toBe(PRICE);
+    expect(me(result.game).cashCents).toBe(STARTING_CASH_CENTS - PRICE * Math.floor(SPEND / PRICE));
   });
 
   it('refuses a command made for another day', () => {

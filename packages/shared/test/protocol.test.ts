@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
+  MAX_DRAFT_SPEND_CENTS,
   boardSchema,
   clientMessageSchema,
   commandSchema,
   contractId,
   decodeContractId,
+  draftViewSchema,
   frameSchema,
   isNewerFrame,
   parseClientMessage,
   parseServerMessage,
+  quotesMessageSchema,
   receiptSchema,
   serverMessageSchema,
 } from '../src/protocol';
@@ -32,6 +35,12 @@ describe('client messages', () => {
     [{ t: 'openBell', commandId: ID, day: 1 }],
     [{ t: 'skipToBell', commandId: ID, day: 3 }],
     [{ t: 'nextDay', commandId: ID, day: 5 }],
+    [{ t: 'draft', contractId: 5, spendCents: 5_000_000 }],
+    [{ t: 'draft', contractId: 5, spendCents: null }],
+    [{ t: 'draft', contractId: null, spendCents: 5_000_000 }],
+    [{ t: 'draft', contractId: null, spendCents: null }],
+    // The largest spend a draft may name: $1 billion.
+    [{ t: 'draft', contractId: 5, spendCents: 100_000_000_000 }],
   ])('accepts %j', (message) => {
     expect(clientMessageSchema.parse(message)).toEqual(message);
     expect(parseClientMessage(message)).toEqual(message);
@@ -60,6 +69,13 @@ describe('client messages', () => {
     ['day 6', { t: 'nextDay', commandId: ID, day: 6 }],
     ['not-a-number cents', { ...buy, spendCents: NaN }],
     ['infinite cents', { ...buy, spendCents: Infinity }],
+    ['a draft with a command id', { t: 'draft', commandId: ID, contractId: 5, spendCents: 5_000_000 }],
+    ['a draft with a negative spend', { t: 'draft', contractId: 5, spendCents: -100 }],
+    ['a draft with a spend of nothing', { t: 'draft', contractId: 5, spendCents: 0 }],
+    ['a draft that spends one cent more than $1 billion', { t: 'draft', contractId: 5, spendCents: 100_000_000_001 }],
+    ['a draft with a negative contract', { t: 'draft', contractId: -1, spendCents: 5_000_000 }],
+    ['a draft with an unknown key', { t: 'draft', contractId: 5, spendCents: 5_000_000, day: 1 }],
+    ['a draft with a key missing', { t: 'draft', contractId: 5 }],
     ['text', 'buy'],
     ['nothing', null],
   ])('refuses %s', (_name, message) => {
@@ -73,6 +89,11 @@ describe('client messages', () => {
     expect(parseClientMessage({ t: 'hello', v: 2, seed: 77 })).toBeNull();
     expect(parseClientMessage({ ...buy, seed: 77 })).toBeNull();
     expect(parseClientMessage({ t: 'start', commandId: ID, pace: 1, seed: 77 })).toBeNull();
+  });
+
+  it('does not take a draft as a command: it can never reach the rules, get a receipt or be logged', () => {
+    expect(commandSchema.safeParse({ t: 'draft', contractId: 5, spendCents: 5_000_000 }).success).toBe(false);
+    expect(commandSchema.safeParse({ t: 'draft', contractId: null, spendCents: null }).success).toBe(false);
   });
 
   it('does not take hello as a command', () => {
@@ -99,6 +120,7 @@ describe('server messages', () => {
     quotes: [],
     quoteReals: [],
     quoteHopes: [],
+    quoteBreakEvens: [],
     news: [],
     account: { cashCents: 100_000_000, worthCents: 100_000_000, capCents: 50_000_000, canBuy: false },
     positions: [],
@@ -107,15 +129,15 @@ describe('server messages', () => {
     stress: false,
   };
 
-  it('a frame needs the names, the cheapest tradable price and both parts of every ticket price', () => {
+  it('a frame needs the names, the cheapest tradable price, both parts of every ticket price and its break-even', () => {
     expect(frameSchema.parse(frame)).toEqual(frame);
-    for (const field of ['companies', 'minTicketCents', 'quoteReals', 'quoteHopes']) {
+    for (const field of ['companies', 'minTicketCents', 'quoteReals', 'quoteHopes', 'quoteBreakEvens']) {
       const without: Record<string, unknown> = { ...frame };
       delete without[field];
       expect({ field, parses: frameSchema.safeParse(without).success }).toEqual({ field, parses: false });
       expect({ field, parses: parseServerMessage(without) !== null }).toEqual({ field, parses: false });
     }
-    const filled = { ...frame, quotes: [1200, 0], quoteReals: [700, 0], quoteHopes: [500, 0] };
+    const filled = { ...frame, quotes: [1200, 0], quoteReals: [700, 0], quoteHopes: [500, 0], quoteBreakEvens: [8512, 8500] };
     expect(frameSchema.parse(filled)).toEqual(filled);
   });
 
@@ -126,14 +148,35 @@ describe('server messages', () => {
     expect(frameSchema.safeParse({ ...frame, minTicketCents: 499.5 }).success).toBe(false);
     expect(frameSchema.safeParse({ ...frame, quoteReals: [0.5] }).success).toBe(false);
     expect(frameSchema.safeParse({ ...frame, quoteHopes: ['500'] }).success).toBe(false);
+    expect(frameSchema.safeParse({ ...frame, quoteBreakEvens: [8512.5] }).success).toBe(false);
   });
 
   it('accepts a frame, a reply, a quotes batch and an error', () => {
     expect(parseServerMessage(frame)).toEqual(frame);
     expect(parseServerMessage({ t: 'reply', receipt, frame })).toEqual({ t: 'reply', receipt, frame });
-    const quotes = { t: 'quotes', session: 's1', rev: 3, step: 400, priceIndex: 100, prices: [1, 2, 3, 4, 5, 6], changes: [[0, 12_300], [7, 0]] };
+    const quotes = { t: 'quotes', session: 's1', rev: 3, step: 400, day: 1, priceIndex: 100, prices: [1, 2, 3, 4, 5, 6], changes: [[5, 1200, 300, 900, 8512], [7, 0, 0, 0, 8500]] };
     expect(parseServerMessage(quotes)).toEqual(quotes);
     expect(parseServerMessage({ t: 'error', code: 'badMessage' })).toEqual({ t: 'error', code: 'badMessage' });
+  });
+
+  it('a quotes batch names its day and carries every column of a changed ticket: id, price, real, hope, break-even', () => {
+    const batch = { t: 'quotes', session: 's1', rev: 3, step: 400, day: 1, priceIndex: 100, prices: [1, 2, 3, 4, 5, 6], changes: [[5, 1200, 300, 900, 8512]] };
+    expect(quotesMessageSchema.parse(batch)).toEqual(batch);
+    const withoutDay: Record<string, unknown> = { ...batch };
+    delete withoutDay.day;
+    expect(quotesMessageSchema.safeParse(withoutDay).success).toBe(false);
+    expect(quotesMessageSchema.safeParse({ ...batch, day: 6 }).success).toBe(false);
+    expect(quotesMessageSchema.safeParse({ ...batch, changes: [[5, 1200]] }).success).toBe(false);
+    expect(quotesMessageSchema.safeParse({ ...batch, changes: [[5, 1200, 300, 900, 8512.5]] }).success).toBe(false);
+  });
+
+  it('the echoed draft spend is no looser than the message it echoes: above zero, at most $1 billion', () => {
+    expect(MAX_DRAFT_SPEND_CENTS).toBe(100_000_000_000);
+    expect(draftViewSchema.safeParse({ contractId: 5, spendCents: 100_000_000_000 }).success).toBe(true);
+    expect(draftViewSchema.safeParse({ contractId: 5, spendCents: null }).success).toBe(true);
+    expect(draftViewSchema.safeParse({ contractId: 5, spendCents: 100_000_000_001 }).success).toBe(false);
+    expect(draftViewSchema.safeParse({ contractId: 5, spendCents: 0 }).success).toBe(false);
+    expect(draftViewSchema.safeParse({ contractId: 5, spendCents: -100 }).success).toBe(false);
   });
 
   it('lets an older client read a message with a field it does not know', () => {

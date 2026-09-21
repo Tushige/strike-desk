@@ -90,7 +90,7 @@ function checkStream(wsUrl) {
     /**
      * True when the frame of a started game carries the board, the six names
      * and one whole-cent ticket price per contract, each with a real value
-     * and a hope value that add up to it.
+     * and a hope value that add up to it, and a whole-cent break-even.
      */
     function ticketsAddUp(frame) {
       if (!Array.isArray(frame.companies) || frame.companies.length !== COMPANY_COUNT) {
@@ -101,7 +101,7 @@ function checkStream(wsUrl) {
         fail(`expected a board of ${COMPANY_COUNT} companies, got ${JSON.stringify(frame.board?.companies?.length)}`);
         return false;
       }
-      for (const name of ['quotes', 'quoteReals', 'quoteHopes']) {
+      for (const name of ['quotes', 'quoteReals', 'quoteHopes', 'quoteBreakEvens']) {
         const values = frame[name];
         if (!Array.isArray(values) || values.length !== TICKET_COUNT) {
           fail(`expected ${TICKET_COUNT} entries in ${name}, got ${Array.isArray(values) ? values.length : JSON.stringify(values)}`);
@@ -174,7 +174,10 @@ function checkStream(wsUrl) {
         fail(`step did not rise: ${previous} then ${message.step}`);
         return;
       }
-      if (steps.length === 0) console.log(`tickets ${message.quotes.length}`);
+      if (steps.length === 0) {
+        console.log(`tickets ${message.quotes.length}`);
+        console.log(`break-evens ${message.quoteBreakEvens.length}`);
+      }
       steps.push(message.step);
       console.log(`prices ${message.prices.map(dollars).join(' ')}`);
       if (steps.length >= FRAMES_WANTED) finish(resolve);

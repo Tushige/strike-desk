@@ -42,6 +42,71 @@ export function yOf(cents: number, yMinCents: number, yMaxCents: number, height:
   return toOneDecimal((1 - shareOf(cents, yMinCents, yMaxCents)) * height);
 }
 
+/** The lowest and the highest price the chart has room for, in cents. */
+export interface PriceRange {
+  readonly min: number;
+  readonly max: number;
+}
+
+/**
+ * The range moved out just far enough to hold these prices, and never moved
+ * in. It sees only the prices it is handed, so handing it only what the series
+ * already holds is what keeps the scale from giving away a price still to
+ * come. The same object comes back when nothing had to move.
+ */
+export function widenRange(range: PriceRange, values: readonly number[]): PriceRange {
+  let { min, max } = range;
+  for (const cents of values) {
+    if (cents < min) min = cents;
+    if (cents > max) max = cents;
+  }
+  return min === range.min && max === range.max ? range : { min, max };
+}
+
+/** The chart's range as a day goes on, with what it needs to know when to start again. */
+export interface FollowedRange extends PriceRange {
+  /** The caller's scale this range started from. */
+  readonly from: PriceRange;
+  /** How many prices the series held when this range was worked out. */
+  readonly count: number;
+}
+
+/**
+ * The range to draw this series in, given the range drawn in before.
+ *
+ * It starts from the caller's scale and only widens while the day goes on.
+ * It starts again from the caller's scale when the series starts again (it
+ * holds fewer prices than before), and when the caller's scale itself changes,
+ * as it does when the chart is pointed at another company: what one company's
+ * prices widened must not carry over to the next.
+ */
+export function followRange(held: FollowedRange | null, caller: PriceRange, series: Series): FollowedRange {
+  const startsAgain =
+    held === null ||
+    series.values.length < held.count ||
+    held.from.min !== caller.min ||
+    held.from.max !== caller.max;
+  const widened = widenRange(startsAgain ? caller : held, series.values);
+  return { min: widened.min, max: widened.max, from: caller, count: series.values.length };
+}
+
+/**
+ * Positions down the box for labels that should not sit on top of each other:
+ * taken from the top, any label closer than `gap` to the one above it moves
+ * down to the gap. Each answer stays at its label's place in the list.
+ */
+export function spreadApart(positions: readonly number[], gap: number): number[] {
+  const topFirst = positions.map((position, place) => ({ position, place })).sort((a, b) => a.position - b.position);
+  const spread = [...positions];
+  let floor = Number.NEGATIVE_INFINITY;
+  for (const { position, place } of topFirst) {
+    const settled = Math.max(position, floor);
+    spread[place] = settled;
+    floor = settled + gap;
+  }
+  return spread;
+}
+
 /**
  * The `d` of the price line: a move to the first point, then a line to each
  * one after it. Empty for an empty series.

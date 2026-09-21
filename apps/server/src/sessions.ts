@@ -1,5 +1,5 @@
 import type { Session } from '@strike-desk/shared/engine';
-import { CONTENT_VERSION, ENGINE_VERSION, createSession, playerOf } from '@strike-desk/shared/engine';
+import { CONTENT_VERSION, DEFAULT_TARGETS_PER_COMPANY, ENGINE_VERSION, createSession, playerOf } from '@strike-desk/shared/engine';
 import type { Limits } from './limits';
 import type { FrameSocket } from './sampler';
 
@@ -56,11 +56,25 @@ export interface RegistryOptions {
 
 export function createRegistry(options: RegistryOptions): SessionRegistry {
   const sessions = new Map<string, SessionEntry>();
-  const { maxSessions, maxSocketsPerSession, sessionTtlMs } = options.limits;
+  const { maxSessions, maxSocketsPerSession, maxStressSessions, sessionTtlMs } = options.limits;
+
+  /** Counted from the entries themselves: a counter kept alongside them could drift from them. */
+  function countStress(): number {
+    let count = 0;
+    for (const entry of sessions.values()) {
+      if (entry.session.game.stress) count += 1;
+    }
+    return count;
+  }
 
   return {
     create(nowMs, targetsPerCompany) {
       if (sessions.size >= maxSessions) return null;
+      // A stress session costs a multiple of an ordinary one on every
+      // sampling pass, so it has a cap of its own. Refused here, which the
+      // door already answers `serverFull`; nobody already playing is touched.
+      const stress = targetsPerCompany !== undefined && targetsPerCompany !== DEFAULT_TARGETS_PER_COMPANY;
+      if (stress && countStress() >= maxStressSessions) return null;
       const id = options.drawId();
       if (sessions.has(id)) throw new Error('a drawn session id is already in use');
       const identity = { seed: options.drawSeed(), engine: ENGINE_VERSION, content: CONTENT_VERSION };
@@ -99,11 +113,7 @@ export function createRegistry(options: RegistryOptions): SessionRegistry {
       return sessions.size;
     },
     get stressCount() {
-      let count = 0;
-      for (const entry of sessions.values()) {
-        if (entry.session.game.stress) count += 1;
-      }
-      return count;
+      return countStress();
     },
   };
 }

@@ -155,6 +155,51 @@ describe('a board size the service will not grant', () => {
   });
 });
 
+describe('how many stress sessions the service will hold', () => {
+  it('refuses the next one serverFull and disturbs nobody already playing', async () => {
+    const running = await boot({ limits: { maxStressSessions: 1 } });
+    const { client: playing, frame } = await play(running, { board: STRESS_SIZE });
+    expect(frame.stress).toBe(true);
+
+    const second = await open(running);
+    second.send({ ...HELLO, board: STRESS_SIZE });
+    expect(await second.nextError()).toEqual({ t: 'error', code: 'serverFull' });
+    await roundTrip(second);
+    expect(second.received()).toHaveLength(1);
+
+    // An ordinary game is never refused because of a stress one.
+    const { lobby } = await join(running);
+    expect(lobby.stress).toBe(false);
+
+    // And the game already running is untouched.
+    running.clock.advance(SAMPLE_MS);
+    running.sample();
+    const sampled = await playing.nextFrame();
+    expect(sampled.session).toBe(frame.session);
+    expect(sampled.stress).toBe(true);
+  });
+});
+
+describe('how large a board the instance will build', () => {
+  it('refuses the largest listed size on an instance left at the public maximum', async () => {
+    const running = await boot();
+    const client = await open(running);
+    client.send({ ...HELLO, board: 25_000 });
+
+    expect(await client.nextError()).toEqual({ t: 'error', code: 'badMessage' });
+    expect(sessionsMade).toBe(0);
+  });
+
+  it('grants it on an instance started for it', async () => {
+    const running = await boot({ maxBoardSize: 25_000 });
+    const { frame } = await play(running, { board: 25_000 });
+
+    expect(frame.board?.targetsPerCompany).toBe(2084);
+    expect(frame.quotes).toHaveLength(25_008);
+    expect(frame.stress).toBe(true);
+  });
+});
+
 describe('a board size beside a session the server already has', () => {
   it('resumes the named session at its own size', async () => {
     const running = await boot();

@@ -509,3 +509,83 @@ describe('the feed with a stress board size', () => {
     expect(helloTexts(sockets.last().sent)).toEqual([{ t: 'hello', v: PROTOCOL_VERSION, session: 's-stress', board: BOARD }]);
   });
 });
+
+describe('a board size the service will not grant', () => {
+  const BOARD = 25_000;
+  const BOARD_KEY = `${SESSION_KEY}.b25000`;
+  const BAD_MESSAGE = JSON.stringify({ t: 'error', code: 'badMessage' });
+
+  it('asks again on the same socket, plainly, and takes the game that follows', () => {
+    const { feed, sockets, events, storage } = harness({ board: BOARD, storedRaw: { [BOARD_KEY]: 's-stress' } });
+    feed.connect();
+    sockets.last().fireOpen();
+    sockets.last().fireMessage(BAD_MESSAGE);
+
+    expect(helloTexts(sockets.last().sent)).toEqual([
+      { t: 'hello', v: PROTOCOL_VERSION, session: 's-stress', board: BOARD },
+      { t: 'hello', v: PROTOCOL_VERSION },
+    ]);
+    expect(sockets.made).toHaveLength(1);
+
+    // The ordinary game that answers it reaches the listeners as usual, and
+    // is kept under the plain key, because that is what it now is.
+    const frame = testFrame({ session: 's-plain' });
+    sockets.last().fireMessage(JSON.stringify(frame));
+    expect(events.filter((event) => event.type === 'message').map((event) => event.message.t)).toEqual(['error', 'frame']);
+    expect(storage.held.get(SESSION_KEY)).toBe('s-plain');
+    expect(storage.held.get(BOARD_KEY)).toBe('s-stress');
+  });
+
+  it('asks again once per socket and never a third time', () => {
+    const { feed, sockets } = harness({ board: BOARD });
+    feed.connect();
+    sockets.last().fireOpen();
+    sockets.last().fireMessage(BAD_MESSAGE);
+    sockets.last().fireMessage(BAD_MESSAGE);
+
+    expect(helloTexts(sockets.last().sent)).toHaveLength(2);
+  });
+
+  it('stays plain after a reconnect: the size is dropped for the rest of the page load', () => {
+    const { feed, sockets, scheduler } = harness({ board: BOARD });
+    feed.connect();
+    sockets.last().fireOpen();
+    sockets.last().fireMessage(BAD_MESSAGE);
+
+    sockets.last().fireClose();
+    scheduler.runNext();
+    sockets.last().fireOpen();
+    expect(helloTexts(sockets.last().sent)).toEqual([{ t: 'hello', v: PROTOCOL_VERSION }]);
+  });
+
+  it('sends no second hello when no size was asked for', () => {
+    const { feed, sockets } = harness({ stored: 's-plain' });
+    feed.connect();
+    sockets.last().fireOpen();
+    sockets.last().fireMessage(BAD_MESSAGE);
+
+    expect(helloTexts(sockets.last().sent)).toEqual([{ t: 'hello', v: PROTOCOL_VERSION, session: 's-plain' }]);
+  });
+
+  it('sends no second hello for a badMessage that follows a frame', () => {
+    const { feed, sockets } = harness({ board: BOARD });
+    feed.connect();
+    sockets.last().fireOpen();
+    sockets.last().fireMessage(JSON.stringify(testFrame({ session: 's-stress' })));
+    sockets.last().fireMessage(BAD_MESSAGE);
+
+    expect(helloTexts(sockets.last().sent)).toHaveLength(1);
+  });
+
+  it('leaves versionMismatch, serverFull and noSession exactly as they were', () => {
+    for (const code of ['versionMismatch', 'serverFull', 'noSession'] as const) {
+      const { feed, sockets, storage } = harness({ board: BOARD, storedRaw: { [BOARD_KEY]: 's-stress' } });
+      feed.connect();
+      sockets.last().fireOpen();
+      sockets.last().fireMessage(JSON.stringify({ t: 'error', code }));
+
+      expect(helloTexts(sockets.last().sent)).toEqual([{ t: 'hello', v: PROTOCOL_VERSION, session: 's-stress', board: BOARD }]);
+      expect(storage.held.has(BOARD_KEY)).toBe(code !== 'noSession');
+    }
+  });
+});

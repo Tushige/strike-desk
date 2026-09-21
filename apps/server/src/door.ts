@@ -1,6 +1,6 @@
 import type { Hello, ServerMessage, StartCommand } from '@strike-desk/shared/engine';
 import { FIRST_PLAYER_ID, PROTOCOL_VERSION, frameFor, handleCommand, parseClientMessage } from '@strike-desk/shared/engine';
-import { PUBLIC_MAX_BOARD_SIZE, targetsForBoardSize } from './boardSizes';
+import { targetsForBoardSize } from './boardSizes';
 import type { TokenBucket, WindowCounter } from './limits';
 import type { FrameSocket } from './sampler';
 import type { SessionRegistry } from './sessions';
@@ -34,6 +34,11 @@ export interface DoorOptions {
   now: () => number;
   /** One budget for the whole service, spent only when a new game is about to be built. */
   newSessions: TokenBucket;
+  /**
+   * The largest stress board size this instance will build. The public
+   * maximum unless the instance was started for a measurement.
+   */
+  maxBoardSize: number;
 }
 
 /** An answer to a message is always sent, even to a socket the sampler would skip. */
@@ -66,7 +71,7 @@ function hello(options: DoorOptions, connection: Connection, message: Hello): vo
   let targetsPerCompany: number | undefined;
   if (message.board !== undefined) {
     const targets = targetsForBoardSize(message.board);
-    if (targets === null || message.board > PUBLIC_MAX_BOARD_SIZE) {
+    if (targets === null || message.board > options.maxBoardSize) {
       answer(connection, { t: 'error', code: 'badMessage' });
       return;
     }

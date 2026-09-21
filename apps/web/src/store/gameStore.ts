@@ -96,9 +96,20 @@ function sameCompanies(held: readonly CompanyView[], incoming: readonly CompanyV
  * What makes a frame's board a different board: another session, another
  * day, or targets that moved. The same text means the same rows, so the
  * table keeps the row set it has and only the prices move.
+ *
+ * A short line, not the whole board: the session, the day, the size, the
+ * company count, and each company's first and last target with its two
+ * offered bounds. Stringifying the whole board instead would build a 20 KB
+ * string on every frame, five times a second, at 2,508 rows — and would say
+ * exactly what these few numbers already say, because the targets between
+ * the first and the last are evenly spaced by construction.
  */
 function boardSignatureOf(frame: Frame, board: NonNullable<Frame['board']>): string {
-  return `${frame.session}|${String(frame.clock.day)}|${JSON.stringify(board)}`;
+  const parts: (string | number)[] = [frame.session, frame.clock.day, board.targetsPerCompany, board.companies.length];
+  for (const company of board.companies) {
+    parts.push(company.targets[0] ?? 0, company.targets[company.targets.length - 1] ?? 0, company.lowestUpIndex, company.highestDownIndex);
+  }
+  return parts.join('|');
 }
 
 /** One shared empty array, so repeated boardless frames tell nobody anything. */

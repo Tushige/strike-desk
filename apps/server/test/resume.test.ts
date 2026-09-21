@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PROTOCOL_VERSION, frameSchema } from '@strike-desk/shared/engine';
 import type { Frame } from '@strike-desk/shared/engine';
+import { PUBLIC_MAX_BOARD_SIZE } from '../src/boardSizes';
 import type { Connection, DoorOptions } from '../src/door';
 import { handleClosed, handleInbound } from '../src/door';
 import { LIMITS, createTokenBucket, createWindowCounter } from '../src/limits';
@@ -61,6 +62,7 @@ function rig(): Rig {
     registry,
     now: () => clock.now,
     newSessions: createTokenBucket(LIMITS.newSessionBurst, LIMITS.newSessionRefillPerSecond),
+    maxBoardSize: PUBLIC_MAX_BOARD_SIZE,
   };
 
   function connect(): Seat {

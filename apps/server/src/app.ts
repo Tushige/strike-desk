@@ -4,6 +4,7 @@ import type { Socket } from 'node:net';
 import WebSocket, { WebSocketServer } from 'ws';
 import sirv from 'sirv';
 import { HEALTH_PATH, SAMPLE_INTERVAL_MS, WS_PATH } from '@strike-desk/shared/engine';
+import { PUBLIC_MAX_BOARD_SIZE } from './boardSizes';
 import type { Connection } from './door';
 import { handleClosed, handleInbound } from './door';
 import type { Limits } from './limits';
@@ -55,6 +56,12 @@ export interface AppOptions {
   sweepMs?: number;
   /** Milliseconds between hello-deadline passes. Default `helloCheckIntervalMs`. 0 makes no timer: `helloDeadlineOnce` is then called by hand. */
   helloCheckMs?: number;
+  /**
+   * The largest stress board size this instance will build. Default
+   * `PUBLIC_MAX_BOARD_SIZE`: only an instance started for a measurement is
+   * given a larger one.
+   */
+  maxBoardSize?: number;
 }
 
 export interface App {
@@ -165,7 +172,7 @@ export function createApp(options: AppOptions): App {
   // here: a classroom shares one address, and behind a proxy every visitor
   // appears to come from the same one.
   const newSessions = createTokenBucket(limits.newSessionBurst, limits.newSessionRefillPerSecond);
-  const door = { registry, now, newSessions };
+  const door = { registry, now, newSessions, maxBoardSize: options.maxBoardSize ?? PUBLIC_MAX_BOARD_SIZE };
   const samplerStats = { sent: 0, skipped: 0 };
 
   const serveStatic = sirv(options.staticDir, {

@@ -275,7 +275,7 @@ export function describeCommandPathContract(name: string, handle: HandleCommand)
     it.each([
       ['at the bell', BELL_STEP_IN_DAY],
       ['after the bell', BELL_STEP_IN_DAY + 10],
-    ])('settles a cash-out that arrives %s at the bell value, and pays it once', (_when, step) => {
+    ])('settles a cash-out that arrives %s at the bell value, accepts a later one and pays it once', (_when, step) => {
       const { session, afterBuy } = holding();
       const bought = onlyPosition(afterBuy);
 
@@ -290,9 +290,20 @@ export function describeCommandPathContract(name: string, handle: HandleCommand)
       expect(late.reply.frame.account.cashCents).toBe(afterBuy.account.cashCents + proceeds);
       expect(position.profitCents).toBe(proceeds - position.costCents);
 
+      // A press after the bell is honest: the ticket really was sold, at the
+      // bell value, and the receipt points at that same sale. So the answer is
+      // accepted, every time it is asked with a fresh id, and the money is
+      // paid once. (What that does to the revision, and whether the answer is
+      // logged, is still left open here.)
       const again = send(late.session, cashOut(bought.id), nowMs + 1_000);
+      expect(again.reply.receipt).toMatchObject({ outcome: 'accepted', kind: 'cashOut', positionId: bought.id });
       expect(again.reply.frame.account.cashCents).toBe(late.reply.frame.account.cashCents);
       expect(onlyPosition(again.reply.frame)).toEqual(position);
+
+      const third = send(again.session, cashOut(bought.id), nowMs + 2_000);
+      expect(third.reply.receipt).toMatchObject({ outcome: 'accepted', kind: 'cashOut', positionId: bought.id });
+      expect(third.reply.frame.account.cashCents).toBe(late.reply.frame.account.cashCents);
+      expect(onlyPosition(third.reply.frame)).toEqual(position);
     });
 
     it('gives every schema-valid command an explicit outcome and never throws', () => {

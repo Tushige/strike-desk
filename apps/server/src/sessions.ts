@@ -1,5 +1,5 @@
 import type { Session } from '@strike-desk/shared/engine';
-import { CONTENT_VERSION, ENGINE_VERSION, createSession, playerOf } from '@strike-desk/shared/engine';
+import { CONTENT_VERSION, DEFAULT_TARGETS_PER_COMPANY, ENGINE_VERSION, createSession, playerOf } from '@strike-desk/shared/engine';
 import type { Limits } from './limits';
 import type { FrameSocket } from './sampler';
 
@@ -29,8 +29,12 @@ export interface SessionEntry {
 export type AttachResult = 'attached' | 'noSession' | 'tooManySockets';
 
 export interface SessionRegistry {
-  /** A new session on a freshly drawn seed and id, or null when the service already holds as many as it may. */
-  create(nowMs: number): SessionEntry | null;
+  /**
+   * A new session on a freshly drawn seed and id, or null when the service
+   * already holds as many as it may. `targetsPerCompany` is the stress board
+   * size the door granted; left out, the game is built at the default size.
+   */
+  create(nowMs: number, targetsPerCompany?: number): SessionEntry | null;
   get(id: string): SessionEntry | undefined;
   /** Attach a socket as one of the session's players. Throws when the session has no such player. */
   attach(id: string, playerId: string, socket: FrameSocket): AttachResult;
@@ -40,6 +44,8 @@ export interface SessionRegistry {
   /** Frees every session that has had no socket for the whole time-to-live. A session with a socket is never freed. */
   sweepOnce(nowMs: number): void;
   readonly size: number;
+  /** Sessions held at a stress board size. Counted from the entries themselves, so it can never drift. */
+  readonly stressCount: number;
 }
 
 export interface RegistryOptions {
@@ -50,17 +56,31 @@ export interface RegistryOptions {
 
 export function createRegistry(options: RegistryOptions): SessionRegistry {
   const sessions = new Map<string, SessionEntry>();
-  const { maxSessions, maxSocketsPerSession, sessionTtlMs } = options.limits;
+  const { maxSessions, maxSocketsPerSession, maxStressSessions, sessionTtlMs } = options.limits;
+
+  /** Counted from the entries themselves: a counter kept alongside them could drift from them. */
+  function countStress(): number {
+    let count = 0;
+    for (const entry of sessions.values()) {
+      if (entry.session.game.stress) count += 1;
+    }
+    return count;
+  }
 
   return {
-    create(nowMs) {
+    create(nowMs, targetsPerCompany) {
       if (sessions.size >= maxSessions) return null;
+      // A stress session costs a multiple of an ordinary one on every
+      // sampling pass, so it has a cap of its own. Refused here, which the
+      // door already answers `serverFull`; nobody already playing is touched.
+      const stress = targetsPerCompany !== undefined && targetsPerCompany !== DEFAULT_TARGETS_PER_COMPANY;
+      if (stress && countStress() >= maxStressSessions) return null;
       const id = options.drawId();
       if (sessions.has(id)) throw new Error('a drawn session id is already in use');
       const identity = { seed: options.drawSeed(), engine: ENGINE_VERSION, content: CONTENT_VERSION };
       // A session nobody ever connects to is idle from the moment it is made,
       // so an abandoned one is swept on the same rule as any other.
-      const entry: SessionEntry = { session: createSession(id, identity), sockets: new Map(), idleSinceMs: nowMs };
+      const entry: SessionEntry = { session: createSession(id, identity, { targetsPerCompany }), sockets: new Map(), idleSinceMs: nowMs };
       sessions.set(id, entry);
       return entry;
     },
@@ -91,6 +111,9 @@ export function createRegistry(options: RegistryOptions): SessionRegistry {
     },
     get size() {
       return sessions.size;
+    },
+    get stressCount() {
+      return countStress();
     },
   };
 }

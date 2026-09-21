@@ -14,7 +14,7 @@ import { decode } from './decode';
  * a listener ever sees it. It keeps no frame data of its own.
  */
 
-/** Where the session id is kept. Per tab, so a second tab is a second game. */
+/** Where the ordinary game's session id is kept. Per tab, so a second tab is a second game. */
 export const SESSION_KEY = 'strike-desk.session';
 
 /** How long to wait before each reconnect attempt. The last wait repeats. */
@@ -51,6 +51,11 @@ export interface WsFeedOptions {
   random?: () => number;
   /** The clock every message is stamped with. The page's own, unless a test hands one in. */
   now?: () => number;
+  /**
+   * The stress board size to ask for, read from the page's address. Null, or
+   * absent, is an ordinary game.
+   */
+  board?: number | null;
 }
 
 function pageClock(): number {
@@ -87,14 +92,33 @@ export function createWsFeed(options: WsFeedOptions): Feed {
   const listeners = new Set<(event: FeedEvent) => void>();
   let socket: SocketLike | null = null;
   let status: FeedStatus = 'closed';
+  /** Cleared for the rest of this page load if the service will not grant it. */
+  let board = options.board ?? null;
   let sessionId = readSession();
   let attempt = 0;
   let cancelRetry: (() => void) | null = null;
+  /**
+   * The socket a hello carrying a board size went out on, until its first
+   * frame arrives. This is what makes the plain retry below happen once per
+   * socket and only for a board request.
+   */
+  let boardAsked: SocketLike | null = null;
+
+  /**
+   * One tab holds both games: the ordinary one and a stress one. Each keeps
+   * its session under its own key, so neither can resume as the other.
+   * Without that, adding the size to the address of a tab that already has a
+   * game would resume the game it had and show the ordinary table — the
+   * exact gesture this setting exists to be checked with.
+   */
+  function sessionKey(): string {
+    return board === null ? SESSION_KEY : `${SESSION_KEY}.b${String(board)}`;
+  }
 
   // Storage throws in some private-browsing modes, so every use is guarded.
   function readSession(): string | null {
     try {
-      return storage?.getItem(SESSION_KEY) ?? null;
+      return storage?.getItem(sessionKey()) ?? null;
     } catch {
       return null;
     }
@@ -104,7 +128,7 @@ export function createWsFeed(options: WsFeedOptions): Feed {
     if (id === sessionId) return;
     sessionId = id;
     try {
-      storage?.setItem(SESSION_KEY, id);
+      storage?.setItem(sessionKey(), id);
     } catch {
       // Keeping it in memory is enough for this page load.
     }
@@ -113,7 +137,7 @@ export function createWsFeed(options: WsFeedOptions): Feed {
   function forgetSession(): void {
     sessionId = null;
     try {
-      storage?.removeItem(SESSION_KEY);
+      storage?.removeItem(sessionKey());
     } catch {
       // Nothing to do: the id is already gone from memory.
     }
@@ -145,11 +169,35 @@ export function createWsFeed(options: WsFeedOptions): Feed {
   }
 
   function sendHello(target: SocketLike): void {
-    const hello: Hello =
-      sessionId === null
-        ? { t: 'hello', v: PROTOCOL_VERSION }
-        : { t: 'hello', v: PROTOCOL_VERSION, session: sessionId };
+    const hello: Hello = { t: 'hello', v: PROTOCOL_VERSION };
+    if (sessionId !== null) hello.session = sessionId;
+    // The key is present only when a size was asked for: an ordinary hello is
+    // exactly the message it has always been.
+    if (board !== null) hello.board = board;
+    boardAsked = board === null ? null : target;
     target.send(JSON.stringify(hello));
+  }
+
+  /**
+   * The one thing the page knows how to put right by itself. A size this
+   * instance will not build is answered `badMessage`, and there is exactly
+   * one sensible response: ask again without it. The socket is already open
+   * and the door makes no session for a refused hello, so the second hello is
+   * taken on the same connection.
+   *
+   * Only for a board request, and only once per socket, so a `badMessage`
+   * about anything else changes nothing and no loop is possible. Without it
+   * the public address plus a size the host will not build is a table that
+   * never fills under a status that says the line is live — a dead end, and
+   * this closes it without putting a word of it on the page.
+   */
+  function fallBackToPlainGame(from: SocketLike): void {
+    boardAsked = null;
+    board = null;
+    // The plain session under the plain key is another game; this connection
+    // asks for a new one rather than resuming it as if it were this one.
+    sessionId = null;
+    sendHello(from);
   }
 
   function received(from: SocketLike, data: unknown): void {
@@ -163,10 +211,12 @@ export function createWsFeed(options: WsFeedOptions): Feed {
     if (frame !== null) {
       // A frame arrived, so this connection works: start the waits again.
       attempt = 0;
+      boardAsked = null;
       if (frame.clock.phase === 'final') forgetSession();
       else rememberSession(frame.session);
     }
     if (message.t === 'error' && message.code === 'noSession') forgetSession();
+    if (message.t === 'error' && message.code === 'badMessage' && boardAsked === from) fallBackToPlainGame(from);
 
     emit({ type: 'message', message, receivedAt });
   }

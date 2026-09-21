@@ -49,6 +49,13 @@ export interface Limits {
   /** Messages one socket may send inside the window. The page sends two in a whole game. */
   messagesPerWindow: number;
   messageWindowMs: number;
+  /**
+   * Sessions at a stress board size held at once. One of them prices
+   * thousands of tickets on every sampling pass, so a handful is what a free
+   * instance's share of a processor can carry. The next one is refused; an
+   * ordinary player is never refused because of one.
+   */
+  maxStressSessions: number;
 }
 
 export const LIMITS: Limits = {
@@ -63,6 +70,7 @@ export const LIMITS: Limits = {
   newSessionRefillPerSecond: 3,
   messagesPerWindow: 20,
   messageWindowMs: 10_000,
+  maxStressSessions: 3,
 };
 
 /** A budget that holds a burst and recovers steadily. The time is given to it; it reads no clock. */

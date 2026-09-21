@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FIRST_PLAYER_ID, PROTOCOL_VERSION, frameSchema } from '@strike-desk/shared/engine';
 import type { Frame } from '@strike-desk/shared/engine';
+import { PUBLIC_MAX_BOARD_SIZE } from '../src/boardSizes';
 import type { Connection, DoorOptions } from '../src/door';
 import { handleInbound } from '../src/door';
 import { LIMITS, createTokenBucket, createWindowCounter } from '../src/limits';
@@ -150,7 +151,12 @@ describe('the players of a session', () => {
   /** A door on a real registry and a socket that only records what it is sent: no network, no clock but the one passed in. */
   function doorAndSockets(): { door: DoorOptions; registry: ReturnType<typeof createRegistry>; connect: () => { connection: Connection; sent: string[] } } {
     const registry = createRegistry({ drawSeed: () => FIXED_SEEDS[0] ?? 0, drawId: drawSessionId, limits: LIMITS });
-    const door: DoorOptions = { registry, now: () => 1_000, newSessions: createTokenBucket(LIMITS.newSessionBurst, LIMITS.newSessionRefillPerSecond) };
+    const door: DoorOptions = {
+      registry,
+      now: () => 1_000,
+      newSessions: createTokenBucket(LIMITS.newSessionBurst, LIMITS.newSessionRefillPerSecond),
+      maxBoardSize: PUBLIC_MAX_BOARD_SIZE,
+    };
     const connect = () => {
       const sent: string[] = [];
       const socket: FrameSocket = { OPEN: 1, readyState: 1, bufferedAmount: 0, send: (text) => void sent.push(text) };

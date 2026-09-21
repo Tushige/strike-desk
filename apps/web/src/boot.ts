@@ -1,4 +1,5 @@
 import { WS_PATH } from '@strike-desk/shared/paths';
+import { boardFromSearch } from './boardSize';
 import { createWsFeed } from './feed/wsFeed';
 import { createGameStore } from './store/gameStore';
 import { autoStart } from './autoStart';
@@ -23,6 +24,9 @@ export const store = createGameStore();
 const feed = createWsFeed({
   url: socketUrl(),
   storage: window.sessionStorage,
+  // The stress board size, if the address asks for one. Nothing on screen
+  // says so, and the service decides whether to grant it.
+  board: boardFromSearch(window.location.search),
 });
 
 feed.subscribe((event) => {

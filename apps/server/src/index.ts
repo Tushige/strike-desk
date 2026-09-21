@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { createApp } from './app';
+import { PUBLIC_MAX_BOARD_SIZE, isAllowedBoardSize } from './boardSizes';
 import { VERSION } from './generated/version';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -13,7 +14,14 @@ const port = portEnv === undefined || portEnv === '' ? 10000 : Number(portEnv);
 // started for a measurement. The public host does not set it.
 const probeModes = process.env.WS_PROBE_MODES === '1';
 
-const app = createApp({ staticDir, version: VERSION, probeModes });
+// The largest stress board this instance will build. Absent, unreadable or
+// not an allow-listed size all mean the public maximum, so only an instance
+// deliberately started for a measurement builds a larger one. `render.yaml`
+// sets nothing, so the public host stays at the public maximum.
+const maxBoardEnv = Number(process.env.STRESS_MAX_BOARD);
+const maxBoardSize = isAllowedBoardSize(maxBoardEnv) ? maxBoardEnv : PUBLIC_MAX_BOARD_SIZE;
+
+const app = createApp({ staticDir, version: VERSION, probeModes, maxBoardSize });
 
 app.server.listen(port, '0.0.0.0', () => {
   const address = app.server.address();

@@ -665,3 +665,71 @@ describe('the store and the board', () => {
     expect(store.companies.get()[5]?.name).toBe('ZapCharger');
   });
 });
+
+/**
+ * What counts as "the same board" at a stress size, where the row set is
+ * thousands of rows and rebuilding it on every frame is exactly what must
+ * never happen.
+ */
+describe('when the store rebuilds the row set', () => {
+  /** A board of any size, in the same shape as the real one. */
+  function boardOf(targetsPerCompany: number): Board {
+    return {
+      targetsPerCompany,
+      companies: Array.from({ length: COMPANIES }, (_unused, companyId) => ({
+        targets: Array.from({ length: targetsPerCompany }, (_target, index) => 1000 + companyId * 10_000 + index * 100),
+        simpleUp: [2, 5, 8] as [number, number, number],
+        simpleDown: [18, 15, 12] as [number, number, number],
+        lowestUpIndex: 0,
+        highestDownIndex: targetsPerCompany - 1,
+      })),
+    };
+  }
+
+  it('does not rebuild when only the ticket prices moved', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 1 }));
+    const counts = watchBoard(store);
+
+    store.ingest(boardFrame({ step: 2, quotes: quotes({ 5: 9999, 6: 8888 }) }));
+
+    expect(counts.boardRows).toBe(0);
+    // In the table's own row order, not id order: the UP block before the DOWN one.
+    expect(counts.sinkCalls.map((rows) => rows.map((row) => row.contractId))).toEqual([[6, 5]]);
+  });
+
+  it('rebuilds when the board is a different size', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 1 }));
+    const counts = watchBoard(store);
+
+    store.ingest(boardFrame({ step: 2, board: boardOf(22) }));
+
+    expect(counts.boardRows).toBe(1);
+    expect(store.boardRows.get()).toHaveLength(COMPANIES * 22 * 2);
+    expect(counts.sinkCalls).toEqual([]);
+  });
+
+  it('rebuilds on a new day', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 1 }));
+    const counts = watchBoard(store);
+
+    store.ingest(boardFrame({ step: 2, clock: { ...OPEN_CLOCK, day: 2 } }));
+
+    expect(counts.boardRows).toBe(1);
+    expect(counts.sinkCalls).toEqual([]);
+  });
+
+  it('rebuilds when the board keeps its size but a company\'s targets moved', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 1 }));
+    const counts = watchBoard(store);
+
+    store.ingest(boardFrame({ step: 2, board: testBoard(500) }));
+
+    expect(counts.boardRows).toBe(1);
+    expect(store.boardRows.get()[0]?.targetCents).toBe(1500);
+    expect(counts.sinkCalls).toEqual([]);
+  });
+});

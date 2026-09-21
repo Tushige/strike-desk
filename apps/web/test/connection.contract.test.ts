@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseServerMessage } from '@strike-desk/shared/protocol';
 import { createWsFeed } from '../src/feed/wsFeed';
 import { createFakeTransport, fakeFrameText } from '../src/modules/connection/fake';
+import { createConnection } from '../src/modules/connection/index';
 import { describeFeedContract } from './contracts/feed.contract';
 
 /**
@@ -17,6 +18,15 @@ describeFeedContract('the page feed', (seam) =>
     random: seam.random,
     now: seam.now,
   }),
+);
+
+/**
+ * The connection is a feed too, and has to be one in full: the same cases,
+ * over the same hand-driven transport. It never resends by itself here, so
+ * every text a socket holds is one the case asked for.
+ */
+describeFeedContract('the connection', (seam) =>
+  createConnection({ seam, sessionKey: 'test.session', resendOnResume: () => false }),
 );
 
 describe('the hand-driven transport', () => {

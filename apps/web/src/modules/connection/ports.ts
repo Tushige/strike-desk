@@ -165,6 +165,12 @@ export interface Connection extends Feed {
 export interface ConnectionOptions {
   seam: TransportSeam;
   /**
+   * The key the session id is kept under in the seam's storage. The block
+   * holds no key of its own: whoever assembles a page hands its key in, so a
+   * page that is not the game can never read or overwrite the game's session.
+   */
+  sessionKey: string;
+  /**
    * Asked once per unanswered command on the first frame after a reconnect.
    * Returning false leaves the command `checking` until a frame settles it
    * or `resend` is called.

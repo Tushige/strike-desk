@@ -1,11 +1,15 @@
 import type { SessionStore, SocketLike, TransportSeam } from './ports';
 
 /**
- * A stand-in for the network, driven entirely by hand. Nothing here is
- * asynchronous, nothing starts a timer and nothing reads a real clock: a
- * test, or the lab page, opens and closes every socket, runs every wait and
- * moves the clock itself. It is never the game's rules and never a real
+ * Two stand-ins for the network, neither the game's rules and neither a real
  * socket.
+ *
+ * `createFakeTransport` is driven entirely by hand. Nothing in it is
+ * asynchronous, nothing starts a timer and nothing reads a real clock: a test
+ * opens and closes every socket, runs every wait and moves the clock itself.
+ *
+ * `createLoopbackTransport`, further down, answers by itself on the timer and
+ * clock it is handed, which is what the lab page needs.
  */
 
 const SOCKET_CONNECTING = 0;
@@ -220,4 +224,126 @@ export function fakeFrameText(changes: Record<string, unknown> = {}): string {
     ...changes,
   };
   return JSON.stringify(frame);
+}
+
+/**
+ * A stand-in for the network that answers by itself: every socket it makes is
+ * answered by a small server living in the page. It opens a socket after a
+ * short wait, answers a hello with a frame, and then sends a frame with a
+ * rising step five times a second. It holds no rules of the game and opens no
+ * real socket; the timer, the clock and the random draw it runs on are handed
+ * in, so a page gives it the browser's and a test gives it fake ones.
+ */
+
+/** How long a socket takes to open, and how long the server takes to answer. */
+const LOOPBACK_OPENS_AFTER_MS = 120;
+const LOOPBACK_ANSWERS_AFTER_MS = 40;
+/** Five frames a second. */
+const LOOPBACK_FRAME_EVERY_MS = 200;
+const LOOPBACK_SESSION = 'lab-1';
+
+export interface LoopbackOptions {
+  schedule: TransportSeam['schedule'];
+  now: TransportSeam['now'];
+  random: TransportSeam['random'];
+}
+
+export interface LoopbackTransport {
+  /** Hand this to the connection being shown. */
+  seam: TransportSeam;
+  /** The open socket closes the way a network drop closes it: no word from either side first. */
+  cut(): void;
+  /** While on, the server sends nothing at all, and the sockets stay open. */
+  silent(on: boolean): void;
+}
+
+export function createLoopbackTransport(options: LoopbackOptions): LoopbackTransport {
+  const { schedule, now, random } = options;
+  let current: FakeSocket | null = null;
+  let quiet = false;
+  let step = 0;
+
+  // Kept in memory: the lab never touches the browser's storage.
+  const kept = new Map<string, string>();
+  const storage: SessionStore = {
+    getItem: (key) => kept.get(key) ?? null,
+    setItem(key, value) {
+      kept.set(key, value);
+    },
+    removeItem(key) {
+      kept.delete(key);
+    },
+  };
+
+  function isUp(socket: FakeSocket): boolean {
+    return current === socket && socket.readyState === SOCKET_OPEN;
+  }
+
+  function sendFrame(socket: FakeSocket): void {
+    if (quiet || !isUp(socket)) return;
+    step += 1;
+    socket.fireMessage(fakeFrameText({ session: LOOPBACK_SESSION, step }));
+  }
+
+  function keepSending(socket: FakeSocket): void {
+    schedule(() => {
+      if (!isUp(socket)) return;
+      sendFrame(socket);
+      keepSending(socket);
+    }, LOOPBACK_FRAME_EVERY_MS);
+  }
+
+  /** The server's side of a text the page handed to `socket`. */
+  function serverTakes(socket: FakeSocket, text: string): void {
+    let message: unknown;
+    try {
+      message = JSON.parse(text);
+    } catch {
+      return;
+    }
+    if (typeof message !== 'object' || message === null || !('t' in message)) return;
+    if (message.t === 'hello') {
+      schedule(() => {
+        sendFrame(socket);
+      }, LOOPBACK_ANSWERS_AFTER_MS);
+    }
+  }
+
+  const seam: TransportSeam = {
+    url: 'ws://lab.invalid/ws',
+    createSocket(url: string) {
+      const socket = createFakeSocket(url);
+      const handOver = socket.send.bind(socket);
+      socket.send = (text: string) => {
+        const carried = socket.sent.length;
+        handOver(text);
+        if (socket.sent.length > carried) serverTakes(socket, text);
+      };
+      current = socket;
+      schedule(() => {
+        // Closed by the page while it was still opening: it never opens.
+        if (current !== socket || socket.readyState !== SOCKET_CONNECTING) return;
+        socket.fireOpen();
+        keepSending(socket);
+      }, LOOPBACK_OPENS_AFTER_MS);
+      return socket;
+    },
+    storage,
+    schedule,
+    random,
+    now,
+  };
+
+  return {
+    seam,
+    cut() {
+      const going = current;
+      if (going === null || going.readyState !== SOCKET_OPEN) return;
+      current = null;
+      going.fireClose();
+    },
+    silent(on: boolean) {
+      quiet = on;
+    },
+  };
 }

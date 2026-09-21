@@ -165,6 +165,20 @@ it('selects the focused headline on a keyboard-generated click and resets on day
   expect(view.getAllByRole('button').map((button) => button.getAttribute('aria-pressed'))).toEqual(['false', 'false', 'false']);
 });
 
+it('uses controlled company focus while reporting a headline choice without exposing its outcome', () => {
+  const store = createNewsStore();
+  store.ingest(frame());
+  const select = vi.fn();
+  const view = render(createElement(NewsPanel, { store, companyId: 2, onCompanySelect: select }));
+  expect(view.getByRole('button', { name: 'Second headline' }).getAttribute('aria-pressed')).toBe('true');
+  fireEvent.click(view.getByRole('button', { name: 'Third headline' }));
+  expect(select).toHaveBeenCalledWith(4);
+  view.rerender(createElement(NewsPanel, { store, companyId: 4, onCompanySelect: select }));
+  expect(view.getByRole('button', { name: 'Third headline' }).getAttribute('aria-pressed')).toBe('true');
+  expect(view.getByRole('button', { name: 'Second headline' }).getAttribute('aria-pressed')).toBe('false');
+  expect(view.container.textContent).not.toMatch(/turned out true|did not come true/i);
+});
+
 it.each([true, false])('escapes supplied text and never forwards an injected outcome (%s)', (wasTrue) => {
   const store = createNewsStore();
   const current = frame();
@@ -217,7 +231,7 @@ it('does not redraw the news panel or the application root while the price slice
     pageNews.ingest(moving);
     bootFixture.receive!(moving);
   });
-  expect(view.container.querySelector('.strip-price')?.textContent).toBe('$101'); // 10,100 cents / 100.
+  expect(within(view.getByRole('list', { name: 'Companies' })).getByText('$101')).toBeTruthy(); // 10,100 cents / 100.
   expect(pageNews.getSnapshot()).toBe(snapshot);
   expect(root.mock.calls.length).toBe(beforeRoot);
   expect(panelRendered.mock.calls.length).toBe(beforePanel);

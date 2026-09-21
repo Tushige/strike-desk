@@ -87,6 +87,12 @@ it.each([
     expect(reply.frame.leadIn?.[0]).toHaveLength(40);
     expect(reply.frame.history?.[0]).toHaveLength(1);
     expect(view.getAllByText('$1,000,000').length).toBeGreaterThanOrEqual(2);
+    fireEvent.click(view.getByRole('button', { name: 'Compare options' }));
+    const grid = await view.findByRole('grid', { name: 'Contracts' });
+    await waitFor(() => expect(grid.querySelector('.ag-row[row-id="0"] [col-id="company"]')).not.toBeNull());
+    fireEvent.click(grid.querySelector('.ag-row[row-id="0"] [col-id="company"]')!);
+    const spend = view.getByRole('textbox', { name: 'How much to spend' }) as HTMLInputElement;
+    fireEvent.change(spend, { target: { value: '1000.50' } });
     const beforeBell = await sample(200);
     expect(beforeBell.prices).toEqual(reply.frame.prices);
     fireEvent.click(view.getByRole('button', { name: 'Ring the opening bell' }));
@@ -98,6 +104,8 @@ it.each([
     expect(chart).not.toBeNull();
     expect(chartFrame.history?.[0]).toHaveLength(chartFrame.clock.priceIndex + 1);
     expect(chartFrame.leadIn?.[0]).toHaveLength(40);
+    expect(view.getByRole('textbox', { name: 'How much to spend' })).toBe(spend);
+    expect(spend.value).toBe('1000.50');
     await waitFor(() => expect(chart?.querySelector('path')?.getAttribute('d')?.split('L')).toHaveLength(40 + chartFrame.clock.priceIndex + 1));
     expect(view.queryByText('Market number')).toBeNull();
     expect(view.queryByRole('button', { name: /Buy ticket|Cash out/ })).toBeNull();
@@ -114,6 +122,11 @@ it.each([
       fireEvent.click(view.getByRole('button', { name: 'Skip to the closing bell' }));
       await view.findByRole('heading', { name: `Day ${String(day)}: closing bell` });
       expect(view.getByText('A quiet day.')).toBeTruthy();
+      if (day === 1) {
+        expect(view.getByRole('textbox', { name: 'How much to spend' })).toBe(spend);
+        expect(spend.value).toBe('1000.50');
+        expect(view.getByRole('grid', { name: 'Contracts' })).toBe(grid);
+      }
       expect(view.getByText('Change today').nextElementSibling?.textContent).toBe('$0');
       expect(view.getByText('Ended the day with').nextElementSibling?.textContent).toBe('$1,000,000');
       expect(view.queryByText('Market number')).toBeNull();

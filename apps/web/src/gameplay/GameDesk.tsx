@@ -1,13 +1,13 @@
-import { useMemo, useSyncExternalStore } from 'react';
+import { memo, useCallback, useId, useMemo, useState, useSyncExternalStore } from 'react';
+import type { CompanyView } from '@strike-desk/shared/protocol';
 import { OPEN_STEPS, PACES } from '@strike-desk/shared/time';
 import { PriceChart } from '../modules/price-chart/index';
 import type { ChartLine, ChartMarker } from '../modules/price-chart/index';
 import { chartStore } from '../boot';
-import { PhaseScreen, TopBar, controlWords } from '../modules/desk/index';
+import { CompanyChip, CompanyStrip, PhaseScreen, TopBar, controlWords, stripWords } from '../modules/desk/index';
 import { REJECT_WORDS } from '../modules/order-ticket/index';
 import { ComparisonDesk } from '../comparison/ComparisonDesk';
 import type { ComparisonStore } from '../comparison/comparisonStore';
-import { Strip } from '../board/Strip';
 import { NewsPanel } from '../news/NewsPanel';
 import type { NewsStore } from '../news/newsStore';
 import type { GameStore } from '../store/gameStore';
@@ -42,18 +42,71 @@ export function GameChart({ loop, companyId = 0 }: { loop: GameLoop; companyId?:
   />;
 }
 
+const CompanyPriceChip = memo(function CompanyPriceChip({ game, companyId, company, hasNews, selected, onSelect }: {
+  game: GameStore; companyId: number; company: CompanyView; hasNews: boolean;
+  selected: boolean; onSelect: (companyId: number) => void;
+}) {
+  const priceSlice = useMemo(() => ({
+    get: () => game.price(companyId).get(),
+    subscribe: (listener: () => void) => game.price(companyId).subscribe(listener),
+  }), [game, companyId]);
+  const price = useSyncExternalStore(priceSlice.subscribe, priceSlice.get);
+  const series = chartStore.source(companyId).series();
+  const opening = series.values[-series.startIndex];
+  const select = useCallback(() => onSelect(companyId), [onSelect, companyId]);
+  const trend = price === null || opening === undefined || price === opening ? 'flat' : price > opening ? 'up' : 'down';
+  return <CompanyChip companyId={companyId} ticker={company.ticker} name={company.name}
+    priceCents={price} trend={trend} hasNews={hasNews} selected={selected} onSelect={select} />;
+});
+
+const GameCompanies = memo(function GameCompanies({ game, news, companyId, onSelect }: {
+  game: GameStore; news: NewsStore; companyId: number; onSelect: (companyId: number) => void;
+}) {
+  const read = useCallback(() => game.companies.get(), [game]);
+  const subscribe = useCallback((listener: () => void) => game.companies.subscribe(listener), [game]);
+  const companies = useSyncExternalStore(subscribe, read);
+  const snapshot = useSyncExternalStore(news.subscribe, news.getSnapshot);
+  const children = useMemo(() => companies.map((company, id) => <CompanyPriceChip
+    key={id} game={game} companyId={id} company={company} selected={id === companyId}
+    hasNews={snapshot.news.some((item) => item.companyId === id)} onSelect={onSelect}
+  />), [companies, game, snapshot.news, companyId, onSelect]);
+  return <CompanyStrip label={stripWords.label}>{children}</CompanyStrip>;
+});
+
+function DayDesk({ loop, game, comparison, news }: GameDeskProps) {
+  const [companyId, setCompanyId] = useState(0);
+  const [companyFocus, setCompanyFocus] = useState<{ companyId: number } | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const comparisonId = useId();
+  const selectCompany = useCallback((id: number) => {
+    setCompanyId(id);
+    setCompanyFocus({ companyId: id });
+  }, []);
+  return <div className="h-full min-h-0 overflow-auto overscroll-contain">
+    <div className="flex h-full min-h-[32rem] min-w-0 flex-col gap-2">
+      <GameCompanies game={game} news={news} companyId={companyId} onSelect={selectCompany} />
+      <div className="grid h-40 shrink-0 grid-cols-[minmax(16rem,1fr)_minmax(30rem,2fr)] gap-3 overflow-x-auto overscroll-contain">
+        <GameChart loop={loop} companyId={companyId} />
+        <div className="min-h-0 overflow-auto"><NewsPanel store={news} companyId={companyId} onCompanySelect={selectCompany} /></div>
+      </div>
+      <button type="button" aria-expanded={expanded} aria-controls={comparisonId} onClick={() => { setExpanded(!expanded); }}
+        className="shrink-0 self-start rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+        Compare options
+      </button>
+      <div id={comparisonId} hidden={!expanded} className="min-h-0 flex-1">
+        <ComparisonDesk comparison={comparison} game={game} companyFocus={companyFocus} onContractCompany={setCompanyId} />
+      </div>
+    </div>
+  </div>;
+}
+
 export function GameDesk({ loop, game, comparison, news }: GameDeskProps) {
   const screen = useSyncExternalStore(loop.screen.subscribe, loop.screen.get);
   const controls = useSyncExternalStore(loop.controls.subscribe, loop.controls.get);
   const canAct = controls.ready && !controls.checking;
   const content = useMemo(() => (
-    <div className="flex h-full min-h-0 flex-col gap-3">
-      <Strip />
-      <div className="h-40 shrink-0"><GameChart loop={loop} /></div>
-      <NewsPanel store={news} />
-      <div className="min-h-0 flex-1"><ComparisonDesk comparison={comparison} game={game} /></div>
-    </div>
-  ), [comparison, game, news, loop]);
+    <DayDesk key={`${screen?.session ?? ''}:${String(screen?.day ?? 0)}`} loop={loop} game={game} comparison={comparison} news={news} />
+  ), [comparison, game, news, loop, screen?.session, screen?.day]);
   let phase;
   if (screen === null) phase = <p>{controlWords.checking}</p>;
   else switch (screen.phase) {

@@ -1,4 +1,5 @@
 import type { RejectReason, Side } from '@strike-desk/shared/protocol';
+import type { BuyBlocker } from './machine';
 import type { SimpleChoice } from './ports';
 
 /**
@@ -70,4 +71,31 @@ export const REJECT_WORDS: Record<RejectReason, string> = {
   alreadyStarted: 'The game has already started.',
   gameOver: 'The game is over.',
   stressMode: 'Buying is switched off while the stress test runs.',
+};
+
+/** Said while the answer to a command is unknown because the line dropped. */
+export const CHECKING_WORDS = 'Checking...';
+export const RETRY_LABEL = 'Retry safely';
+export const RETRY_HINT = 'Sends the same order again. It can never buy or pay twice.';
+
+/** Said at the top of the form while the line is not live. */
+export const LINE_WORDS = {
+  stale: 'Prices are stale',
+  offline: 'Not connected',
+};
+
+/** Why the buy button is off, said under it. Null where the form already says it another way. */
+export const BLOCKER_WORDS: Record<BuyBlocker, string | null> = {
+  notDraft: null,
+  stale: 'Prices have stopped moving. Buying is off until they move again.',
+  offline: 'Not connected. Buying is off until the connection is back.',
+  noContract: 'Pick a ticket first.',
+  notOffered: REJECT_WORDS.notOffered,
+  cannotBuy: 'Buying is off right now.',
+  noSpend: 'Pick how much to spend.',
+  waitingForQuote: 'Getting the price...',
+  tooCheap: REJECT_WORDS.tooCheap,
+  spendTooSmall: REJECT_WORDS.spendTooSmall,
+  overCap: REJECT_WORDS.overCap,
+  notEnoughCash: REJECT_WORDS.notEnoughCash,
 };

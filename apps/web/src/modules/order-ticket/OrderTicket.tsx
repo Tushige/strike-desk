@@ -1,18 +1,22 @@
-import { memo, useCallback, useEffect, useReducer, useRef, useSyncExternalStore } from 'react';
+import { memo, useCallback, useEffect, useId, useReducer, useRef, useState, useSyncExternalStore } from 'react';
 import type { ReactElement } from 'react';
 import { formatCents } from '@strike-desk/shared/money';
 import type { Side } from '@strike-desk/shared/protocol';
-import { buyAllowed, initialTicketState, pressOf, quoteEchoes, ticketReducer } from './machine';
+import { createDraftPacer } from './draftPacer';
+import { buyBlocker, initialTicketState, pressOf, quoteEchoes, retryAllowed, ticketReducer } from './machine';
 import type { TicketEvent, TicketNotice, TicketSnapshot, TicketState } from './machine';
 import type { OrderTicketProps, SimpleChoice, TicketAccount, TicketContract, TicketDraft, TicketQuote } from './ports';
 import {
   ACCEPTED_BUY_WORDS,
+  BLOCKER_WORDS,
   BUY_LABEL,
   CAP_LABEL,
   CASH_LABEL,
+  CHECKING_WORDS,
   CHOICES_LABEL,
   CHOICE_WORDS,
   COST_LABEL,
+  LINE_WORDS,
   LOST_WORDS,
   NOTHING_PICKED,
   PANEL_TITLE,
@@ -22,6 +26,8 @@ import {
   REJECTED_LEAD,
   REJECTED_NO_REASON,
   REJECT_WORDS,
+  RETRY_HINT,
+  RETRY_LABEL,
   SIDE_HINTS,
   SIDE_WORDS,
   SPEND_LABEL,
@@ -201,6 +207,7 @@ function AccountLine({ account }: { account: TicketAccount }): ReactElement {
 
 function statusWords(state: TicketState): string | null {
   if (state.form === 'pending') return PENDING_WORDS;
+  if (state.form === 'checking') return CHECKING_WORDS;
   return state.notice === null ? null : noticeWords(state.notice);
 }
 
@@ -208,6 +215,9 @@ export const OrderTicket = memo(function OrderTicket(props: OrderTicketProps): R
   const quote = useSyncExternalStore(props.quote.subscribe, props.quote.get, props.quote.get);
   const account = useSyncExternalStore(props.account.subscribe, props.account.get, props.account.get);
   const position = useSyncExternalStore(props.position.subscribe, props.position.get, props.position.get);
+
+  const whyOffId = useId();
+  const retryHintId = useId();
 
   const contractId = props.contract?.contractId ?? null;
   const [state, dispatch] = useReducer(ticketReducer, { day: props.day, contractId, spendCents: null, held: position !== null }, initialTicketState);
@@ -233,13 +243,45 @@ export const OrderTicket = memo(function OrderTicket(props: OrderTicketProps): R
     send({ type: 'contract', contractId });
   }, [contractId, send]);
 
-  // Tell the desk what the form holds now, so that the server can quote it.
-  const reported = useRef<TicketDraft>({ contractId: null, spendCents: null });
+  // What the server and the desk say, handed to the machine as it changes. These are what move the form back to `draft`.
   useEffect(() => {
-    if (reported.current.contractId === state.contractId && reported.current.spendCents === state.spendCents) return;
-    reported.current = { contractId: state.contractId, spendCents: state.spendCents };
-    latestProps.current.onDraftChange(reported.current);
-  }, [state.contractId, state.spendCents]);
+    send({ type: 'line', line: props.line });
+  }, [props.line, send]);
+  useEffect(() => {
+    send({ type: 'quote', quote });
+  }, [quote, send]);
+  useEffect(() => {
+    send({ type: 'position', held: position !== null });
+  }, [position, send]);
+  useEffect(() => {
+    send({ type: 'day', day: props.day });
+  }, [props.day, send]);
+
+  /**
+   * Tell the desk what the form holds now, so that the server can quote it.
+   * `onDraftChange` is only ever called through the pacer, which holds the
+   * reports to one a second. One pacer per mount; a report still waiting when
+   * the form goes away is dropped.
+   */
+  const [pacer] = useState(() =>
+    createDraftPacer({
+      report: (draft) => {
+        latestProps.current.onDraftChange(draft);
+      },
+    }),
+  );
+  useEffect(
+    () => () => {
+      pacer.cancel();
+    },
+    [pacer],
+  );
+  const handedOn = useRef<TicketDraft>({ contractId: null, spendCents: null });
+  useEffect(() => {
+    if (handedOn.current.contractId === state.contractId && handedOn.current.spendCents === state.spendCents) return;
+    handedOn.current = { contractId: state.contractId, spendCents: state.spendCents };
+    pacer.change(handedOn.current);
+  }, [pacer, state.contractId, state.spendCents]);
 
   const onChooseSpend = useCallback(
     (spendCents: number): void => {
@@ -260,28 +302,60 @@ export const OrderTicket = memo(function OrderTicket(props: OrderTicketProps): R
     });
   }, [send]);
 
+  /** The retry asks the desk to send the unanswered command again, under its own id. The form itself sends nothing. */
+  const onRetryPress = useCallback((): void => {
+    const now = latestProps.current;
+    if (retryAllowed(latestState.current, now.retryOffered)) now.onRetry();
+  }, []);
+
   const snapshot: TicketSnapshot = { day: props.day, contract: props.contract, quote, account, position, line: props.line };
   const locked = state.form === 'pending' || state.form === 'checking';
   const status = statusWords(state);
+  const blocker = buyBlocker(state, snapshot);
+  const whyOff = blocker === null ? null : BLOCKER_WORDS[blocker];
+  const live = props.line === 'live';
 
   return (
     <section aria-label={PANEL_TITLE} className="grid w-full max-w-sm gap-3 rounded-lg border border-border bg-card p-4 text-card-foreground">
-      <h3 className={`m-0 ${LABEL}`}>{PANEL_TITLE}</h3>
+      <div className="flex items-center justify-between gap-3">
+        <h3 className={`m-0 ${LABEL}`}>{PANEL_TITLE}</h3>
+        {props.line === 'live' ? null : <p className="m-0 rounded-sm border border-border px-1.5 py-0.5 text-xs text-gold">{LINE_WORDS[props.line]}</p>}
+      </div>
       {props.contract === null ? <p className="m-0 text-sm text-muted-foreground">{NOTHING_PICKED}</p> : <ContractHead contract={props.contract} />}
       <Choices choices={props.choices} chosenId={contractId} locked={locked} onPick={props.onPick} />
       <Spends spendChoices={props.spendChoices} chosen={state.spendCents} locked={locked} onChoose={onChooseSpend} />
-      {quoteEchoes(state, quote) && quote.spendCents !== null ? <QuoteNumbers quote={quote} /> : null}
+      {quoteEchoes(state, quote) && quote.spendCents !== null ? (
+        <div className={live ? undefined : 'opacity-60'}>
+          <QuoteNumbers quote={quote} />
+        </div>
+      ) : null}
       <button
         type="button"
         className={`rounded-md bg-gold px-3 py-2.5 text-base font-medium text-background motion-safe:transition-opacity ${FOCUS} disabled:opacity-40`}
-        disabled={!buyAllowed(state, snapshot)}
+        disabled={blocker !== null}
+        aria-describedby={whyOff === null ? undefined : whyOffId}
         onClick={onPress}
       >
         {BUY_LABEL}
       </button>
+      {whyOff === null ? null : (
+        <p id={whyOffId} className="m-0 text-xs text-muted-foreground">
+          {whyOff}
+        </p>
+      )}
       <p role="status" aria-live="polite" className="m-0 min-h-5 text-sm">
         {status}
       </p>
+      {retryAllowed(state, props.retryOffered) ? (
+        <div className="grid gap-1">
+          <button type="button" className={`rounded-md border border-ring px-3 py-2 text-sm ${FOCUS} hover:bg-accent`} aria-describedby={retryHintId} onClick={onRetryPress}>
+            {RETRY_LABEL}
+          </button>
+          <p id={retryHintId} className="m-0 text-xs text-muted-foreground">
+            {RETRY_HINT}
+          </p>
+        </div>
+      ) : null}
       <AccountLine account={account} />
     </section>
   );

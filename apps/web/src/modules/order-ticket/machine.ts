@@ -57,7 +57,29 @@ export type TicketEvent =
   | { type: 'spend'; spendCents: number | null }
   /** A press that was allowed: the command with this id is on its way. */
   | { type: 'pressed'; commandId: string; kind: CommandKind }
-  | { type: 'outcome'; commandId: string; outcome: SubmitOutcome };
+  | { type: 'outcome'; commandId: string; outcome: SubmitOutcome }
+  /** The line to the server changed. */
+  | { type: 'line'; line: LineState }
+  /** The server's quote changed, or went away. */
+  | { type: 'quote'; quote: TicketQuote | null }
+  /** The open ticket arrived, was updated or went away. */
+  | { type: 'position'; held: boolean }
+  | { type: 'day'; day: number };
+
+/** Why the buy button is off, most telling reason first; null when it is on. */
+export type BuyBlocker =
+  | 'notDraft'
+  | 'stale'
+  | 'offline'
+  | 'noContract'
+  | 'notOffered'
+  | 'cannotBuy'
+  | 'noSpend'
+  | 'waitingForQuote'
+  | 'tooCheap'
+  | 'spendTooSmall'
+  | 'overCap'
+  | 'notEnoughCash';
 
 /** An allowed press: the command to submit, and the event that moves the form to `pending`. */
 export interface Press {
@@ -69,22 +91,42 @@ export function initialTicketState(seed: { day: number; contractId: number | nul
   return { form: 'draft', command: null, notice: null, ...seed };
 }
 
-function afterOutcome(state: TicketState, kind: CommandKind, outcome: SubmitOutcome): TicketState {
-  if (outcome.outcome === 'lost') return { ...state, form: 'draft', command: null, notice: { kind: 'lost' } };
-  if (outcome.outcome === 'rejected') {
-    return { ...state, form: 'rejected', notice: { kind: 'rejected', of: kind, reason: outcome.receipt.reason ?? null } };
-  }
-  return { ...state, form: 'accepted', notice: { kind: 'accepted', of: kind } };
+function backToDraft(state: TicketState, notice: TicketNotice | null): TicketState {
+  return { ...state, form: 'draft', command: null, notice };
 }
 
+/**
+ * The answer is in. `accepted` and `rejected` are states the form stays in
+ * until the server's data moves it on (see the reducer). When that data is
+ * already here, because the open ticket arrived before the answer did or the
+ * day changed while the command was in flight, the form is back in `draft`
+ * at once with the answer still on screen.
+ */
+function afterOutcome(state: TicketState, command: NonNullable<TicketState['command']>, outcome: SubmitOutcome): TicketState {
+  if (outcome.outcome === 'lost') return backToDraft(state, { kind: 'lost' });
+  if (outcome.outcome === 'rejected') {
+    return { ...state, form: 'rejected', notice: { kind: 'rejected', of: command.kind, reason: outcome.receipt.reason ?? null } };
+  }
+  const notice: TicketNotice = { kind: 'accepted', of: command.kind };
+  const alreadySettled = command.kind === 'buy' ? state.held : state.day !== command.day;
+  return alreadySettled ? backToDraft(state, notice) : { ...state, form: 'accepted', notice };
+}
+
+/**
+ * The way back to `draft` follows the server's data. There is no timer in
+ * this machine and no press that only acknowledges: `rejected` ends when a
+ * quote echoing the form arrives or the player changes the draft, `accepted`
+ * ends when the open ticket arrives (a buy) or the day changes (a cash-out),
+ * and a new day ends both. `pending` and `checking` end only with the answer.
+ */
 export function ticketReducer(state: TicketState, event: TicketEvent): TicketState {
   switch (event.type) {
     case 'contract':
       if (event.contractId === state.contractId) return state;
-      return { ...state, contractId: event.contractId, notice: null };
+      return { ...(state.form === 'rejected' ? backToDraft(state, null) : state), contractId: event.contractId, notice: null };
     case 'spend':
       if (event.spendCents === state.spendCents) return state;
-      return { ...state, spendCents: event.spendCents, notice: null };
+      return { ...(state.form === 'rejected' ? backToDraft(state, null) : state), spendCents: event.spendCents, notice: null };
     case 'pressed':
       // Only the press that leaves `draft` counts. Any other is not an event at all.
       if (state.form !== 'draft') return state;
@@ -92,7 +134,26 @@ export function ticketReducer(state: TicketState, event: TicketEvent): TicketSta
     case 'outcome':
       if (state.command === null || state.command.id !== event.commandId) return state;
       if (state.form !== 'pending' && state.form !== 'checking') return state;
-      return afterOutcome(state, state.command.kind, event.outcome);
+      return afterOutcome(state, state.command, event.outcome);
+    case 'line':
+      // Checking is latched: the line coming back does not end it, only the answer does.
+      if (state.form !== 'pending' || event.line === 'live') return state;
+      return { ...state, form: 'checking' };
+    case 'quote':
+      if (state.form !== 'rejected' || state.command?.kind !== 'buy' || !quoteEchoes(state, event.quote)) return state;
+      return backToDraft(state, state.notice);
+    case 'position': {
+      if (state.form === 'accepted' && state.command?.kind === 'buy' && event.held) return { ...backToDraft(state, state.notice), held: true };
+      // The open ticket's next update is to a cash-out what an echoing quote is to a buy.
+      if (state.form === 'rejected' && state.command?.kind === 'cashOut') return { ...backToDraft(state, state.notice), held: event.held };
+      return event.held === state.held ? state : { ...state, held: event.held };
+    }
+    case 'day': {
+      if (event.day === state.day) return state;
+      if (state.form === 'accepted' || state.form === 'rejected') return { ...backToDraft(state, null), day: event.day };
+      // A command in flight is left alone; a notice in `draft` belongs to the day it was said on.
+      return { ...state, day: event.day, notice: state.form === 'draft' ? null : state.notice };
+    }
   }
 }
 
@@ -101,8 +162,33 @@ export function quoteEchoes(state: TicketState, quote: TicketQuote | null): quot
   return quote !== null && quote.contractId === state.contractId && quote.spendCents === state.spendCents;
 }
 
+/**
+ * Why the buy may not be pressed right now, or null when it may. Every check
+ * compares two numbers the form was given; nothing is worked out.
+ */
+export function buyBlocker(state: TicketState, snapshot: TicketSnapshot): BuyBlocker | null {
+  const { contract, quote, account, line } = snapshot;
+  if (state.form !== 'draft') return 'notDraft';
+  if (line !== 'live') return line;
+  if (contract === null || contract.contractId !== state.contractId) return 'noContract';
+  if (!contract.offered) return 'notOffered';
+  if (!account.canBuy) return 'cannotBuy';
+  if (state.spendCents === null) return 'noSpend';
+  if (!quoteEchoes(state, quote)) return 'waitingForQuote';
+  if (quote.priceCents < account.minTicketCents) return 'tooCheap';
+  if (quote.quantity < 1) return 'spendTooSmall';
+  if (state.spendCents > account.capCents) return 'overCap';
+  if (state.spendCents > account.cashCents) return 'notEnoughCash';
+  return null;
+}
+
 export function buyAllowed(state: TicketState, snapshot: TicketSnapshot): boolean {
-  return state.form === 'draft' && snapshot.line === 'live' && buyCommandOf(state, snapshot, '') !== null;
+  return buyBlocker(state, snapshot) === null;
+}
+
+/** The retry control shows only for an unanswered command on a line that dropped, and only when the desk offers it. */
+export function retryAllowed(state: TicketState, retryOffered: boolean): boolean {
+  return retryOffered && state.form === 'checking';
 }
 
 /**

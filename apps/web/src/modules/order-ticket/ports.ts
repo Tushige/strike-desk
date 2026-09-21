@@ -18,11 +18,16 @@ import type { BuyCommand, CashOutCommand, Receipt, Side } from '@strike-desk/sha
  *   quote's `priceCents`. It is built only while the quote's `contractId`
  *   and `spendCents` equal the form's own, so the numbers sent are the
  *   numbers on screen.
- * - The buy button is off unless all of these hold: the line is live,
+ * - The buy button is off unless all of these hold: the form is in `draft`
+ *   (a press while `pending` or `checking` does nothing, and `newCommandId()`
+ *   is called only on the press that leaves `draft`), the line is live,
  *   `canBuy` is true, the contract is offered, the quote echoes the form,
  *   `quantity` is at least 1, the spend is at most `capCents` and at most
  *   `cashCents`, and the price is at least `minTicketCents`. Comparing is
  *   allowed; computing is not.
+ * - The cash-out press obeys the same state rule: it submits only from
+ *   `draft`, so a second press before the outcome arrives sends nothing and
+ *   mints no second id.
  * - No arithmetic on cents exists anywhere in the block. Every number shown
  *   is a member of `quote`, `account` or `position`, or the player's own
  *   chosen spend. What a spend buys, what it costs, the break-even, the price
@@ -132,8 +137,17 @@ export interface OpenTicket {
 }
 
 /**
- * What became of a submitted command. `lost` means no answer will ever come:
- * the game is gone or the connection was closed for good.
+ * What became of a submitted command. `lost` means no receipt will ever come:
+ * the game is gone, the page closed the connection, or the server refused the
+ * message itself, so it never became a command.
+ *
+ * After `lost` the form returns to `draft`, and the next press is a new
+ * command with a new id. That is safe because the server never buys or pays
+ * twice for the same day: a second buy comes back `alreadyBought`, and a
+ * second cash-out comes back `alreadyClosed`, or, once the closing bell has
+ * already sold the ticket, accepted for that same sale with the money paid
+ * once. Only a command that is still unanswered is sent again, and that
+ * resend keeps its own id.
  */
 export type SubmitOutcome = { outcome: 'accepted'; receipt: Receipt } | { outcome: 'rejected'; receipt: Receipt } | { outcome: 'lost' };
 

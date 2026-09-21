@@ -1,11 +1,15 @@
 import type { SessionStore, SocketLike, TransportSeam } from './ports';
 
 /**
- * A stand-in for the network, driven entirely by hand. Nothing here is
- * asynchronous, nothing starts a timer and nothing reads a real clock: a
- * test, or the lab page, opens and closes every socket, runs every wait and
- * moves the clock itself. It is never the game's rules and never a real
+ * Two stand-ins for the network, neither the game's rules and neither a real
  * socket.
+ *
+ * `createFakeTransport` is driven entirely by hand. Nothing in it is
+ * asynchronous, nothing starts a timer and nothing reads a real clock: a test
+ * opens and closes every socket, runs every wait and moves the clock itself.
+ *
+ * `createLoopbackTransport`, further down, answers by itself on the timer and
+ * clock it is handed, which is what the lab page needs.
  */
 
 const SOCKET_CONNECTING = 0;
@@ -220,4 +224,213 @@ export function fakeFrameText(changes: Record<string, unknown> = {}): string {
     ...changes,
   };
   return JSON.stringify(frame);
+}
+
+/**
+ * A stand-in for the network that answers by itself: every socket it makes is
+ * answered by a small server living in the page. It opens a socket after a
+ * short wait, answers a hello with a frame, and then sends a frame with a
+ * rising step five times a second. It holds no rules of the game and opens no
+ * real socket; the timer, the clock and the random draw it runs on are handed
+ * in, so a page gives it the browser's and a test gives it fake ones.
+ */
+
+/** How long a socket takes to open, and how long the server takes to answer. */
+const LOOPBACK_OPENS_AFTER_MS = 120;
+const LOOPBACK_ANSWERS_AFTER_MS = 40;
+/** Five frames a second. */
+const LOOPBACK_FRAME_EVERY_MS = 200;
+const LOOPBACK_SESSION = 'lab-1';
+/** As many receipts as a real frame carries. */
+const LOOPBACK_FRAME_RECEIPTS = 20;
+
+export interface LoopbackOptions {
+  schedule: TransportSeam['schedule'];
+  now: TransportSeam['now'];
+  random: TransportSeam['random'];
+}
+
+export interface LoopbackTransport {
+  /** Hand this to the connection being shown. */
+  seam: TransportSeam;
+  /** The open socket closes the way a network drop closes it: no word from either side first. */
+  cut(): void;
+  /** While on, the server sends nothing at all, and the sockets stay open. */
+  silent(on: boolean): void;
+  /** The next command is taken, and whatever it buys is bought, but its reply is never sent. */
+  loseNextReply(): void;
+  /** The next command is handed to the socket and goes no further: the server never hears of it. */
+  dropNextCommand(): void;
+  /** How many tickets the server holds: one per buy it accepted, however often that buy arrived. */
+  tickets(): number;
+  /** Every text a socket was handed, oldest first, with which socket it was (1 for the first). */
+  log(): readonly LoopbackLogEntry[];
+}
+
+export interface LoopbackLogEntry {
+  socket: number;
+  text: string;
+}
+
+export function createLoopbackTransport(options: LoopbackOptions): LoopbackTransport {
+  const { schedule, now, random } = options;
+  let current: FakeSocket | null = null;
+  let quiet = false;
+  let step = 0;
+
+  // Kept in memory: the lab never touches the browser's storage.
+  const kept = new Map<string, string>();
+  const storage: SessionStore = {
+    getItem: (key) => kept.get(key) ?? null,
+    setItem(key, value) {
+      kept.set(key, value);
+    },
+    removeItem(key) {
+      kept.delete(key);
+    },
+  };
+
+  function isUp(socket: FakeSocket): boolean {
+    return current === socket && socket.readyState === SOCKET_OPEN;
+  }
+
+  /** What the server remembers of a command: the first answer it gave, kept for good. */
+  const receipts = new Map<string, Record<string, unknown>>();
+  let bought = 0;
+  let rev = 0;
+  let replyToLose = false;
+  let commandToDrop = false;
+  const handed: LoopbackLogEntry[] = [];
+  const socketNumbers = new Map<FakeSocket, number>();
+
+  /** A day of trading that never ends: made up, and only so that a buy of day 1 is a buy of today. */
+  const LOOPBACK_CLOCK = { phase: 'open', day: 1, stepsLeft: 100, priceIndex: 0, pace: 3 };
+
+  /**
+   * A frame of the stand-in's. Its latest receipts ride on every one, which is
+   * what the wire contract allows and what lets a frame settle a command. The
+   * real service sends no receipts on any frame today, so what is seen here
+   * of a frame settling a command is the connection's half of that, proved
+   * ahead of the service's.
+   */
+  function frameNow(): Record<string, unknown> {
+    step += 1;
+    const latest = [...receipts.values()].slice(-LOOPBACK_FRAME_RECEIPTS);
+    const text = fakeFrameText({ session: LOOPBACK_SESSION, rev, step, clock: LOOPBACK_CLOCK, receipts: latest });
+    return JSON.parse(text) as Record<string, unknown>;
+  }
+
+  function sendFrame(socket: FakeSocket): void {
+    if (quiet || !isUp(socket)) return;
+    socket.fireMessage(JSON.stringify(frameNow()));
+  }
+
+  /**
+   * One command, the way a server with safe retries takes it: an id seen
+   * before gets its first answer back and nothing else happens. Only a buy
+   * seen for the first time buys a ticket.
+   */
+  function serverTakesCommand(socket: FakeSocket, kind: string, commandId: string): void {
+    let receipt = receipts.get(commandId);
+    if (receipt === undefined) {
+      rev += 1;
+      receipt = { commandId, kind, step, outcome: 'accepted' };
+      if (kind === 'buy') {
+        bought += 1;
+        receipt.positionId = `p-${String(bought)}`;
+      }
+      receipts.set(commandId, receipt);
+    }
+    if (replyToLose) {
+      // Taken, stored, and the answer lost on the way back.
+      replyToLose = false;
+      return;
+    }
+    const answered = receipt;
+    schedule(() => {
+      if (quiet || !isUp(socket)) return;
+      socket.fireMessage(JSON.stringify({ t: 'reply', receipt: answered, frame: frameNow() }));
+    }, LOOPBACK_ANSWERS_AFTER_MS);
+  }
+
+  function keepSending(socket: FakeSocket): void {
+    schedule(() => {
+      if (!isUp(socket)) return;
+      sendFrame(socket);
+      keepSending(socket);
+    }, LOOPBACK_FRAME_EVERY_MS);
+  }
+
+  /** The server's side of a text the page handed to `socket`. */
+  function serverTakes(socket: FakeSocket, text: string): void {
+    let message: unknown;
+    try {
+      message = JSON.parse(text);
+    } catch {
+      return;
+    }
+    if (typeof message !== 'object' || message === null || !('t' in message)) return;
+    if (message.t === 'hello') {
+      schedule(() => {
+        sendFrame(socket);
+      }, LOOPBACK_ANSWERS_AFTER_MS);
+      return;
+    }
+    if (typeof message.t !== 'string' || !('commandId' in message) || typeof message.commandId !== 'string') return;
+    if (commandToDrop) {
+      // Handed to the socket and gone: the server never hears of it.
+      commandToDrop = false;
+      return;
+    }
+    serverTakesCommand(socket, message.t, message.commandId);
+  }
+
+  const seam: TransportSeam = {
+    url: 'ws://lab.invalid/ws',
+    createSocket(url: string) {
+      const socket = createFakeSocket(url);
+      const handOver = socket.send.bind(socket);
+      socketNumbers.set(socket, socketNumbers.size + 1);
+      socket.send = (text: string) => {
+        const carried = socket.sent.length;
+        handOver(text);
+        if (socket.sent.length === carried) return;
+        handed.push({ socket: socketNumbers.get(socket) ?? 0, text });
+        serverTakes(socket, text);
+      };
+      current = socket;
+      schedule(() => {
+        // Closed by the page while it was still opening: it never opens.
+        if (current !== socket || socket.readyState !== SOCKET_CONNECTING) return;
+        socket.fireOpen();
+        keepSending(socket);
+      }, LOOPBACK_OPENS_AFTER_MS);
+      return socket;
+    },
+    storage,
+    schedule,
+    random,
+    now,
+  };
+
+  return {
+    seam,
+    cut() {
+      const going = current;
+      if (going === null || going.readyState !== SOCKET_OPEN) return;
+      current = null;
+      going.fireClose();
+    },
+    silent(on: boolean) {
+      quiet = on;
+    },
+    loseNextReply() {
+      replyToLose = true;
+    },
+    dropNextCommand() {
+      commandToDrop = true;
+    },
+    tickets: () => bought,
+    log: () => handed,
+  };
 }

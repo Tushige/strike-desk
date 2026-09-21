@@ -35,6 +35,17 @@ function setup() {
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 describe('the ticket preview', () => {
+  it('shows server zero quantity and zero cost without inventing a payoff curve', () => {
+    const { props, quote } = setup();
+    quote.set({ ...ANSWER, quantity: 0, costCents: 0, whatIf: [] });
+    const view = render(createElement(OrderTicket, props));
+    expect(view.getByText('Tickets').nextElementSibling?.textContent).toBe('0');
+    expect(view.getByText('Cost & most you can lose').nextElementSibling?.textContent).toBe('$0');
+    expect(view.queryByRole('slider')).toBeNull();
+    view.rerender(createElement(OrderTicket, { ...props, contract: null }));
+    expect(view.queryByRole('slider')).toBeNull();
+    expect(view.queryByText('Cost & most you can lose')).toBeNull();
+  });
   it('offers a labelled typed spend without a trading action', () => {
     const { props } = setup();
     const view = render(createElement(OrderTicket, props));

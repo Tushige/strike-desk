@@ -212,11 +212,46 @@ it.each([null, 2500])('selects and previews a live contract through boot and the
     }
 
     fireEvent.change(slider, { target: { value: '0' } });
-    await sample(23000); // The price path moves into the open market at pace three.
+    const openFrame = await sample(23000); // The price path moves into the open market at pace three.
     expect((input as HTMLInputElement).value).toBe('50000');
     expect(comparisonStore.requested.get()).toEqual({ contractId: 0, spendCents: 5000000 });
     expect((view.getByRole('slider') as HTMLInputElement).value).toBe('0');
     expect(view.getByRole('grid', { name: 'Contracts' })).toBe(grid);
+
+    if (board === 2500) {
+      expect(openFrame?.draft?.costs?.[0]).toBeGreaterThan(0);
+      fireEvent.click(affordable);
+      await waitFor(() => expect(visibleRows().length).toBeGreaterThan(0));
+      const structural = vi.fn();
+      const stopOverview = comparisonStore.overview.subscribe(structural);
+      const stopRows = store.boardRows.subscribe(structural);
+      const snapshotReads = vi.spyOn(store.boardRows, 'get');
+      const beforeReads = snapshotReads.mock.calls.length;
+      try {
+        const heldRows = store.currentRows();
+        const previous = new Map(heldRows.map((current) => [current.contractId, current]));
+        const deltaFrame = await sample(200);
+        expect(deltaFrame).toBeNull();
+        const delta = messages.at(-1);
+        if (delta?.t !== 'quotes') throw new Error('expected changed quotes');
+        const changedPriceIds = delta.changes.filter(([id, price]) => previous.get(id)?.priceCents !== price).map(([id]) => id);
+        expect(changedPriceIds).toContain(0);
+        for (const id of changedPriceIds) expect(store.currentRows().find((current) => current.contractId === id)?.costCents).toBeNull();
+        expect(view.queryByRole('slider')).toBeNull();
+        expect(comparisonStore.quote.get()).toBeNull();
+        expect((input as HTMLInputElement).value).toBe('50000');
+        await waitFor(() => expect(visibleRows().length).toBeGreaterThan(0));
+        const restored = await sample(1500);
+        expect(restored?.draft?.ticket?.contractId).toBe(0);
+        expect(store.currentRows().find((current) => current.contractId === 0)?.costCents).toBe(restored?.draft?.costs?.[0]);
+        expect((view.getByRole('slider') as HTMLInputElement).value).toBe('0');
+        expect((input as HTMLInputElement).value).toBe('50000');
+        expect(view.getByRole('grid', { name: 'Contracts' })).toBe(grid);
+        expect(structural).not.toHaveBeenCalled();
+        expect(snapshotReads.mock.calls).toHaveLength(beforeReads);
+      } finally { stopOverview(); stopRows(); snapshotReads.mockRestore(); }
+      fireEvent.click(affordable);
+    }
 
     const downChoices = view.getByRole('group', { name: 'DOWN ticket. Pays if the price ends below the target' });
     fireEvent.click(within(downChoices).getByRole('button', { name: /^Close/ }));
@@ -229,6 +264,11 @@ it.each([null, 2500])('selects and previews a live contract through boot and the
     const downTicket = downFrame?.draft?.ticket;
     if (downTicket === undefined) throw new Error('missing DOWN answer');
     expect(downTicket.contractId).toBe(downId);
+    const downHighlights = new Set(downFrame!.board!.companies[0]!.simpleDown.map((targetIndex) =>
+      contractId(downFrame!.board!.targetsPerCompany, { companyId: 0, side: 'down', targetIndex })));
+    await waitFor(() => {
+      for (const { element, row: current } of visibleRows()) expect(element.classList.contains('bg-accent/40')).toBe(downHighlights.has(current.contractId));
+    });
     const downZero = downTicket.whatIf.findIndex((stop) => stop.atCents === downTicket.breakEvenCents && stop.profitCents === 0);
     expect(downZero).toBeGreaterThanOrEqual(0);
     fireEvent.change(view.getByRole('slider'), { target: { value: '0' } });

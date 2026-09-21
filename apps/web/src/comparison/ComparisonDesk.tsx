@@ -93,7 +93,7 @@ function DayComparison({ comparison, game, overview }: DeskProps & { overview: C
     setSpendText(text);
   };
 
-  return <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-3 lg:grid-cols-[minmax(0,1fr)_22rem] lg:grid-rows-[minmax(0,1fr)]">
+  return <div className="grid h-full min-h-0 grid-rows-[minmax(12rem,1fr)_minmax(12rem,1fr)] gap-3 overflow-y-auto overscroll-contain sm:grid-cols-[minmax(0,1fr)_20rem] sm:grid-rows-[minmax(0,1fr)] sm:overflow-visible lg:grid-cols-[minmax(0,1fr)_22rem]">
     <div className="flex min-h-0 min-w-0 flex-col gap-2">
       <div className="flex flex-wrap items-end gap-2">
         <label className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">Company

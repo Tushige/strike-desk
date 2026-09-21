@@ -7,6 +7,8 @@ import type { ColDef, ValueFormatterParams } from 'ag-grid-community';
 import { LiveGridInner } from '../src/modules/live-grid/LiveGrid';
 import { createFakeRowSource } from '../src/modules/live-grid/fake';
 import type { FakeRow } from '../src/modules/live-grid/fake';
+import { COLUMNS as CONTRACT_COLUMNS, DEFAULT_COL_DEF } from '../src/board/columns';
+import type { ContractRow } from '../src/store/contractRows';
 
 /**
  * The table itself, mounted in a made-up document: a filter arrives while
@@ -225,4 +227,65 @@ describe('the live grid touch lifecycle', () => {
       document.removeEventListener(type, reachedDocument);
     }
   });
+});
+
+it('sorts raw contract money numerically, keeping unavailable cost separate from genuine zero', async () => {
+  const base: ContractRow = { id: '0', contractId: 0, companyId: 0, company: 'Example', ticker: 'EX', side: 'up',
+    targetCents: 900, priceCents: 900, breakEvenCents: 900, costCents: 900, realCents: 900, hopeCents: 900, dimmed: false, dir: 0 };
+  // $9 precedes $100 numerically, whereas their formatted strings compare in the opposite order.
+  const rows: ContractRow[] = [
+    { ...base, id: '100', contractId: 100, targetCents: 10000, priceCents: 10000, breakEvenCents: 10000, costCents: 10000, realCents: 10000, hopeCents: 10000 },
+    { ...base, id: '9', contractId: 9 },
+    { ...base, id: 'empty', contractId: 3, costCents: null },
+    { ...base, id: 'zero', contractId: 4, costCents: 0 },
+  ];
+  const source = { rows: () => rows, latest: () => rows, subscribe: () => () => {}, onChanged: () => () => {} };
+  const view = render(createElement(LiveGridInner<ContractRow>, {
+    source, columns: CONTRACT_COLUMNS, defaultColDef: DEFAULT_COL_DEF, label: 'Contract values',
+    selectedId: null, onSelect: () => {}, filter: null, stale: false, drawEveryRow: true,
+  }));
+  await waitFor(() => expect(rowOf(view.container, '9')).not.toBeNull());
+  expect(rowOf(view.container, 'empty')?.querySelector('[col-id="costCents"]')?.textContent).toBe('—');
+  expect(rowOf(view.container, 'zero')?.querySelector('[col-id="costCents"]')?.textContent).toBe('$0');
+  for (const column of ['targetCents', 'price', 'breakEvenCents', 'realCents', 'hopeCents']) {
+    fireEvent.click(view.container.querySelector(`[col-id="${column}"] .ag-header-cell-label`)!);
+    await waitFor(() => expect(rowOf(view.container, '9')?.getAttribute('row-index')).toBe('0'));
+    expect(rowOf(view.container, '100')?.getAttribute('row-index')).toBe('3');
+  }
+  fireEvent.click(view.container.querySelector('[col-id="costCents"] .ag-header-cell-label')!);
+  await waitFor(() => expect([0, 1, 2, 3].map((index) => view.container.querySelector(`.ag-row[row-index="${String(index)}"]`)?.getAttribute('row-id')))
+    .toEqual(['empty', 'zero', '9', '100']));
+});
+
+it('holds filter-only membership across touch and focus, applies explicit changes, and removes the hint when cleared', async () => {
+  const source = createFakeRowSource({ rowCount: 3, seed: 7 });
+  const props = { source, columns: COLUMNS, label: 'Filtered values', selectedId: null, onSelect: vi.fn(), stale: false, drawEveryRow: true };
+  const below = (row: FakeRow) => row.value < 10100;
+  const view = render(createElement(LiveGridInner<FakeRow>, { ...props, filter: below }));
+  await waitFor(() => expect(shownIds(view.container)).toEqual(['r0']));
+  const target = rowOf(view.container, 'r0')!;
+  const a = contact(1, target);
+  fireEvent.touchStart(target, { touches: [a], changedTouches: [a] });
+  fireEvent.focusIn(target);
+  expect(view.getByText('Sorting and filters paused')).toBeTruthy();
+  act(() => { for (let i = 0; i < 101; i += 1) source.changeRows(['r0']); });
+  await waitFor(() => expect(valueOf(view.container, 'r0')).toBe('10,101'));
+  expect(shownIds(view.container)).toEqual(['r0']);
+  fireEvent.touchCancel(target, { touches: [], changedTouches: [a] });
+  expect(shownIds(view.container)).toEqual(['r0']);
+  fireEvent.focusOut(target, { relatedTarget: document.body });
+  await waitFor(() => expect(shownIds(view.container)).toEqual([]));
+  const wrapper = view.container.firstElementChild!;
+  fireEvent.pointerOver(wrapper, { pointerType: 'mouse' });
+  view.rerender(createElement(LiveGridInner<FakeRow>, { ...props, filter: null }));
+  await waitFor(() => expect(shownIds(view.container)).toEqual(['r0', 'r1', 'r2']));
+  expect(view.queryByText('Sorting and filters paused')).toBeNull();
+  view.rerender(createElement(LiveGridInner<FakeRow>, { ...props, filter: onlyG1 }));
+  await waitFor(() => expect(shownIds(view.container)).toEqual(['r1']));
+  expect(view.getByText('Sorting and filters paused')).toBeTruthy();
+  fireEvent.click(view.container.querySelector('[col-id="value"] .ag-header-cell-label')!);
+  view.rerender(createElement(LiveGridInner<FakeRow>, { ...props, filter: null }));
+  await waitFor(() => expect(view.getByText('Sorting paused')).toBeTruthy());
+  fireEvent.pointerOut(wrapper, { pointerType: 'mouse', relatedTarget: document.body });
+  expect(view.queryByText('Sorting paused')).toBeNull();
 });

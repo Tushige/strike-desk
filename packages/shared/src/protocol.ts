@@ -15,6 +15,10 @@ import { PACES } from './clock';
  *   the seed. The market code appears only in `final`.
  * - Client messages are strict (unknown keys are refused). Server messages
  *   are open, so fields can be added without breaking an older client.
+ * - The page never computes money. Every money number it shows (a break-even,
+ *   a ticket's worth, profit and loss, total worth, the cost and the price
+ *   limit of a ticket being built) arrives in a frame; the page only formats
+ *   and compares.
  */
 
 export const PROTOCOL_VERSION = 1;
@@ -190,8 +194,8 @@ export const boardSchema = z.object({
 });
 
 /**
- * The contract id. A frame's `quotes`, `quoteReals` and `quoteHopes` are
- * indexed by it, so the scheme is part of the wire contract: both sides must
+ * The contract id. A frame's `quotes`, `quoteReals`, `quoteHopes` and
+ * `quoteBreakEvens` are indexed by it, so the scheme is part of the wire contract: both sides must
  * turn a company, a target and a side into the same number. Every company
  * has the same number of targets, UP and DOWN on each, so ids are dense from
  * 0 and stay stable for the day.
@@ -299,6 +303,13 @@ export const frameSchema = z.object({
   quoteReals: z.array(cents),
   /** Hope value of each ticket in cents, by contract id, same length as `quotes`. Real plus hope is the price. */
   quoteHopes: z.array(cents),
+  /**
+   * The share price at which each ticket, bought at this frame's price, earns
+   * back what it cost, in cents, by contract id, same length as `quotes`.
+   * Empty in the lobby. The table's break-even column and the chart's
+   * break-even line read it, because the page never computes money.
+   */
+  quoteBreakEvens: z.array(cents),
   /** Today's headlines. */
   news: z.array(newsViewSchema),
   account: accountViewSchema,

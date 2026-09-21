@@ -94,7 +94,9 @@ function allowList(sampled: Sampled): Record<string, unknown> {
     quoteCount: frame.quotes.length,
     realCount: frame.quoteReals.length,
     hopeCount: frame.quoteHopes.length,
-    everyQuoteIsWholeCentsFromZero: wholeCentsFromZero(frame.quotes) && wholeCentsFromZero(frame.quoteReals) && wholeCentsFromZero(frame.quoteHopes),
+    breakEvenCount: frame.quoteBreakEvens.length,
+    everyQuoteIsWholeCentsFromZero:
+      wholeCentsFromZero(frame.quotes) && wholeCentsFromZero(frame.quoteReals) && wholeCentsFromZero(frame.quoteHopes) && wholeCentsFromZero(frame.quoteBreakEvens),
     quotesThatAreNotRealPlusHope: frame.quotes.flatMap((price, id) => ((frame.quoteReals[id] ?? Number.NaN) + (frame.quoteHopes[id] ?? Number.NaN) === price ? [] : [id])),
     companyKeys: frame.companies.map((company) => Object.keys(company).sort().join(',')),
     news: frame.news,
@@ -110,7 +112,7 @@ function allowList(sampled: Sampled): Record<string, unknown> {
   };
 }
 
-/** The lobby has no board and no ticket price. Every other moment has the whole board and one price, with its two parts, per contract. */
+/** The lobby has no board and no ticket price. Every other moment has the whole board and one price, with its two parts and its break-even, per contract. */
 function thinAt(where: string): Record<string, unknown> {
   const started = where !== LOBBY;
   return {
@@ -119,6 +121,7 @@ function thinAt(where: string): Record<string, unknown> {
     quoteCount: started ? CONTRACTS : 0,
     realCount: started ? CONTRACTS : 0,
     hopeCount: started ? CONTRACTS : 0,
+    breakEvenCount: started ? CONTRACTS : 0,
     everyQuoteIsWholeCentsFromZero: true,
     quotesThatAreNotRealPlusHope: [],
     companyKeys: Array.from({ length: COMPANIES }, () => 'name,ticker'),

@@ -7,7 +7,7 @@ import { boardFor, marketDay, quoteAt } from './market';
 import { sharePriceCents, totalCents } from './money';
 import { MIN_TICKET_PRICE_CENTS } from './pricing';
 import type { CompanyView, Frame, NewsView, PositionView } from './protocol';
-import { FRAME_RECEIPTS } from './protocol';
+import { FRAME_RECEIPTS, decodeContractId } from './protocol';
 import { seedToMarketCode } from './rng';
 
 /**
@@ -33,8 +33,8 @@ export interface ProjectOptions {
   /**
    * Which sections are filled in. Both forms carry rev, step, the clock,
    * the companies' names, six share prices, the cheapest tradable price,
-   * today's board and one ticket price per contract with its real and hope
-   * value (no board and no ticket price in the lobby).
+   * today's board and one ticket price per contract with its real value, its
+   * hope value and its break-even (no board and no ticket price in the lobby).
    * 'live': besides those, only the account, with the player's cash as its
    *         worth and `canBuy` false. News, positions, receipts and days
    *         are empty; `history` and `final` are never set.
@@ -115,6 +115,7 @@ export function projectFrame(market: Market, game: GameState, playerId: string, 
       quotes: [],
       quoteReals: [],
       quoteHopes: [],
+      quoteBreakEvens: [],
       news: [],
       account: { cashCents: player.cashCents, worthCents: player.cashCents, capCents: spendCapCents(player.cashCents), canBuy: false },
       positions: [],
@@ -130,17 +131,25 @@ export function projectFrame(market: Market, game: GameState, playerId: string, 
 
   // Both forms share the board and the quotes. One pricing call per contract,
   // at the current point of the path and nowhere else, gives the price and
-  // its two parts, so real plus hope is the price on every contract.
+  // its two parts, so real plus hope is the price on every contract. The
+  // break-even comes from that same price and the contract's target, by the
+  // rule a bought ticket uses, so the table and the ticket cannot disagree.
   const board = boardFor(market, moment.day, game.targetsPerCompany);
   const quotes: number[] = [];
   const quoteReals: number[] = [];
   const quoteHopes: number[] = [];
+  const quoteBreakEvens: number[] = [];
   const total = contractCount(board);
   for (let id = 0; id < total; id += 1) {
     const value = quoteAt(market, moment.day, moment.priceIndex, board, id);
-    quotes.push(value?.priceCents ?? 0);
+    const priceCents = value?.priceCents ?? 0;
+    const { companyId, targetIndex, side } = decodeContractId(board.targetsPerCompany, id);
+    const targetCents = board.companies[companyId]?.targets[targetIndex] ?? 0;
+    quotes.push(priceCents);
     quoteReals.push(value?.realCents ?? 0);
     quoteHopes.push(value?.hopeCents ?? 0);
+    // A contract with no quote has a price of 0, so it breaks even at its target.
+    quoteBreakEvens.push(breakEvenCents(targetCents, priceCents, side));
   }
 
   if (live) {
@@ -160,6 +169,7 @@ export function projectFrame(market: Market, game: GameState, playerId: string, 
       quotes,
       quoteReals,
       quoteHopes,
+      quoteBreakEvens,
       news: [],
       account: { cashCents: player.cashCents, worthCents: player.cashCents, capCents: spendCapCents(player.cashCents), canBuy: false },
       positions: [],
@@ -209,6 +219,7 @@ export function projectFrame(market: Market, game: GameState, playerId: string, 
     quotes,
     quoteReals,
     quoteHopes,
+    quoteBreakEvens,
     news,
     account: {
       cashCents: player.cashCents,

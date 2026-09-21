@@ -99,6 +99,7 @@ describe('server messages', () => {
     quotes: [],
     quoteReals: [],
     quoteHopes: [],
+    quoteBreakEvens: [],
     news: [],
     account: { cashCents: 100_000_000, worthCents: 100_000_000, capCents: 50_000_000, canBuy: false },
     positions: [],
@@ -107,15 +108,15 @@ describe('server messages', () => {
     stress: false,
   };
 
-  it('a frame needs the names, the cheapest tradable price and both parts of every ticket price', () => {
+  it('a frame needs the names, the cheapest tradable price, both parts of every ticket price and its break-even', () => {
     expect(frameSchema.parse(frame)).toEqual(frame);
-    for (const field of ['companies', 'minTicketCents', 'quoteReals', 'quoteHopes']) {
+    for (const field of ['companies', 'minTicketCents', 'quoteReals', 'quoteHopes', 'quoteBreakEvens']) {
       const without: Record<string, unknown> = { ...frame };
       delete without[field];
       expect({ field, parses: frameSchema.safeParse(without).success }).toEqual({ field, parses: false });
       expect({ field, parses: parseServerMessage(without) !== null }).toEqual({ field, parses: false });
     }
-    const filled = { ...frame, quotes: [1200, 0], quoteReals: [700, 0], quoteHopes: [500, 0] };
+    const filled = { ...frame, quotes: [1200, 0], quoteReals: [700, 0], quoteHopes: [500, 0], quoteBreakEvens: [8512, 8500] };
     expect(frameSchema.parse(filled)).toEqual(filled);
   });
 
@@ -126,6 +127,7 @@ describe('server messages', () => {
     expect(frameSchema.safeParse({ ...frame, minTicketCents: 499.5 }).success).toBe(false);
     expect(frameSchema.safeParse({ ...frame, quoteReals: [0.5] }).success).toBe(false);
     expect(frameSchema.safeParse({ ...frame, quoteHopes: ['500'] }).success).toBe(false);
+    expect(frameSchema.safeParse({ ...frame, quoteBreakEvens: [8512.5] }).success).toBe(false);
   });
 
   it('accepts a frame, a reply, a quotes batch and an error', () => {

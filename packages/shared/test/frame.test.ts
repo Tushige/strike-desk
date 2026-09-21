@@ -9,7 +9,7 @@ import { CONTENT_VERSION, ENGINE_VERSION, boardFor, buildMarket, marketDay, quot
 import { sharePriceCents } from '../src/money';
 import { MIN_TICKET_PRICE_CENTS, isTradable } from '../src/pricing';
 import type { Frame } from '../src/protocol';
-import { frameSchema } from '../src/protocol';
+import { decodeContractId, frameSchema } from '../src/protocol';
 import { seedToMarketCode } from '../src/rng';
 import { ME, TEST_IDENTITY, TEST_SEED, buyCommand, cashOut, findContract, me, priceOf, start, startedGame, testMarket } from './helpers';
 import { TEST_CAST } from './testCast';
@@ -184,6 +184,7 @@ describe('projectFrame', () => {
       quotes: [],
       quoteReals: [],
       quoteHopes: [],
+      quoteBreakEvens: [],
       news: [],
       positions: [],
       account: { cashCents: 100_000_000, worthCents: 100_000_000, canBuy: false },
@@ -414,6 +415,34 @@ describe('projectFrame, each ticket price with its real value and its hope value
   });
 });
 
+describe('projectFrame, each ticket\'s break-even', () => {
+  it.each(STEPS_IN_BOTH_FORMS)('%s form, %s: 252 whole-cent break-evens, each its target plus (UP) or minus (DOWN) the ticket price over 100 shares', (form, _name, step) => {
+    const frame = project(market, gameAt(step), step, false, form);
+    const targetsPerCompany = frame.board?.targetsPerCompany ?? NaN;
+    expect(frame.quoteBreakEvens).toHaveLength(252);
+    frame.quoteBreakEvens.forEach((breakEven, id) => {
+      const { companyId, targetIndex, side } = decodeContractId(targetsPerCompany, id);
+      const target = frame.board?.companies[companyId]?.targets[targetIndex] ?? NaN;
+      const perShare = (frame.quotes[id] ?? NaN) / 100;
+      expect({ id, whole: Number.isInteger(breakEven) }).toEqual({ id, whole: true });
+      expect({ id, breakEven }).toEqual({ id, breakEven: side === 'up' ? target + perShare : target - perShare });
+    });
+  });
+
+  it.each(FORMS)('%s form: the lobby has none', (form) => {
+    expect(project(market, newGame(), 0, false, form).quoteBreakEvens).toEqual([]);
+  });
+
+  it('a ticket bought at a step breaks even where the frame of that same step said it would', () => {
+    for (const [step, bought] of [[320, 0], [1800 + 330, 2]] as const) {
+      const frame = project(market, gameAt(step), step);
+      const position = frame.positions[bought];
+      expect(position?.entryStep).toBe(step);
+      expect(position?.breakEvenCents).toBe(frame.quoteBreakEvens[position?.contractId ?? -1]);
+    }
+  });
+});
+
 describe('projectFrame, live form', () => {
   const EMPTY_SECTIONS = { news: [], positions: [], receipts: [], days: [] };
   const LIVE_KEYS = [
@@ -426,6 +455,7 @@ describe('projectFrame, live form', () => {
     'news',
     'positions',
     'prices',
+    'quoteBreakEvens',
     'quoteHopes',
     'quoteReals',
     'quotes',
@@ -454,6 +484,7 @@ describe('projectFrame, live form', () => {
       quotes: [],
       quoteReals: [],
       quoteHopes: [],
+      quoteBreakEvens: [],
       t: 'frame',
       session: 'session-1',
       rev: 1,
@@ -505,6 +536,7 @@ describe('projectFrame, live form', () => {
       expect(live.quotes).toEqual(full.quotes);
       expect(live.quoteReals).toEqual(full.quoteReals);
       expect(live.quoteHopes).toEqual(full.quoteHopes);
+      expect(live.quoteBreakEvens).toEqual(full.quoteBreakEvens);
     }
   });
 

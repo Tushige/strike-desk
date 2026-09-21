@@ -151,7 +151,8 @@ function thinAt(where: string): Record<string, unknown> {
     days: (finishedDays[where] ?? []).map((day) => ({ day, startCents: 100000000, endCents: 100000000, changeCents: 0 })),
     canBuy: false,
     stress: false,
-    hasHistory: false,
+    hasHistory: ['the first open step', 'the middle of day 1', 'the closing bell of day 1',
+      'the first step of day 2', "day 5's debrief", 'one step past the end of the game', 'draft sample'].includes(where),
     hasFinal: where === 'one step past the end of the game',
     hasDraft: false,
     priceCount: 6,
@@ -451,7 +452,14 @@ function expectDraftAtFrame(frame: Frame, contractId: number, spendCents: number
   expect(frame).toMatchObject({ positions: [], days: [], account: { cashCents: STARTING_CASH_CENTS, canBuy: false } });
   expect(frame.receipts).toHaveLength(1);
   expect(frame.receipts[0]).toMatchObject({ kind: 'start', step: 0, outcome: 'accepted' });
-  expect(frame).not.toHaveProperty('history');
+  if (frame.history !== undefined) {
+    expect(frame.history).toHaveLength(6);
+    frame.history.forEach((path, companyId) => {
+      expect(path).toHaveLength(frame.clock.priceIndex + 1);
+      expect(path.at(-1)).toBe(frame.prices[companyId]);
+      expect(wholeCentsFromZero(path)).toBe(true);
+    });
+  }
   expect(frame).not.toHaveProperty('final');
   for (const news of frame.news) expect(news).not.toHaveProperty('wasTrue');
   expect(JSON.stringify(frame)).not.toContain(seedToMarketCode(SEED));

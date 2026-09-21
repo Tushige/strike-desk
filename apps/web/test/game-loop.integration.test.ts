@@ -91,6 +91,11 @@ it.each([
     await view.findByRole('heading', { name: 'Day 1: the market is open' });
     expect(outbound.at(-1)).toMatchObject({ t: 'openBell', day: 1 });
     expect(view.getByText('Prices are moving. Compare tickets and explore what they could pay.')).toBeTruthy();
+    const chartFrame = await sample(400);
+    const chart = view.queryByRole('img', { name: chartFrame.companies[0]?.name });
+    expect(chart).not.toBeNull();
+    expect(chartFrame.history?.[0]).toHaveLength(chartFrame.clock.priceIndex + 1);
+    await waitFor(() => expect(chart?.querySelector('path')?.getAttribute('d')?.split('L')).toHaveLength(chartFrame.clock.priceIndex + 1));
     expect(view.queryByText('Market number')).toBeNull();
     expect(view.queryByRole('button', { name: /Buy ticket|Cash out/ })).toBeNull();
     expect(sockets).toBe(1);

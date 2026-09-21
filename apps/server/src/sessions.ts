@@ -43,6 +43,8 @@ export interface SessionEntry {
   sockets: Map<FrameSocket, string>;
   /** Only the latest preview request for each attached connection; never part of the game. */
   drafts: Map<FrameSocket, DraftRequest>;
+  /** Last successfully offered observation and any outstanding history repair. */
+  deliveries: Map<FrameSocket, { day: number; phase: Frame['clock']['phase']; priceIndex: number; repair: boolean }>;
   /**
    * The clock reading this session has had no socket since: when it was made,
    * or when its last socket left. Null exactly while a socket is attached.
@@ -114,7 +116,7 @@ export function createRegistry(options: RegistryOptions): SessionRegistry {
       // The stream starts empty for every session: the sampler fills it, and
       // until it has, there is nothing to send a difference against, so the
       // first sampled message is the whole picture.
-      const entry: SessionEntry = { session: createSession(id, identity, { targetsPerCompany }), sockets: new Map(), drafts: new Map(), idleSinceMs: nowMs, stressStream: null };
+      const entry: SessionEntry = { session: createSession(id, identity, { targetsPerCompany }), sockets: new Map(), drafts: new Map(), deliveries: new Map(), idleSinceMs: nowMs, stressStream: null };
       sessions.set(id, entry);
       return entry;
     },
@@ -140,6 +142,7 @@ export function createRegistry(options: RegistryOptions): SessionRegistry {
       const entry = sessions.get(id);
       if (entry === undefined || !entry.sockets.delete(socket)) return;
       entry.drafts.delete(socket);
+      entry.deliveries.delete(socket);
       if (entry.sockets.size === 0) entry.idleSinceMs = nowMs;
     },
     replace(id, session) {

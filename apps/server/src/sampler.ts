@@ -151,12 +151,12 @@ function stressSample(
 export function sampleSessions(registry: SessionRegistry, nowMs: number, stats: SamplerStats, stressFullFrameMs: number): void {
   for (const entry of registry.entries()) {
     if (entry.sockets.size === 0) continue;
-    const samples = new Map<string, { text: string | null; whole: Frame | null }>();
+    const samples = new Map<string, { text: string | null; whole: Frame | null; frame: Frame; plain?: string }>();
     for (const [socket, playerId] of entry.sockets) {
       let sample = samples.get(playerId);
       if (sample === undefined) {
         // The first of these advances the session; after it `entry.session` is already at this step.
-        const { session, frame } = liveNewsFrameFor(entry.session, playerId, nowMs);
+        const { session, frame } = liveNewsFrameFor(entry.session, playerId, nowMs, true);
         registry.replace(session.id, session);
         if (session.game.stress) {
           const sampled = stressSample(entry.stressStream, frame, nowMs, stressFullFrameMs);
@@ -165,21 +165,41 @@ export function sampleSessions(registry: SessionRegistry, nowMs: number, stats: 
           // backed-up socket would cost every other client the rest of the
           // batches; the periodic whole picture is that client's way back.
           entry.stressStream = sampled.stream;
-          sample = { text: sampled.text, whole: sampled.whole ? frame : null };
+          sample = { text: sampled.text, whole: sampled.whole ? frame : null, frame };
         } else {
-          sample = { text: JSON.stringify(frame), whole: frame };
+          sample = { text: JSON.stringify(frame), whole: frame, frame };
         }
         samples.set(playerId, sample);
       }
       let text = sample.text;
       if (text === null) continue;
+      const previous = entry.deliveries.get(socket);
+      const clock = sample.frame.clock;
+      const needsHistory = previous === undefined || previous.repair || previous.day !== clock.day ||
+        previous.phase !== clock.phase || clock.priceIndex > previous.priceIndex + 1;
+      let delivered = sample.whole;
+      if (delivered !== null && !entry.session.game.stress && !needsHistory) {
+        const plain = { ...delivered };
+        delete plain.history;
+        delivered = plain;
+        sample.plain ??= JSON.stringify(plain);
+        text = sample.plain;
+      }
       const request = entry.drafts.get(socket);
-      if (request !== undefined && sample.whole !== null && socket.readyState === socket.OPEN && socket.bufferedAmount === 0) {
-        text = JSON.stringify(withDraft(sample.whole, request));
+      if (request !== undefined && delivered !== null && socket.readyState === socket.OPEN && socket.bufferedAmount === 0) {
+        text = JSON.stringify(withDraft(delivered, request));
       }
       const outcome = offerFrame(socket, text);
-      if (outcome === 'sent') stats.sent += 1;
-      else if (outcome === 'skipped') stats.skipped += 1;
+      if (outcome === 'sent') {
+        stats.sent += 1;
+        entry.deliveries.set(socket, { day: clock.day, phase: clock.phase, priceIndex: clock.priceIndex,
+          repair: delivered?.history === undefined && needsHistory });
+      } else if (outcome === 'skipped') {
+        stats.skipped += 1;
+        entry.deliveries.set(socket, previous === undefined
+          ? { day: clock.day, phase: clock.phase, priceIndex: clock.priceIndex, repair: true }
+          : { ...previous, repair: true });
+      }
     }
   }
 }

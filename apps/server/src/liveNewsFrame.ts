@@ -9,8 +9,8 @@ export function withDraft(frame: Frame, request: DraftRequest | undefined): Fram
 }
 
 /** Public news beside the live board and game results, with trading disabled. */
-export function liveNewsFrameFor(session: Session, playerId: string, nowMs: number): { session: Session; frame: Frame } {
-  const projected = frameFor(session, playerId, nowMs, { history: false, sections: 'full' });
+export function liveNewsFrameFor(session: Session, playerId: string, nowMs: number, history = false): { session: Session; frame: Frame } {
+  const projected = frameFor(session, playerId, nowMs, { history, sections: 'full' });
   return { session: projected.session, frame: previewFrame(projected.frame) };
 }
 
@@ -58,5 +58,6 @@ export function previewFrame(source: Frame): Frame {
   };
   if (source.clock.phase === 'final' && source.final !== undefined) frame.final = source.final;
   if (source.draft !== undefined) frame.draft = source.draft;
+  if (source.history !== undefined) frame.history = source.history;
   return frame;
 }

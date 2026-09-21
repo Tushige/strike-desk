@@ -1,5 +1,8 @@
 import { useMemo, useSyncExternalStore } from 'react';
-import { PACES } from '@strike-desk/shared/time';
+import { OPEN_STEPS, PACES } from '@strike-desk/shared/time';
+import { PriceChart } from '../modules/price-chart/index';
+import type { ChartLine, ChartMarker } from '../modules/price-chart/index';
+import { chartStore } from '../boot';
 import { PhaseScreen, TopBar, controlWords } from '../modules/desk/index';
 import { REJECT_WORDS } from '../modules/order-ticket/index';
 import { ComparisonDesk } from '../comparison/ComparisonDesk';
@@ -24,6 +27,21 @@ function GameTopBar({ loop }: { loop: GameLoop }) {
 
 function playAgain(): void { window.location.reload(); }
 
+const NO_LINES: readonly ChartLine[] = [];
+const NO_MARKERS: readonly ChartMarker[] = [];
+
+export function GameChart({ loop, companyId = 0 }: { loop: GameLoop; companyId?: number }) {
+  const view = useSyncExternalStore(chartStore.subscribe, chartStore.get);
+  const controls = useSyncExternalStore(loop.controls.subscribe, loop.controls.get);
+  const company = view.companies[companyId];
+  return company === undefined ? null : <PriceChart
+    key={`${view.session}:${String(view.day)}:${String(companyId)}`}
+    source={chartStore.source(companyId)} xMin={0} xMax={OPEN_STEPS}
+    yMinCents={company.yMinCents} yMaxCents={company.yMaxCents}
+    lines={NO_LINES} markers={NO_MARKERS} stale={!controls.ready} label={company.name}
+  />;
+}
+
 export function GameDesk({ loop, game, comparison, news }: GameDeskProps) {
   const screen = useSyncExternalStore(loop.screen.subscribe, loop.screen.get);
   const controls = useSyncExternalStore(loop.controls.subscribe, loop.controls.get);
@@ -31,10 +49,11 @@ export function GameDesk({ loop, game, comparison, news }: GameDeskProps) {
   const content = useMemo(() => (
     <div className="flex h-full min-h-0 flex-col gap-3">
       <Strip />
+      <div className="h-40 shrink-0"><GameChart loop={loop} /></div>
       <NewsPanel store={news} />
       <div className="min-h-0 flex-1"><ComparisonDesk comparison={comparison} game={game} /></div>
     </div>
-  ), [comparison, game, news]);
+  ), [comparison, game, news, loop]);
   let phase;
   if (screen === null) phase = <p>{controlWords.checking}</p>;
   else switch (screen.phase) {

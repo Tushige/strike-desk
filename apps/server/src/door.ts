@@ -42,9 +42,13 @@ export interface DoorOptions {
 }
 
 /** An answer to a message is always sent, even to a socket the sampler would skip. */
-function answer(connection: Connection, message: ServerMessage): void {
+function answer(connection: Connection, message: ServerMessage, registry?: SessionRegistry): void {
   if (connection.socket.readyState !== connection.socket.OPEN) return;
   connection.socket.send(JSON.stringify(message));
+  const frame = message.t === 'frame' ? message : message.t === 'reply' ? message.frame : null;
+  if (frame !== null) registry?.get(frame.session)?.deliveries.set(connection.socket, {
+    day: frame.clock.day, phase: frame.clock.phase, priceIndex: frame.clock.priceIndex, repair: frame.history === undefined,
+  });
 }
 
 /**
@@ -111,9 +115,9 @@ function hello(options: DoorOptions, connection: Connection, message: Hello): vo
   connection.sessionId = entry.session.id;
   connection.playerId = playerId;
 
-  const { session, frame } = liveNewsFrameFor(entry.session, playerId, options.now());
+  const { session, frame } = liveNewsFrameFor(entry.session, playerId, options.now(), true);
   options.registry.replace(session.id, session);
-  answer(connection, frame);
+  answer(connection, frame, options.registry);
 }
 
 /** Only clock controls reach the command path; previews never place trades. */
@@ -127,7 +131,7 @@ function clockCommand(options: DoorOptions, connection: Connection, command: Sta
   const nowMs = options.now();
   const handled = handle({ session: entry.session, playerId, command, nowMs, draft: entry.drafts.get(connection.socket) ?? null });
   options.registry.replace(handled.session.id, handled.session);
-  answer(connection, { t: 'reply', receipt: handled.reply.receipt, frame: previewFrame(handled.reply.frame) });
+  answer(connection, { t: 'reply', receipt: handled.reply.receipt, frame: previewFrame(handled.reply.frame) }, options.registry);
 }
 
 function draft(options: DoorOptions, connection: Connection, request: DraftRequest): void {

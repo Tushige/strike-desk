@@ -3,6 +3,7 @@ import { boardFromSearch } from './boardSize';
 import { createWsFeed } from './feed/wsFeed';
 import { createGameStore } from './store/gameStore';
 import { createGameLoop } from './gameplay/gameLoop';
+import { createChartStore } from './gameplay/chartStore';
 import { createNewsStore } from './news/newsStore';
 import { createComparisonStore } from './comparison/comparisonStore';
 
@@ -23,6 +24,7 @@ function socketUrl(): string {
 
 export const store = createGameStore();
 export const newsStore = createNewsStore();
+export const chartStore = createChartStore();
 
 const feed = createWsFeed({
   url: socketUrl(),
@@ -40,6 +42,7 @@ feed.subscribe((event) => {
     comparisonStore.ingest(event.message);
     store.ingest(event.message);
     newsStore.ingest(event.message);
+    chartStore.ingest(event.message);
   }
   else {
     store.setStatus(event.status);

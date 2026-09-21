@@ -11,6 +11,12 @@ import type { CommandOutcome, Connection, ConnectionOptions } from '../src/modul
  * for real time. The times are the stand-in's own, typed in: a socket opens
  * after 120 ms, the server answers after 40 ms, a frame comes every 200 ms,
  * and the first reconnect waits 1,000 ms at a draw of 0.5.
+ *
+ * One way the stand-in is ahead of the real service: it puts its latest
+ * receipts on every frame, and the real service puts none on any frame today.
+ * So the cases here in which a frame settles a command prove the connection's
+ * half only. Against the real service a lost reply is settled by sending the
+ * command again with the same id, which the resend cases here also show.
  */
 
 const BUY = { t: 'buy', commandId: 'lab-buy-1', day: 1, contractId: 7, spendCents: 50000, seenPriceCents: 1200 } as const;
@@ -80,7 +86,7 @@ describe('the connection against the stand-in server', () => {
     expect(made.connection.pending.get()).toEqual([]);
   });
 
-  it('the reply was lost: the first frame after the reconnect settles it, and there is one ticket', async () => {
+  it('the reply was lost: the receipts on the first frame the stand-in sends after the reconnect settle it, and there is one ticket', async () => {
     const made = rig(resendNever);
     goLive(made);
     made.server.loseNextReply();
@@ -102,7 +108,7 @@ describe('the connection against the stand-in server', () => {
     expect(made.server.log().filter((one) => one.text === BUY_TEXT)).toHaveLength(1);
   });
 
-  it('the reply was lost on a line that stays up: the next frame names it, within 200 ms, and there is one ticket', async () => {
+  it('the reply was lost on a line that stays up: the stand-in names it on its next frame, and there is one ticket', async () => {
     const made = rig(resendNever);
     goLive(made);
     made.server.loseNextReply();

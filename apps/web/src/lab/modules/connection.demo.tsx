@@ -216,6 +216,11 @@ export default function ConnectionDemo(): ReactElement {
         failed attempt. Buy a made-up ticket and break the line under it: however the press travels, the server ends
         up holding exactly one ticket for it.
       </p>
+      <p className="m-0 max-w-prose text-sm text-muted-foreground">
+        One thing the stand-in does that the real service does not do yet: it lists its recent answers on every
+        update, so a lost reply is settled here by the next update. Against the real service today, a lost reply is
+        settled only by sending the same command again, which the drop-the-command buttons show.
+      </p>
 
       <dl className="m-0 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6" aria-live="polite">
         <Reading label="Phase">

@@ -306,7 +306,13 @@ export function createLoopbackTransport(options: LoopbackOptions): LoopbackTrans
   /** A day of trading that never ends: made up, and only so that a buy of day 1 is a buy of today. */
   const LOOPBACK_CLOCK = { phase: 'open', day: 1, stepsLeft: 100, priceIndex: 0, pace: 3 };
 
-  /** A frame as the server would send one now: its latest receipts ride on every one. */
+  /**
+   * A frame of the stand-in's. Its latest receipts ride on every one, which is
+   * what the wire contract allows and what lets a frame settle a command. The
+   * real service sends no receipts on any frame today, so what is seen here
+   * of a frame settling a command is the connection's half of that, proved
+   * ahead of the service's.
+   */
   function frameNow(): Record<string, unknown> {
     step += 1;
     const latest = [...receipts.values()].slice(-LOOPBACK_FRAME_RECEIPTS);

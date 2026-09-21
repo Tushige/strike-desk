@@ -96,6 +96,18 @@ function backToDraft(state: TicketState, notice: TicketNotice | null): TicketSta
 }
 
 /**
+ * A chosen field changed. In `draft` and in `rejected` that is the player
+ * moving on: the form is a fresh draft and the old notice goes. In any other
+ * state the choices are locked, so the change is the desk's (a pick in the
+ * contract table, say): the form stays where it is and keeps its answer on
+ * screen, because a locked form with nothing on it tells the player nothing.
+ */
+function afterChange(state: TicketState): TicketState {
+  if (state.form === 'draft' || state.form === 'rejected') return backToDraft(state, null);
+  return state;
+}
+
+/**
  * The answer is in. `accepted` and `rejected` are states the form stays in
  * until the server's data moves it on (see the reducer). When that data is
  * already here as the answer arrives, the form is back in `draft` at once
@@ -125,12 +137,14 @@ function afterOutcome(state: TicketState, command: NonNullable<TicketState['comm
  */
 export function ticketReducer(state: TicketState, event: TicketEvent): TicketState {
   switch (event.type) {
-    case 'contract':
+    case 'contract': {
       if (event.contractId === state.contractId) return state;
-      return { ...(state.form === 'rejected' ? backToDraft(state, null) : state), contractId: event.contractId, notice: null };
-    case 'spend':
+      return { ...afterChange(state), contractId: event.contractId };
+    }
+    case 'spend': {
       if (event.spendCents === state.spendCents) return state;
-      return { ...(state.form === 'rejected' ? backToDraft(state, null) : state), spendCents: event.spendCents, notice: null };
+      return { ...afterChange(state), spendCents: event.spendCents };
+    }
     case 'pressed':
       // Only the press that leaves `draft` counts. Any other is not an event at all.
       if (state.form !== 'draft') return state;

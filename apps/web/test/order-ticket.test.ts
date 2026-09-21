@@ -455,6 +455,24 @@ describe('the order ticket: the way back to draft follows the server', () => {
     expect(next.notice).toBeNull();
   });
 
+  it('keeps the answer on an accepted form when the desk selects another contract, as a pick in the table would', () => {
+    const accepted = answered(pressed('buy'), 'accepted', 'buy');
+
+    const next = ticketReducer(accepted, { type: 'contract', contractId: 61 });
+
+    expect(next.form).toBe('accepted');
+    expect(next.contractId).toBe(61);
+    expect(next.notice).toEqual({ kind: 'accepted', of: 'buy' });
+  });
+
+  it('clears the notice of a draft when the player changes the draft', () => {
+    const lost = ticketReducer(pressed('buy'), { type: 'outcome', commandId: 'fake-cmd-0001', outcome: { outcome: 'lost' } });
+    expect(lost.notice).toEqual({ kind: 'lost' });
+
+    expect(ticketReducer(lost, { type: 'spend', spendCents: 10_000_000 }).notice).toBeNull();
+    expect(ticketReducer(lost, { type: 'contract', contractId: 61 }).notice).toBeNull();
+  });
+
   it('clears the reason on the next press', () => {
     const back = ticketReducer(answered(pressed('buy'), 'rejected', 'buy'), { type: 'quote', quote: LEVEL_2_QUOTE });
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { BELL_STEP_IN_DAY, contractId, playerOf, replySchema } from '@strike-desk/shared/engine';
 import type { Command, DraftRequest, Frame, Session } from '@strike-desk/shared/engine';
 import type { HandleCommand, Handled } from '../../src/modules/command-path/index';
-import { PLAYER, closeUp, frameAt, msAtStep, newId, quotedAt, sessionAt } from './sessionAt';
+import { PLAYER, closeUp, frameAt, msAtStep, newId, quotedAt, sessionAt, tradableTicket } from './sessionAt';
 
 /**
  * What any command path must do, whatever is behind it. Every case stands on
@@ -283,16 +283,23 @@ export function describeCommandPathContract(name: string, handle: HandleCommand)
     });
 
     describe('the bell rule: the step the command arrives at decides', () => {
-      // A ticket can be worth nothing at the bell, and a command has to name a price above zero.
-      const claimable = (ticket: { contractId: number; priceCents: number }) => ({ ...ticket, priceCents: Math.max(ticket.priceCents, 100) });
+      // Every case here buys a ticket the board would really sell at that very
+      // moment, priced at what the frame shows for it, so the only thing that
+      // can stand between the buy and a fill is the bell. By the last steps of
+      // the day many tickets are worth nothing, so which ticket that is has to
+      // be asked of the moment rather than fixed in advance.
 
-      it('does not call the market closed one step before the bell', () => {
+      it('still fills a buy one step before the bell', () => {
         const { session, nowMs } = sessionAt('lastOpenStep');
+        const ticket = tradableTicket(frameAt(session, nowMs));
 
-        const { reply } = send(session, buy(claimable(closeUp(frameAt(session, nowMs)))), nowMs);
+        const { reply } = send(session, buy(ticket), nowMs);
 
         expect(reply.receipt.step).toBe(BELL_STEP_IN_DAY - 1);
-        expect(reply.receipt.reason).not.toBe('marketClosed');
+        expect(reply.receipt.outcome).toBe('accepted');
+        const position = onlyPosition(reply.frame);
+        expect(position.contractId).toBe(ticket.contractId);
+        expect(position.entryPriceCents).toBe(ticket.priceCents);
       });
 
       it.each([
@@ -303,7 +310,7 @@ export function describeCommandPathContract(name: string, handle: HandleCommand)
         const nowMs = msAtStep(step);
         const before = frameAt(session, nowMs);
 
-        const { reply } = send(session, buy(claimable(closeUp(before))), nowMs);
+        const { reply } = send(session, buy(tradableTicket(before)), nowMs);
 
         expect(reply.receipt).toMatchObject({ outcome: 'rejected', reason: 'marketClosed', step });
         expect(reply.frame.positions).toEqual([]);

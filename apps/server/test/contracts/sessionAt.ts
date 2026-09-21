@@ -88,6 +88,25 @@ export function quotedAt(frame: Frame, priceCents: number): { contractId: number
   throw new Error(`this frame offers no ticket quoted at ${priceCents}`);
 }
 
+/**
+ * The cheapest ticket a frame both offers and prices at or above its own
+ * `minTicketCents`: one the board really would sell at that moment, whatever
+ * the day has done to the prices by then. Lowest contract id on a tie. Throws
+ * when the frame has none, so a case that needs a buyable ticket fails loudly.
+ */
+export function tradableTicket(frame: Frame): { contractId: number; priceCents: number } {
+  const board = frame.board;
+  if (board === null) throw new Error('this frame has no board to pick a ticket from');
+  let best: { contractId: number; priceCents: number } | null = null;
+  for (let id = 0; id < frame.quotes.length; id += 1) {
+    const priceCents = frame.quotes[id];
+    if (priceCents === undefined || priceCents < frame.minTicketCents || !isOffered(board, id)) continue;
+    if (best === null || priceCents < best.priceCents) best = { contractId: id, priceCents };
+  }
+  if (best === null) throw new Error('this frame offers no ticket that can be bought');
+  return best;
+}
+
 /** Close UP of company 0 on a frame's board, with the price the frame shows for it. */
 export function closeUp(frame: Frame): { contractId: number; priceCents: number } {
   const board = frame.board;

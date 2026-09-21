@@ -1,6 +1,6 @@
-import type { Hello, ServerMessage, StartCommand } from '@strike-desk/shared/engine';
+import type { DraftRequest, Hello, ServerMessage, StartCommand } from '@strike-desk/shared/engine';
 import { FIRST_PLAYER_ID, PROTOCOL_VERSION, handleCommand, parseClientMessage } from '@strike-desk/shared/engine';
-import { liveNewsFrameFor } from './liveNewsFrame';
+import { liveNewsFrameFor, withDraft } from './liveNewsFrame';
 import { targetsForBoardSize } from './boardSizes';
 import type { TokenBucket, WindowCounter } from './limits';
 import type { FrameSocket } from './sampler';
@@ -8,11 +8,9 @@ import type { SessionRegistry } from './sessions';
 
 /**
  * The door: every inbound message is parsed here and routed from here.
- * Two kinds are taken: `hello`, which makes or resumes a session and leaves
- * its clock stopped, and `start`, which starts it. Everything else is
- * refused by name and never reaches the game rules. That includes `draft`,
- * the ticket form's request for a quote: it is refused until the ticket form
- * exists, so no frame this service sends carries a `draft` section.
+ * `hello` makes or resumes a session; `start` starts its clock. A `draft`
+ * only replaces this connection's preview request for the next whole frame.
+ * Other commands are refused by name and never reach the game rules.
  */
 
 export interface Connection {
@@ -129,12 +127,22 @@ function start(options: DoorOptions, connection: Connection, command: StartComma
   const handled = handleCommand(entry.session, playerId, command, nowMs);
   const { session, frame } = liveNewsFrameFor(handled.session, playerId, nowMs);
   options.registry.replace(session.id, session);
-  answer(connection, { t: 'reply', receipt: handled.receipt, frame });
+  answer(connection, { t: 'reply', receipt: handled.receipt, frame: withDraft(frame, entry.drafts.get(connection.socket)) });
+}
+
+function draft(options: DoorOptions, connection: Connection, request: DraftRequest): void {
+  const entry = connection.sessionId === null ? undefined : options.registry.get(connection.sessionId);
+  if (entry === undefined || connection.playerId === null || entry.sockets.get(connection.socket) !== connection.playerId) {
+    answer(connection, { t: 'error', code: 'noSession' });
+    return;
+  }
+  if (request.contractId === null && request.spendCents === null) entry.drafts.delete(connection.socket);
+  else entry.drafts.set(connection.socket, { contractId: request.contractId, spendCents: request.spendCents });
 }
 
 export function handleInbound(options: DoorOptions, connection: Connection, text: string): void {
   // Counted before the text is even read, so a script cannot make the service
-  // parse for it. A page sends two messages in a whole game.
+  // parse for it. Preview requests share this same bounded budget.
   if (!connection.messages.hit(options.now())) {
     answer(connection, { t: 'error', code: 'tooManyCommands' });
     return;
@@ -168,8 +176,7 @@ export function handleInbound(options: DoorOptions, connection: Connection, text
       answer(connection, { t: 'error', code: 'badMessage', commandId: message.commandId });
       return;
     case 'draft':
-      // Not a command: there is no command id to answer with.
-      answer(connection, { t: 'error', code: 'badMessage' });
+      draft(options, connection, message);
       return;
   }
 }

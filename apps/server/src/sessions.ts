@@ -1,4 +1,4 @@
-import type { Frame, Session } from '@strike-desk/shared/engine';
+import type { DraftRequest, Frame, Session } from '@strike-desk/shared/engine';
 import { CONTENT_VERSION, DEFAULT_TARGETS_PER_COMPANY, ENGINE_VERSION, createSession, playerOf } from '@strike-desk/shared/engine';
 import type { Limits } from './limits';
 import type { FrameSocket } from './sampler';
@@ -41,6 +41,8 @@ export interface SessionEntry {
   session: Session;
   /** Every socket on this session, with the id of the player it watches as. */
   sockets: Map<FrameSocket, string>;
+  /** Only the latest preview request for each attached connection; never part of the game. */
+  drafts: Map<FrameSocket, DraftRequest>;
   /**
    * The clock reading this session has had no socket since: when it was made,
    * or when its last socket left. Null exactly while a socket is attached.
@@ -112,7 +114,7 @@ export function createRegistry(options: RegistryOptions): SessionRegistry {
       // The stream starts empty for every session: the sampler fills it, and
       // until it has, there is nothing to send a difference against, so the
       // first sampled message is the whole picture.
-      const entry: SessionEntry = { session: createSession(id, identity, { targetsPerCompany }), sockets: new Map(), idleSinceMs: nowMs, stressStream: null };
+      const entry: SessionEntry = { session: createSession(id, identity, { targetsPerCompany }), sockets: new Map(), drafts: new Map(), idleSinceMs: nowMs, stressStream: null };
       sessions.set(id, entry);
       return entry;
     },
@@ -137,6 +139,7 @@ export function createRegistry(options: RegistryOptions): SessionRegistry {
     detach(id, socket, nowMs) {
       const entry = sessions.get(id);
       if (entry === undefined || !entry.sockets.delete(socket)) return;
+      entry.drafts.delete(socket);
       if (entry.sockets.size === 0) entry.idleSinceMs = nowMs;
     },
     replace(id, session) {

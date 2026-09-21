@@ -13,15 +13,19 @@ import {
   frameSchema,
   handleCommand,
   parseServerMessage,
+  playerOf,
   seedToMarketCode,
 } from '@strike-desk/shared/engine';
 import type { BuyCommand, CashOutCommand, ClockCommand, Frame, Market, QuotesMessage } from '@strike-desk/shared/engine';
-import { LIMITS } from '../src/limits';
+import { LIMITS, createTokenBucket, createWindowCounter } from '../src/limits';
+import { handleInbound } from '../src/door';
+import type { Connection, DoorOptions } from '../src/door';
+import { PUBLIC_MAX_BOARD_SIZE } from '../src/boardSizes';
 import type { FrameSocket } from '../src/sampler';
 import { sampleSessions } from '../src/sampler';
 import { drawSessionId } from '../src/seed';
 import { createRegistry } from '../src/sessions';
-import type { Harness } from './harness';
+import type { Harness, TestClient } from './harness';
 import { FIXED_SEEDS, startHarness } from './harness';
 
 /**
@@ -417,5 +421,242 @@ describe('the five commands this service does not take', () => {
     expect(after.account.cashCents).toBe(before.account.cashCents);
     expect(after.positions).toEqual([]);
     expect(after.receipts).toEqual([]);
+  });
+});
+
+/** A protocol round trip proves all preceding client messages reached the server. */
+function roundTrip(client: TestClient): Promise<void> {
+  return new Promise((resolve) => {
+    client.socket.once('pong', () => resolve());
+    client.socket.ping();
+  });
+}
+
+function expectDraftAtFrame(frame: Frame, contractId: number, spendCents: number): void {
+  expect(frameSchema.parse(frame)).toEqual(frame);
+  expect(frame.draft).toMatchObject({ contractId, spendCents });
+  expect(frame.draft?.costs).toHaveLength(frame.quotes.length);
+  expect(frame.draft?.ticket).toMatchObject({
+    contractId,
+    priceCents: frame.quotes[contractId],
+    breakEvenCents: frame.quoteBreakEvens[contractId],
+    costCents: frame.draft?.costs?.[contractId],
+  });
+  expect(frame.draft?.ticket?.quantity).toBeGreaterThan(0);
+  expect(frame.draft?.ticket?.whatIf).toContainEqual({ atCents: frame.quoteBreakEvens[contractId], profitCents: 0 });
+  expect(frame).toMatchObject({ positions: [], receipts: [], days: [], account: { cashCents: STARTING_CASH_CENTS, canBuy: false } });
+  expect(frame).not.toHaveProperty('history');
+  expect(frame).not.toHaveProperty('final');
+  for (const news of frame.news) expect(news).not.toHaveProperty('wasTrue');
+  expect(JSON.stringify(frame)).not.toContain(seedToMarketCode(SEED));
+  expect(JSON.stringify(frame)).not.toContain(String(SEED));
+}
+
+describe('connection-local draft quotes', () => {
+  it('answers only in the next sample at that frame price without a receipt or cash change', async () => {
+    const running = await startHarness();
+    try {
+      const client = running.connect();
+      await client.opened();
+      client.send(HELLO);
+      await client.nextFrame();
+      client.send({ t: 'start', commandId: 'start-draft', pace: 1 });
+      const start = await client.nextReply();
+      expect(start.frame).not.toHaveProperty('draft');
+      client.send({ t: 'draft', contractId: 0, spendCents: 100_000 });
+      await roundTrip(client);
+      expect(client.waiting()).toBe(0);
+      running.clock.advance(70_000);
+      running.sample();
+      const frame = await client.nextFrame();
+      expectDraftAtFrame(frame, 0, 100_000);
+      expect(frame.rev).toBe(start.frame.rev);
+      expect(frame.account).toEqual(start.frame.account);
+      // The request precedes moving prices: this must quote the sampled moment.
+      expect(frame.quotes[0]).not.toBe(start.frame.quotes[0]);
+      expect(allowList({ where: 'draft sample', frame })).toEqual({ ...thinAt('draft sample'), hasDraft: true });
+      await roundTrip(client);
+      expect(client.waiting()).toBe(0);
+    } finally {
+      await running.close();
+    }
+  });
+
+  it.each([undefined, 2500])('isolates two latest drafts and a draftless socket at the existing cadence (board %s)', async (board) => {
+    const running = await startHarness();
+    try {
+      const first = running.connect();
+      await first.opened();
+      first.send({ ...HELLO, ...(board === undefined ? {} : { board }) });
+      const lobby = await first.nextFrame();
+      first.send({ t: 'start', commandId: 'start-tabs', pace: 1 });
+      await first.nextReply();
+      const second = running.connect();
+      const plain = running.connect();
+      for (const client of [second, plain]) {
+        await client.opened();
+        client.send({ ...HELLO, session: lobby.session });
+        expect(await client.nextFrame()).not.toHaveProperty('draft');
+      }
+      first.send({ t: 'draft', contractId: 0, spendCents: 1_000_000 });
+      second.send({ t: 'draft', contractId: 2, spendCents: 2_000_000 });
+      await Promise.all([first, second, plain].map(roundTrip));
+      expect([first.waiting(), second.waiting(), plain.waiting()]).toEqual([0, 0, 0]);
+      running.clock.advance(70_000);
+      running.sample();
+      const [a, b, c] = await Promise.all([first, second, plain].map((client) => client.nextFrame()));
+      expectDraftAtFrame(a!, 0, 1_000_000);
+      expectDraftAtFrame(b!, 2, 2_000_000);
+      expect(c).not.toHaveProperty('draft');
+      expect({ ...a, draft: undefined }).toEqual({ ...c, draft: undefined });
+      expect({ ...b, draft: undefined }).toEqual({ ...c, draft: undefined });
+
+      // A new choice replaces the old one without resetting the whole-frame deadline.
+      first.send({ t: 'draft', contractId: 4, spendCents: 3_000_000 });
+      await roundTrip(first);
+      expect(first.waiting()).toBe(0);
+      const kinds: string[] = [];
+      for (let pass = 1; pass <= 8; pass += 1) {
+        running.clock.advance(200);
+        running.sample();
+        const [one, two, none] = await Promise.all([first, second, plain].map((client) => client.next()));
+        kinds.push(one!.t);
+        expect(two!.t).toBe(one!.t);
+        expect(none!.t).toBe(one!.t);
+        if (one!.t === 'frame' && two!.t === 'frame' && none!.t === 'frame') {
+          expectDraftAtFrame(one as Frame, 4, 3_000_000);
+          expectDraftAtFrame(two as Frame, 2, 2_000_000);
+          expect(none).not.toHaveProperty('draft');
+        } else {
+          expect(one).toEqual(two);
+          expect(two).toEqual(none);
+          expect(one).not.toHaveProperty('draft');
+          expect(Object.keys(one!).sort()).toEqual(['changes', 'day', 'priceIndex', 'prices', 'rev', 'session', 'step', 't']);
+          expect((one as QuotesMessage).changes.every((change) => change.length === 5)).toBe(true);
+        }
+      }
+      expect(kinds).toEqual(board === undefined ? Array.from({ length: 8 }, () => 'frame') : [
+        'quotes', 'quotes', 'quotes', 'quotes', 'quotes', 'quotes', 'quotes', 'frame',
+      ]);
+
+      first.send({ t: 'draft', contractId: null, spendCents: null });
+      await roundTrip(first);
+      running.clock.advance(1600);
+      running.sample();
+      expect(await first.nextFrame()).not.toHaveProperty('draft');
+      expectDraftAtFrame(await second.nextFrame(), 2, 2_000_000);
+      expect(await plain.nextFrame()).not.toHaveProperty('draft');
+      first.send({ t: 'draft', contractId: 4, spendCents: 3_000_000 });
+      await roundTrip(first);
+      await first.close();
+      const resumed = running.connect();
+      await resumed.opened();
+      resumed.send({ ...HELLO, session: lobby.session });
+      expect(await resumed.nextFrame()).not.toHaveProperty('draft');
+      running.sample();
+      expect(await resumed.nextFrame()).not.toHaveProperty('draft');
+      expectDraftAtFrame(await second.nextFrame(), 2, 2_000_000);
+      expect(await plain.nextFrame()).not.toHaveProperty('draft');
+    } finally {
+      await running.close();
+    }
+  });
+
+  it('refuses pre-hello and malformed requests, and quotes a lobby choice only once started', async () => {
+    const running = await startHarness();
+    try {
+      const client = running.connect();
+      await client.opened();
+      client.send({ t: 'draft', contractId: 0, spendCents: 100_000 });
+      expect(await client.nextError()).toEqual({ t: 'error', code: 'noSession' });
+      client.send(HELLO);
+      expect(await client.nextFrame()).not.toHaveProperty('draft');
+      for (const spendCents of [-1, 0, 1.5, Number.MAX_SAFE_INTEGER, '1000']) {
+        client.send({ t: 'draft', contractId: 0, spendCents });
+        expect(await client.nextError()).toEqual({ t: 'error', code: 'badMessage' });
+      }
+      client.send({ t: 'draft', contractId: 0, spendCents: 100_000 });
+      await roundTrip(client);
+      expect(client.waiting()).toBe(0);
+      running.sample();
+      expect(await client.nextFrame()).not.toHaveProperty('draft');
+      client.send({ t: 'start', commandId: 'start-lobby-draft', pace: 1 });
+      const reply = await client.nextReply();
+      expectDraftAtFrame(reply.frame, 0, 100_000);
+      expect(reply.receipt.outcome).toBe('accepted');
+      expect(reply.frame.rev).toBe(1);
+    } finally {
+      await running.close();
+    }
+  });
+
+  it('charges previews to the existing message budget and retains only the last admitted request', async () => {
+    const running = await startHarness({ limits: { messagesPerWindow: 3 } });
+    try {
+      const client = running.connect();
+      await client.opened();
+      client.send(HELLO);
+      await client.nextFrame();
+      client.send({ t: 'start', commandId: 'start-budget', pace: 1 });
+      await client.nextReply();
+      client.send({ t: 'draft', contractId: 0, spendCents: 100_000 });
+      await roundTrip(client);
+      expect(client.waiting()).toBe(0);
+      client.send({ t: 'draft', contractId: 2, spendCents: 200_000 });
+      expect(await client.nextError()).toEqual({ t: 'error', code: 'tooManyCommands' });
+      running.sample();
+      expectDraftAtFrame(await client.nextFrame(), 0, 100_000);
+    } finally {
+      await running.close();
+    }
+  });
+
+  it('keeps draft input out of the game log and quotes a simple bell fixture without changing cash', () => {
+    const registry = createRegistry({ drawSeed: () => SEED, drawId: () => 'simple-draft', limits: LIMITS });
+    let now = 0;
+    const options: DoorOptions = {
+      registry, now: () => now, maxBoardSize: PUBLIC_MAX_BOARD_SIZE,
+      newSessions: createTokenBucket(30, 3),
+    };
+    const sent: string[] = [];
+    const socket: FrameSocket = { OPEN: 1, readyState: 1, bufferedAmount: 0, send: (text) => { sent.push(text); } };
+    const connection: Connection = { socket, sessionId: null, playerId: null, messages: createWindowCounter(20, 10_000) };
+    const send = (message: unknown): void => { handleInbound(options, connection, JSON.stringify(message)); };
+    send(HELLO);
+    send({ t: 'start', commandId: 'start-simple', pace: 1 });
+    const entry = registry.get('simple-draft')!;
+    // A server-only fixture: all companies open at $100 and finish at $110.
+    // The center UP target is $100. At the bell one 100-share ticket pays
+    // $1,000. A $2,500 spend buys two for $2,000, breaking even at $110.
+    const market = structuredClone(entry.session.market);
+    market.days[0]!.paths = market.days[0]!.paths.map(() => [100, ...Array.from({ length: 500 }, () => 110)]);
+    registry.replace(entry.session.id, { ...entry.session, market });
+    const before = entry.session;
+    const log = playerOf(before.game, FIRST_PLAYER_ID).log;
+    send({ t: 'draft', contractId: 20, spendCents: 250_000 });
+    expect(entry.session).toBe(before);
+    expect(playerOf(entry.session.game, FIRST_PLAYER_ID).log).toBe(log);
+    expect(log).toHaveLength(1);
+    expect(sent).toHaveLength(2);
+    now = BELL_STEP_IN_DAY * STEP_MS;
+    socket.bufferedAmount = 1;
+    const stats = { sent: 0, skipped: 0 };
+    sampleSessions(registry, now, stats, LIMITS.stressFullFrameMs);
+    expect(sent).toHaveLength(2);
+    expect(stats).toEqual({ sent: 0, skipped: 1 });
+    socket.bufferedAmount = 0;
+    sampleSessions(registry, now, { sent: 0, skipped: 0 }, LIMITS.stressFullFrameMs);
+    const frame = frameSchema.parse(JSON.parse(sent[2]!));
+    expect(frame.draft?.ticket).toMatchObject({
+      contractId: 20, priceCents: 100_000, quantity: 2, costCents: 200_000, breakEvenCents: 11_000,
+    });
+    expect(frame.draft?.costs?.[20]).toBe(200_000);
+    expect(frame.draft?.ticket?.whatIf).toContainEqual({ atCents: 10_000, profitCents: -200_000 });
+    expect(frame.draft?.ticket?.whatIf).toContainEqual({ atCents: 11_000, profitCents: 0 });
+    expect(frame.rev).toBe(1);
+    expect(frame.account.cashCents).toBe(100_000_000);
+    expect(playerOf(entry.session.game, FIRST_PLAYER_ID).log).toEqual(log);
+    registry.detach(entry.session.id, socket, now);
+    expect(entry.drafts.size).toBe(0);
   });
 });

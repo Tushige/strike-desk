@@ -4,6 +4,7 @@ import { createWsFeed } from './feed/wsFeed';
 import { createGameStore } from './store/gameStore';
 import { autoStart } from './autoStart';
 import { createNewsStore } from './news/newsStore';
+import { createComparisonStore } from './comparison/comparisonStore';
 
 /**
  * Run once per page load, at module scope rather than inside an effect, so
@@ -31,12 +32,18 @@ const feed = createWsFeed({
   board: boardFromSearch(window.location.search),
 });
 
+export const comparisonStore = createComparisonStore((message) => feed.send(message));
+
 feed.subscribe((event) => {
   if (event.type === 'message') {
     store.ingest(event.message);
     newsStore.ingest(event.message);
+    comparisonStore.ingest(event.message);
   }
-  else store.setStatus(event.status);
+  else {
+    store.setStatus(event.status);
+    comparisonStore.setStatus(event.status);
+  }
 });
 
 // Saying hello leaves the clock stopped, so the page starts the game

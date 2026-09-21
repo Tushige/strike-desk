@@ -1,4 +1,5 @@
 import type { Side } from '@strike-desk/shared/protocol';
+import type { Pace } from '@strike-desk/shared/time';
 import type { GamePhase, LineState, Trend } from './ports';
 
 /**
@@ -76,6 +77,61 @@ export const newsWords = {
 export const bannerWords = {
   title: 'Plot twist!',
   body: (companyName: string): string => `The news is out for ${companyName}. Watch the price.`,
+} as const;
+
+const START_WORDS: Record<Pace, string> = {
+  1: 'Start at normal speed',
+  3: 'Start fast (3x)',
+  7.5: 'Start turbo (7.5x)',
+};
+
+export const lobbyWords = {
+  heading: 'Ready for the opening bell?',
+  body: (days: number): string =>
+    `${String(days)} trading days. Each day you read the news, pick an UP or DOWN ticket, and decide when to cash out.`,
+  paceHint: 'Pick a speed to start. The rules are the same at every speed.',
+  start: (pace: Pace): string => START_WORDS[pace],
+} as const;
+
+export const preBellWords = {
+  heading: (day: number): string => `Day ${String(day)}: before the bell`,
+  body: 'Read the news and pick your ticket. Prices stand still until the opening bell.',
+  action: 'Ring the opening bell',
+} as const;
+
+export const openWords = {
+  heading: (day: number): string => `Day ${String(day)}: the market is open`,
+  body: 'Prices are moving. No ticket yet? You can still buy one. Holding one? Cash out any time before the closing bell.',
+  action: 'Skip to the closing bell',
+} as const;
+
+export const debriefWords = {
+  heading: (day: number): string => `Day ${String(day)}: closing bell`,
+  /** Shown until the day's result arrives. */
+  waiting: 'Counting up the day…',
+  startLabel: 'Started the day with',
+  endLabel: 'Ended the day with',
+  changeLabel: 'Change today',
+  upDay: 'Nice move!',
+  downDay: 'Tough day. It happens.',
+  flatDay: 'A quiet day.',
+  nextDay: (day: number): string => `Go to day ${String(day)}`,
+  lastDay: 'See your final result',
+} as const;
+
+export const finalWords = {
+  heading: 'That was the final bell!',
+  finalLabel: 'You finished with',
+  changeLabel: 'Since the start',
+  daysCaption: 'Day by day',
+  dayColumn: 'Day',
+  startColumn: 'Started with',
+  endColumn: 'Ended with',
+  changeColumn: 'Change',
+  /** Kid term first; the real term follows in the hint. */
+  marketLabel: 'Market number',
+  marketHint: 'This number recreates the exact same market. Traders call it a seed.',
+  action: 'Play again',
 } as const;
 
 export const stripWords = {

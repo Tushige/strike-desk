@@ -2,15 +2,18 @@ import { createElement } from 'react';
 import type { ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { timeLeftText } from '../src/modules/desk/format';
-import { CompanyChip, CompanyMark, CompanyStrip, NewsCard, RevealBanner, TopBar } from '../src/modules/desk/index';
-import type { CompanyChipProps, NewsCardProps, TopBarProps } from '../src/modules/desk/index';
+import { RECORDED_LABELS } from '../src/fixtures/recordedGame';
+import { deskPropsAt } from '../src/modules/desk/fake';
+import { signedCentsText, timeLeftText } from '../src/modules/desk/format';
+import { CompanyChip, CompanyMark, CompanyStrip, NewsCard, PhaseScreen, RevealBanner, TopBar } from '../src/modules/desk/index';
+import type { CompanyChipProps, DaySummary, NewsCardProps, TopBarProps } from '../src/modules/desk/index';
 
 /**
  * The desk pieces, rendered to static markup from props typed in here. Every
  * expected text below is typed in too: none is read from the block's words
  * file or from the recorded game, so a changed word fails a test instead of
- * quietly agreeing with itself.
+ * quietly agreeing with itself. One suite draws the recorded game's moments,
+ * and pins none of its words or numbers.
  */
 
 function nothing(): void {
@@ -403,5 +406,189 @@ describe('the reveal banner', () => {
     const markup = markupOf(createElement(RevealBanner, { companyName: 'BubbleTest' }));
 
     expect(markup).toContain('motion-reduce:transition-none');
+  });
+});
+
+describe('the pieces at every moment of the recorded game', () => {
+  /**
+   * No word or number of the recording is pinned here: it may be retaken.
+   * What is checked is that every piece draws every moment, and that the
+   * ending stays unsaid while a day is still running.
+   */
+  it('draw all thirteen moments, and say no outcome before the closing bell', () => {
+    expect(RECORDED_LABELS).toHaveLength(13);
+
+    for (const label of RECORDED_LABELS) {
+      const props = deskPropsAt(label);
+      const beforeTheBell = props.topBar.phase === 'preBell' || props.topBar.phase === 'open';
+
+      const pieces = [
+        markupOf(createElement(TopBar, props.topBar)),
+        markupOf(createElement(RevealBanner, props.banner)),
+        markupOf(createElement(PhaseScreen, props.screen)),
+        ...props.chips.map((chip) => markupOf(createElement(CompanyChip, chip))),
+      ];
+      const cards = props.news.map((card) => markupOf(createElement(NewsCard, card)));
+
+      for (const markup of pieces) expect([label, markup === '']).toEqual([label, false]);
+      for (const markup of [...pieces, ...cards]) expect([label, COLOUR_VALUE.test(markup)]).toEqual([label, false]);
+      if (beforeTheBell) {
+        for (const markup of cards) expect([label, markup.includes('data-outcome')]).toEqual([label, false]);
+      }
+    }
+  });
+});
+
+describe('a signed amount', () => {
+  it('wears a plus or a minus in front of the formatted amount, and neither at zero', () => {
+    expect(signedCentsText(4_991_400)).toBe('+$49,914');
+    expect(signedCentsText(-250_000)).toBe('-$2,500');
+    expect(signedCentsText(0)).toBe('$0');
+    // Cents show only when there are some: 12,036 cents is $120.36.
+    expect(signedCentsText(-12_036)).toBe('-$120.36');
+  });
+});
+
+describe('the phase screens', () => {
+  const inside = createElement('p', null, 'the desk of the day');
+
+  const lobby = (canStart: boolean): string =>
+    markupOf(createElement(PhaseScreen, { phase: 'lobby', paces: [1, 3, 7.5], canStart, onStart: nothing }));
+  const preBell = (canAct: boolean): string =>
+    markupOf(createElement(PhaseScreen, { phase: 'preBell', day: 2, canAct, onOpenBell: nothing, children: inside }));
+  const open = (canAct: boolean): string =>
+    markupOf(createElement(PhaseScreen, { phase: 'open', day: 2, canAct, onSkipToBell: nothing, children: inside }));
+  const debrief = (result: DaySummary | null, canAct = true, day = 1): string =>
+    markupOf(createElement(PhaseScreen, { phase: 'debrief', day, result, canAct, onNextDay: nothing, children: inside }));
+  const final = (): string =>
+    markupOf(
+      createElement(PhaseScreen, {
+        phase: 'final',
+        finalCents: 104_991_400,
+        changeCents: 4_991_400,
+        marketCode: '7NS-URH-ME42',
+        days: [
+          { day: 1, startCents: 100_000_000, endCents: 105_241_400, changeCents: 5_241_400 },
+          { day: 2, startCents: 105_241_400, endCents: 104_991_400, changeCents: -250_000 },
+        ],
+        onPlayAgain: nothing,
+      }),
+    );
+
+  const dayOne: DaySummary = { day: 1, startCents: 100_000_000, endCents: 104_991_400, changeCents: 4_991_400 };
+
+  const buttonsOf = (markup: string): string[] => markup.match(/<button[^>]*>/g) ?? [];
+  const disabledOf = (markup: string): number => buttonsOf(markup).filter((button) => button.includes('disabled=""')).length;
+
+  it('offers one start button for each pace in the lobby', () => {
+    const markup = lobby(true);
+    const text = textOf(markup);
+
+    expect(buttonsOf(markup)).toHaveLength(3);
+    expect(disabledOf(markup)).toBe(0);
+    expect(text).toContain('Start at normal speed');
+    expect(text).toContain('Start fast (3x)');
+    expect(text).toContain('Start turbo (7.5x)');
+  });
+
+  it('disables all three start buttons while a game cannot be started', () => {
+    expect(disabledOf(lobby(false))).toBe(3);
+  });
+
+  it('shows before the bell its heading for the day, its one button and the desk inside its content region', () => {
+    const markup = preBell(true);
+    const text = textOf(markup);
+
+    expect(text).toContain('Day 2: before the bell');
+    expect(text).toContain('Ring the opening bell');
+    expect(buttonsOf(markup)).toHaveLength(1);
+    expect(disabledOf(markup)).toBe(0);
+    expect(disabledOf(preBell(false))).toBe(1);
+    expect(markup.split('data-region="content"').length - 1).toBe(1);
+    expect(markup).toMatch(/data-region="content"[^>]*><p>the desk of the day<\/p><\/div>/);
+  });
+
+  it('shows while the market is open its heading, its one button and the desk', () => {
+    const markup = open(true);
+    const text = textOf(markup);
+
+    expect(text).toContain('Day 2: the market is open');
+    expect(text).toContain('Skip to the closing bell');
+    expect(buttonsOf(markup)).toHaveLength(1);
+    expect(disabledOf(open(false))).toBe(1);
+    expect(markup).toMatch(/data-region="content"[^>]*><p>the desk of the day<\/p><\/div>/);
+  });
+
+  it('shows at the debrief the day as the server summed it up, the change with its sign', () => {
+    const markup = debrief(dayOne);
+    const text = textOf(markup);
+
+    expect(text).toContain('Day 1: closing bell');
+    expect(text).toContain('$1,000,000');
+    expect(text).toContain('$1,049,914');
+    expect(text).toContain('+$49,914');
+    expect(text).toContain('Go to day 2');
+    expect(buttonsOf(markup)).toHaveLength(1);
+    expect(disabledOf(debrief(dayOne, false))).toBe(1);
+    expect(markup).toMatch(/data-region="content"[^>]*><p>the desk of the day<\/p><\/div>/);
+  });
+
+  it('shows a losing day with a minus, in words as well as in colour', () => {
+    const text = textOf(debrief({ day: 1, startCents: 100_000_000, endCents: 99_750_000, changeCents: -250_000 }));
+
+    expect(text).toContain('-$2,500');
+    expect(text).not.toContain('+');
+  });
+
+  it('waits in words, with no amount, until the result of the day arrives', () => {
+    const text = textOf(debrief(null));
+
+    expect(text).toContain('Counting up the day…');
+    expect(text).not.toContain('$');
+  });
+
+  it('leads from the last debrief to the final result, not to a sixth day', () => {
+    const text = textOf(debrief({ ...dayOne, day: 5 }, true, 5));
+
+    expect(text).toContain('See your final result');
+    expect(text).not.toContain('day 6');
+  });
+
+  it('shows on the final screen the final worth, the change, a row for each day, the market number and play again', () => {
+    const markup = final();
+    const text = textOf(markup);
+
+    expect(text).toContain('$1,049,914');
+    expect(text).toContain('+$49,914');
+    expect(text).toContain('-$2,500');
+    expect(text).toContain('Market number');
+    expect(text).toContain('7NS-URH-ME42');
+    expect(text).toContain('Play again');
+    expect(/<tbody[\s\S]*<\/tbody>/.exec(markup)?.[0].split('<tr').length).toBe(3);
+    expect(buttonsOf(markup)).toHaveLength(1);
+  });
+
+  it('shows a market number on no screen but the final one', () => {
+    for (const markup of [lobby(true), preBell(true), open(true), debrief(dayOne), debrief(null)]) {
+      expect(textOf(markup)).not.toContain('Market number');
+      expect(markup).not.toMatch(/[0-9A-Z]{3}-[0-9A-Z]{3}-[0-9A-Z]{4}/);
+    }
+  });
+
+  it('fills the height it is given on every screen, and takes none from the window', () => {
+    for (const markup of [lobby(true), preBell(true), open(true), debrief(dayOne), final()]) {
+      const root = /^<section[^>]*>/.exec(markup)?.[0] ?? '';
+      expect(root).toContain('h-full');
+      expect(root).toContain('min-h-0');
+      expect(markup).not.toMatch(/h-screen|h-dvh|min-h-screen|100vh|100dvh/);
+    }
+  });
+
+  it('gives every button a focus ring', () => {
+    for (const markup of [lobby(true), preBell(true), open(true), debrief(dayOne), final()]) {
+      for (const button of buttonsOf(markup)) {
+        expect(button).toContain('focus-visible:outline-ring');
+      }
+    }
   });
 });

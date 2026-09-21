@@ -1,10 +1,11 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import { HEALTH_PATH, WS_PATH } from '@strike-desk/shared/paths';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   build: {
     // Two pages out of one build: the game at `/`, and the module lab at
     // `/lab`. Each input is named, so a file in `dist/assets` says which page

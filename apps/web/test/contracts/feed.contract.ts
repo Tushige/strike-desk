@@ -57,7 +57,9 @@ export function describeFeedContract(name: string, make: (seam: TransportSeam) =
       feed.connect();
       transport.last().fireOpen();
 
-      expect(transport.last().sent[0]).toBe('{"t":"hello","v":1}');
+      // The whole of `sent`, not just its first text: one hello per socket
+      // and no second one.
+      expect(transport.last().sent).toEqual(['{"t":"hello","v":1}']);
     });
 
     it('says hello first, naming the session it has stored', () => {
@@ -85,6 +87,9 @@ export function describeFeedContract(name: string, make: (seam: TransportSeam) =
       feed.close();
 
       expect(statuses()).toEqual(['connecting', 'live', 'reconnecting', 'connecting', 'live', 'closed']);
+      // Closing for good closes the socket it holds, exactly once: a feed
+      // that only forgets its socket leaks it, and leaves a seat taken.
+      expect(transport.last().closeCalls).toBe(1);
     });
 
     it('waits 1, 2, 4, 8 and then 8 seconds while no frame arrives', () => {
@@ -135,6 +140,21 @@ export function describeFeedContract(name: string, make: (seam: TransportSeam) =
 
       expect(feed.send(START)).toBe(true);
       expect(transport.last().sent.at(-1)).toBe(START_TEXT);
+    });
+
+    it('hands nothing over, and says so, once its socket is no longer open', () => {
+      const { feed, transport } = liveRig();
+      const socket = transport.last();
+      const sentBefore = [...socket.sent];
+      // A browser marks a dead socket closed straight away and delivers its
+      // close event as a later task. In that gap the feed has not been told
+      // anything, so it still believes the line is up — and a socket that is
+      // no longer open takes a text without a word and throws it away.
+      socket.close();
+
+      expect(feed.send(START)).toBe(false);
+      expect(socket.sent).toEqual(sentBefore);
+      expect(socket.discarded).toEqual([]);
     });
 
     it('stamps a message with the time it arrived', () => {

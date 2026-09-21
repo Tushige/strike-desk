@@ -231,12 +231,17 @@ export function createWsFeed(options: WsFeedOptions): Feed {
   }
 
   function send(message: Outbound): boolean {
-    if (status !== 'live' || socket === null) return false;
+    // The status is what the feed has been told; the readyState is what the
+    // socket is. A dying socket is marked closed before its close event
+    // arrives, and takes a text without a word in the meantime, so the status
+    // alone would report a message that never left the tab as sent.
+    if (status !== 'live' || socket === null || socket.readyState !== SOCKET_OPEN) return false;
     try {
       socket.send(JSON.stringify(message));
       return true;
     } catch {
-      // A socket that closed between two events throws here. Not sent.
+      // A socket that turned connecting, or was replaced under us, throws
+      // here. Not sent.
       return false;
     }
   }

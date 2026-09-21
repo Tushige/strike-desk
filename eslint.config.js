@@ -80,8 +80,22 @@ const webBlockFiles = [
   'apps/web/src/fixtures/**/*.ts',
 ];
 
+// `**/feed` is the page's own socket feed (`apps/web/src/feed/`), but it also
+// matches the package path `@strike-desk/shared/feed` — the Feed interface a
+// block is built against. The negation lets that one path back in; it works
+// here because no pattern above it excludes a parent of it, and gitignore
+// rules cannot re-include anything under an excluded parent.
 const runningGameGroup = {
-  group: ['**/boot', '**/store', '**/store/**', '**/feed', '**/feed/**', '**/autoStart', '**/App'],
+  group: [
+    '**/boot',
+    '**/store',
+    '**/store/**',
+    '**/feed',
+    '**/feed/**',
+    '!@strike-desk/shared/feed',
+    '**/autoStart',
+    '**/App',
+  ],
   message:
     'A building block and the lab never reach the running game: no boot, no store, no socket feed, no App. A block is built against its port and shown against its stand-in source.',
 };

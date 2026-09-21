@@ -18,8 +18,10 @@ type SocketListener = (event: { data?: unknown }) => void;
 export interface FakeSocket extends SocketLike {
   /** The address it was opened to. */
   url: string;
-  /** Every text handed to `send`, in order. */
+  /** Every text this socket carried, in order: the ones handed over while it was open. */
   sent: string[];
+  /** Every text handed over once it was closing or closed, which a real socket throws away. */
+  discarded: string[];
   closeCalls: number;
   fireOpen(): void;
   fireMessage(data: unknown): void;
@@ -38,8 +40,18 @@ function createFakeSocket(url: string): FakeSocket {
     url,
     readyState: SOCKET_CONNECTING,
     sent: [],
+    discarded: [],
     closeCalls: 0,
+    // A real socket refuses a send only while it is still connecting; once it
+    // is closing or closed it takes the text and quietly throws it away, so
+    // the caller is never told. Both are worth catching, so the fake does the
+    // same and keeps what it threw away.
     send(text: string) {
+      if (socket.readyState === SOCKET_CONNECTING) throw new Error('the socket is still connecting');
+      if (socket.readyState !== SOCKET_OPEN) {
+        socket.discarded.push(text);
+        return;
+      }
       socket.sent.push(text);
     },
     // Counts the call and marks the socket closed, and fires nothing: a real

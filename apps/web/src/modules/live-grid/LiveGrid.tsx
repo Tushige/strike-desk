@@ -134,9 +134,22 @@ function isAnyColumnSorted<Row extends GridRow>(grid: GridApi<Row>): boolean {
   return grid.getColumnState().some((column) => column.sort != null);
 }
 
-function LiveGridInner<Row extends GridRow>(props: LiveGridProps<Row>): ReactElement {
+/**
+ * What the component takes beyond its public props. It is not part of the
+ * block's face: the block's `index` hands out `LiveGrid`, which does not have it.
+ */
+interface InnerProps {
+  /**
+   * Draws every row and column instead of only the ones on screen. For a
+   * document that lays nothing out, where every row has no height and "on
+   * screen" is nothing: the grid's own tests there. Fixed for the grid's life.
+   */
+  readonly drawEveryRow?: boolean;
+}
+
+export function LiveGridInner<Row extends GridRow>(props: LiveGridProps<Row> & InnerProps): ReactElement {
   const { source, columns, defaultColDef, label, selectedId, onSelect, filter, isDimmed, isHighlighted, stale } = props;
-  const { onReadout } = props;
+  const { onReadout, drawEveryRow = false } = props;
 
   const rows = useSyncExternalStore(source.subscribe, source.rows, source.rows);
   // The grid wants an array it may keep; the source's is read-only. One copy per row set.
@@ -436,6 +449,8 @@ function LiveGridInner<Row extends GridRow>(props: LiveGridProps<Row>): ReactEle
           suppressOverlays={NO_GRID_MESSAGES}
           cellFlashDuration={FLASH_MS}
           cellFadeDuration={FADE_MS}
+          suppressRowVirtualisation={drawEveryRow}
+          suppressColumnVirtualisation={drawEveryRow}
         />
       </div>
       {/* Always here, so that a screen reader hears a notice arrive; empty, it takes no room and catches no pointer. */}
@@ -449,6 +464,7 @@ function LiveGridInner<Row extends GridRow>(props: LiveGridProps<Row>): ReactEle
 
 /**
  * Memoised, so a parent that renders for its own reasons does not render the
- * table. `memo` forgets the row type, and the cast gives it back.
+ * table. `memo` forgets the row type, and the cast gives it back, with the
+ * public props and nothing more.
  */
-export const LiveGrid = memo(LiveGridInner) as typeof LiveGridInner;
+export const LiveGrid = memo(LiveGridInner) as <Row extends GridRow>(props: LiveGridProps<Row>) => ReactElement;

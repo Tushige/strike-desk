@@ -36,6 +36,12 @@
   --up: #55e2b3;
   --down: #ff8c88;
   --gold: #ffe08a;
+  --company-0: #a99aff;
+  --company-1: #ffbf69;
+  --company-2: #65ccff;
+  --company-3: #83e0a5;
+  --company-4: #ff90c7;
+  --company-5: #ffd65a;
 
   /* Surface details: the dots on the ground, a panel's shadow, selected text. */
   --ground-dot: #59446d2a;
@@ -66,6 +72,12 @@
   --color-up: var(--up);
   --color-down: var(--down);
   --color-gold: var(--gold);
+  --color-company-0: var(--company-0);
+  --color-company-1: var(--company-1);
+  --color-company-2: var(--company-2);
+  --color-company-3: var(--company-3);
+  --color-company-4: var(--company-4);
+  --color-company-5: var(--company-5);
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);

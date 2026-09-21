@@ -29,6 +29,9 @@ import type { Command, DraftRequest, Reply, Session } from '@strike-desk/shared/
  *   claimed only gates acceptance; it is never the price paid.
  * - Every accepted command is in the player's log, with the step it arrived
  *   at, and moves the player's revision. A repeat does neither.
+ * - The player is the connection's. An id the session does not hold is a
+ *   fault in the wiring, not something a player did: it throws, and is the one
+ *   case with no receipt.
  *
  * What this interface deliberately does not say:
  *
@@ -63,7 +66,11 @@ export interface HandleInput {
 
 /** What came of it. */
 export interface Handled {
-  /** The session after the command, settled up to `nowMs`. The same game as before when the command was a repeat. */
+  /**
+   * The session after the command, settled up to `nowMs`, and always the one
+   * to keep. A repeat changes nothing of the player's, but the clock has still
+   * moved: the step, and any bell that rang since, are in this session too.
+   */
   session: Session;
   /**
    * The receipt, and a fresh full frame with today's price history, for the

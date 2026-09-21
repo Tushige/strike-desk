@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { CAST } from '../src/cast';
-import type { HeadlineSlot } from '../src/news';
 import { writeHeadlines } from '../src/news';
 import { describeHeadlineWriterContract, referenceWriter, scriptedRng, slotsOfGame, wordingStream } from './contracts/headlineWriter.contract';
-import { testMarket } from './helpers';
+import { TEST_SEED, testMarket } from './helpers';
 
 describeHeadlineWriterContract('the reference writer', referenceWriter, { games: 200 });
+
+// The real writer, at the contract's own count of games.
+describeHeadlineWriterContract('the starter pool', writeHeadlines);
 
 describe('the scripted random stream', () => {
   it('says exactly what the script says, then runs out', () => {
@@ -26,54 +27,19 @@ describe('the scripted random stream', () => {
   });
 });
 
-describe('the stand-in wording', () => {
-  const slot = (fields: Pick<HeadlineSlot, 'trust' | 'direction'>): HeadlineSlot => ({ id: 0, day: 1, companyId: 0, ...fields });
-  // The stand-in draws nothing, so a stream with nothing in it is enough.
-  const write = (slots: HeadlineSlot[]) => writeHeadlines(slots, CAST, scriptedRng([]));
-
-  it('is pinned word for word', () => {
-    expect(CAST[0]?.name).toBe('RoboPup');
-
-    expect(write([slot({ trust: 3, direction: 'up' })])).toEqual([
-      { source: 'Company statement', title: 'Good news for RoboPup?', body: 'RoboPup may be about to have a very good day.' },
-    ]);
-    expect(write([slot({ trust: 2, direction: 'down' })])).toEqual([
-      { source: 'A store manager says', title: 'Trouble at RoboPup?', body: 'RoboPup may be about to have a very bad day.' },
-    ]);
-    expect(write([slot({ trust: 1, direction: 'up' })])[0]?.source).toBe('Someone online says');
-  });
-
-  it('answers every slot, in order', () => {
-    const slots = slotsOfGame(7);
-
-    const words = write(slots);
-
-    expect(words).toHaveLength(15);
-    words.forEach((entry, index) => {
-      expect(entry).toEqual(write([slots[index] ?? slot({ trust: 1, direction: 'up' })])[0]);
-    });
-  });
-
-  it('is only a stand-in: its titles can repeat within a game, which the writer contract forbids', () => {
-    const repeats = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].filter((seed) => {
-      const titles = writeHeadlines(slotsOfGame(seed), CAST, wordingStream(seed)).map((entry) => entry.title);
-      return new Set(titles).size < titles.length;
-    });
-
-    expect(repeats.length).toBeGreaterThan(0);
-  });
-});
-
 describe('the market writes its headlines through the writer', () => {
-  it('gives every headline exactly the words the stand-in gives for its slot', () => {
+  it('gives its fifteen headlines exactly the words the writer gives for its fifteen slots and its wording stream', () => {
     const market = testMarket();
     const headlines = market.days.flatMap((day) => day.news.map((item) => item.headline));
+    const slots = headlines.map(({ id, day, companyId, trust, direction }) => ({ id, day, companyId, trust, direction }));
+
+    const words = writeHeadlines(slots, market.cast, wordingStream(TEST_SEED));
 
     expect(headlines).toHaveLength(15);
-    for (const headline of headlines) {
-      const { source, title, body, ...asSlot } = headline;
-      expect({ source, title, body }).toEqual(writeHeadlines([asSlot], market.cast, scriptedRng([]))[0]);
-    }
+    expect(headlines.map(({ source, title, body }) => ({ source, title, body }))).toEqual(words);
+    // The test market opens with Fizzly: real words, with the company's name filled in.
+    expect(headlines[0]?.companyId).toBe(1);
+    expect(headlines[0]?.title).toContain('Fizzly');
   });
 
   it('numbers the slots 0 to 14, three a day, one per trust level, about three different companies', () => {

@@ -1,7 +1,7 @@
-import type { CompanyView, Frame, FrameOrder, ServerMessage } from '@strike-desk/shared/protocol';
+import type { CompanyView, Frame, FrameOrder, QuotesMessage, ServerMessage } from '@strike-desk/shared/protocol';
 import { isNewerFrame } from '@strike-desk/shared/protocol';
 import type { FeedStatus } from '@strike-desk/shared/feed';
-import { buildRows, changedRows } from './contractRows';
+import { applyQuoteChange, buildRows, changedRows } from './contractRows';
 import type { ContractRow, RowInput } from './contractRows';
 
 /**
@@ -130,6 +130,15 @@ export function createGameStore(companyCount = 6): GameStore {
   let rowsById: (ContractRow | undefined)[] = [];
   let rowOrder: number[] = [];
   let boardSignature = '';
+  /**
+   * The three things a batch of changed quotes is read against, kept from the
+   * frame last accepted. A batch carries none of them, so it has to be applied
+   * against exactly the values that frame's rows were built with, and it is
+   * only ever applied to that frame's day.
+   */
+  let heldDay = 0;
+  let heldMinTicketCents = 0;
+  let heldBuyable = false;
 
   function price(companyId: number): Slice<number | null> {
     const slice = prices[companyId];
@@ -140,6 +149,11 @@ export function createGameStore(companyCount = 6): GameStore {
   function ingest(message: ServerMessage): void {
     if (message.t === 'error') {
       if (message.code === 'noSession') sessionGone.set(true);
+      return;
+    }
+
+    if (message.t === 'quotes') {
+      ingestQuotes(message);
       return;
     }
 
@@ -165,7 +179,53 @@ export function createGameStore(companyCount = 6): GameStore {
     ingestBoard(frame);
   }
 
+  /**
+   * A batch of changed quotes: the stress setting's second message shape. It
+   * is not the whole picture, so it may only be merged into the board this
+   * store already holds — same session, same day, and no older than what is
+   * held by the rule frames obey. Anything else is dropped, and the whole
+   * frame the server sends every second or so is what puts the rows right.
+   *
+   * The day rule is the belt to the server's braces: the server sends a whole
+   * frame first on every new day, but a batch and a frame can cross on the
+   * wire, and a batch of yesterday applied to today's board would be wrong on
+   * every row it touched.
+   */
+  function ingestQuotes(message: QuotesMessage): void {
+    if (held === null || held.session !== message.session || message.day !== heldDay || !isNewerFrame(held, message)) {
+      counters.dropped += 1;
+      return;
+    }
+    held = { session: message.session, rev: message.rev, step: message.step };
+    counters.accepted += 1;
+
+    for (let companyId = 0; companyId < companyCount; companyId += 1) {
+      prices[companyId]?.set(message.prices[companyId] ?? null);
+    }
+
+    const changed: ContractRow[] = [];
+    for (const change of message.changes) {
+      const id = change[0];
+      const row = rowsById[id];
+      // A ticket this store holds no row for: the board it belongs to is not
+      // the board on screen, so there is nothing to change.
+      if (row === undefined) continue;
+      const next = applyQuoteChange(row, change, { buyable: heldBuyable, minTicketCents: heldMinTicketCents });
+      if (next === null) continue;
+      rowsById[id] = next;
+      changed.push(next);
+    }
+    if (changed.length === 0 || rowSink === null) return;
+    rowSink(changed);
+  }
+
   function ingestBoard(frame: Frame): void {
+    heldDay = frame.clock.day;
+    heldMinTicketCents = frame.minTicketCents;
+    // Too cheap to trade is a statement about buying, so it applies only
+    // while there is something to buy. From the closing bell on, a row
+    // shows what it settled at, $0 included.
+    heldBuyable = frame.clock.phase === 'preBell' || frame.clock.phase === 'open';
     const board = frame.board;
     if (board === null) {
       boardSignature = '';
@@ -183,11 +243,8 @@ export function createGameStore(companyCount = 6): GameStore {
       // works neither of them out.
       quoteReals: frame.quoteReals,
       quoteHopes: frame.quoteHopes,
-      minTicketCents: frame.minTicketCents,
-      // Too cheap to trade is a statement about buying, so it applies only
-      // while there is something to buy. From the closing bell on, a row
-      // shows what it settled at, $0 included.
-      buyable: frame.clock.phase === 'preBell' || frame.clock.phase === 'open',
+      minTicketCents: heldMinTicketCents,
+      buyable: heldBuyable,
     };
 
     const signature = boardSignatureOf(frame, board);

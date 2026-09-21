@@ -10,8 +10,10 @@ import {
   createSession,
   frameFor,
   handleCommand,
+  parseServerMessage,
+  quotesMessageSchema,
 } from '@strike-desk/shared/engine';
-import type { Frame } from '@strike-desk/shared/engine';
+import type { Frame, QuotesMessage, ServerMessage } from '@strike-desk/shared/engine';
 import type { Harness, TestClient } from './harness';
 import { FIXED_SEEDS, startHarness } from './harness';
 
@@ -94,6 +96,44 @@ function roundTrip(client: TestClient): Promise<void> {
   });
 }
 
+const isFrame = (message: ServerMessage): message is Frame => message.t === 'frame';
+const isBatch = (message: ServerMessage): message is QuotesMessage => message.t === 'quotes';
+
+/**
+ * Everything this client is sent from now on, read after the fact rather than
+ * awaited one message at a time: a sampling pass that sends nothing at all is
+ * one of the things being asserted, and awaiting a message per pass could only
+ * ever hang on it.
+ */
+function fromHere(client: TestClient): () => ServerMessage[] {
+  const already = client.received().length;
+  return () =>
+    client
+      .received()
+      .slice(already)
+      .flatMap((raw) => {
+        const message = parseServerMessage(raw);
+        return message === null ? [] : [message];
+      });
+}
+
+/** The four ticket-price arrays, with every batch since `from` applied in order. */
+function replay(from: Frame, batches: readonly QuotesMessage[]): Pick<Frame, 'quotes' | 'quoteReals' | 'quoteHopes' | 'quoteBreakEvens'> {
+  const quotes = [...from.quotes];
+  const quoteReals = [...from.quoteReals];
+  const quoteHopes = [...from.quoteHopes];
+  const quoteBreakEvens = [...from.quoteBreakEvens];
+  for (const message of batches) {
+    for (const [id, priceCents, realCents, hopeCents, breakEvenCents] of message.changes) {
+      quotes[id] = priceCents;
+      quoteReals[id] = realCents;
+      quoteHopes[id] = hopeCents;
+      quoteBreakEvens[id] = breakEvenCents;
+    }
+  }
+  return { quotes, quoteReals, quoteHopes, quoteBreakEvens };
+}
+
 describe('a granted board size', () => {
   it('builds the same board with finer spacing: 209 targets a company and 2508 ticket prices', async () => {
     const running = await boot();
@@ -121,7 +161,7 @@ describe('a granted board size', () => {
     expect(lobby).toMatchObject({ clock: { phase: 'lobby' }, board: null, quotes: [], stress: true });
   });
 
-  it('keeps repricing: two frames a sampling pass apart differ on at least one ticket', async () => {
+  it('keeps repricing: the message a sampling pass later moves at least one ticket', async () => {
     const running = await boot();
     const { client } = await play(running, { board: STRESS_SIZE });
 
@@ -131,14 +171,18 @@ describe('a granted board size', () => {
     running.sample();
     const first = await client.nextFrame();
     expect(first.clock.phase).toBe('open');
+    expect(first.quotes).toHaveLength(STRESS_CONTRACTS);
 
     running.clock.advance(SAMPLE_MS);
     running.sample();
-    const later = await client.nextFrame();
+    // With the switch on, what follows the whole picture is a batch of the
+    // tickets that changed, not another whole picture.
+    const later = await client.next();
+    if (!isBatch(later)) throw new Error(`expected a batch, got a ${later.t}`);
 
-    expect(later.quotes).toHaveLength(STRESS_CONTRACTS);
     expect(later.step).toBeGreaterThan(first.step);
-    expect(later.quotes.some((price, id) => price !== first.quotes[id])).toBe(true);
+    expect(later.changes.length).toBeGreaterThan(0);
+    expect(later.changes.some(([id, priceCents]) => priceCents !== first.quotes[id])).toBe(true);
   });
 });
 
@@ -264,6 +308,205 @@ describe('a stress session can never buy', () => {
     client.send({ t: 'buy', commandId: 'buy-000001', day: 1, contractId: 0, spendCents: 1000, seenPriceCents: 1000 });
 
     expect(await client.nextError()).toEqual({ t: 'error', code: 'badMessage', commandId: 'buy-000001' });
+  });
+});
+
+/**
+ * With the switch on the whole picture is too big to send five times a second,
+ * so only the tickets that changed go out, with one whole picture every
+ * `stressFullFrameMs` as the way back into step. Everything below is driven
+ * over a real socket with the injected clock.
+ */
+describe('what a switched-on session is sent', () => {
+  /** Five sampling passes' worth, so a whole picture is due on every fifth pass. */
+  const FULL_FRAME_MS = SAMPLE_MS * 5;
+  const CADENCE = { limits: { stressFullFrameMs: FULL_FRAME_MS } };
+
+  it('sends the whole picture first, then only the tickets that changed', async () => {
+    const running = await boot(CADENCE);
+    const { client } = await play(running, { board: STRESS_SIZE });
+    running.clock.advance(OPEN_AT_MS);
+    const since = fromHere(client);
+
+    // Nothing has been sampled on this session yet, so there is nothing to
+    // send a difference against: the first sampled message is the whole one.
+    running.sample();
+    running.clock.advance(SAMPLE_MS);
+    running.sample();
+    await roundTrip(client);
+
+    const stream = since();
+    expect(stream.map((message) => message.t)).toEqual(['frame', 'quotes']);
+    const batch = stream[1];
+    if (batch === undefined || !isBatch(batch)) throw new Error('the second message was not a batch');
+    expect(batch.changes.length).toBeGreaterThan(0);
+    expect(batch.changes.length).toBeLessThan(STRESS_CONTRACTS);
+    expect(batch.changes.every((change) => change.length === 5)).toBe(true);
+    expect(batch).toMatchObject({ session: stream[0]?.t === 'frame' ? stream[0].session : '', day: 1 });
+  });
+
+  it('sends the whole picture once every stressFullFrameMs and changed quotes in between', async () => {
+    const running = await boot(CADENCE);
+    const { client } = await play(running, { board: STRESS_SIZE });
+    running.clock.advance(OPEN_AT_MS);
+    running.sample();
+    // The priming whole picture has to have arrived before the window opens:
+    // a pass sends on the server before the client is told.
+    await roundTrip(client);
+    const since = fromHere(client);
+
+    for (let pass = 0; pass < 10; pass += 1) {
+      running.clock.advance(SAMPLE_MS);
+      running.sample();
+    }
+    await roundTrip(client);
+
+    expect(since().map((message) => message.t)).toEqual([
+      'quotes',
+      'quotes',
+      'quotes',
+      'quotes',
+      'frame',
+      'quotes',
+      'quotes',
+      'quotes',
+      'quotes',
+      'frame',
+    ]);
+  });
+
+  it('replaying every batch onto the whole picture before them gives the whole picture of that same moment', async () => {
+    // Two instances of the same game on the same market, sampled at the same
+    // moments: one sends the whole picture only when it must, the other sends
+    // it on every pass. What the batches leave a page holding has to be what
+    // the whole picture of that moment says, ticket for ticket.
+    //
+    // The comparison is against a whole picture of the *same* moment, not
+    // against the next periodic one: the next one is a pass later and carries
+    // that pass's own movement, which no batch before it could have said.
+    const seed = () => FIXED_SEEDS[0] ?? 0;
+    const batched = await startHarness({ drawSeed: seed, limits: { stressFullFrameMs: 1_000_000 } });
+    const every = await startHarness({ drawSeed: seed, limits: { stressFullFrameMs: 0 } });
+
+    try {
+      const one = await play(batched, { board: STRESS_SIZE });
+      const two = await play(every, { board: STRESS_SIZE });
+      for (const run of [batched, every]) run.clock.advance(OPEN_AT_MS);
+      const sinceBatched = fromHere(one.client);
+      const sinceEvery = fromHere(two.client);
+
+      for (let pass = 0; pass < 8; pass += 1) {
+        for (const run of [batched, every]) {
+          run.sample();
+          run.clock.advance(SAMPLE_MS);
+        }
+      }
+      await roundTrip(one.client);
+      await roundTrip(two.client);
+
+      const stream = sinceBatched();
+      const wholePictures = sinceEvery();
+      expect(stream.map((message) => message.t)).toEqual(['frame', ...Array.from({ length: 7 }, () => 'quotes')]);
+      expect(wholePictures.map((message) => message.t)).toEqual(Array.from({ length: 8 }, () => 'frame'));
+
+      const [first] = stream;
+      const last = wholePictures[wholePictures.length - 1];
+      if (first === undefined || !isFrame(first) || last === undefined || !isFrame(last)) throw new Error('the two runs did not line up');
+      expect(first.quotes).toEqual(wholePictures[0] !== undefined && isFrame(wholePictures[0]) ? wholePictures[0].quotes : []);
+
+      expect(replay(first, stream.filter(isBatch))).toEqual({
+        quotes: last.quotes,
+        quoteReals: last.quoteReals,
+        quoteHopes: last.quoteHopes,
+        quoteBreakEvens: last.quoteBreakEvens,
+      });
+      expect(last.quotes).toHaveLength(STRESS_CONTRACTS);
+      expect(last.step).toBeGreaterThan(first.step);
+    } finally {
+      await batched.close();
+      await every.close();
+    }
+  });
+
+  it('leaves an ordinary game on whole pictures only', async () => {
+    const running = await boot(CADENCE);
+    const { client } = await play(running);
+    running.clock.advance(OPEN_AT_MS);
+    const since = fromHere(client);
+
+    for (let pass = 0; pass < 10; pass += 1) {
+      running.clock.advance(SAMPLE_MS);
+      running.sample();
+    }
+    await roundTrip(client);
+
+    const stream = since();
+    expect(stream).toHaveLength(10);
+    expect(stream.filter(isBatch)).toEqual([]);
+    expect(stream.every(isFrame)).toBe(true);
+  });
+
+  it('sends no batch at all before the game has started', async () => {
+    const running = await boot(CADENCE);
+    const { client } = await join(running, { board: STRESS_SIZE });
+    const since = fromHere(client);
+
+    for (let pass = 0; pass < 10; pass += 1) {
+      running.clock.advance(SAMPLE_MS);
+      running.sample();
+    }
+    await roundTrip(client);
+
+    const stream = since();
+    // Asserted by name, not as a side effect of the lobby's empty quote list:
+    // a lobby frame's day is 0 and a batch's day is bounded 1 to 5, so a batch
+    // here would be a message this service's own wire contract refuses.
+    expect(stream.filter(isBatch)).toEqual([]);
+    expect(stream).toHaveLength(10);
+    expect(stream.every((message) => isFrame(message) && message.clock.day === 0)).toBe(true);
+  });
+
+  it('every batch it sends parses the wire contract, across a day boundary', async () => {
+    // A whole second between passes and a five-second cadence, so one run
+    // reaches day 2 without thousands of contracts being priced hundreds of
+    // times over.
+    const everyMs = 1000;
+    const running = await boot({ limits: { stressFullFrameMs: everyMs * 5 } });
+    const { client } = await join(running, { board: STRESS_SIZE });
+    client.send(start('start-0001', 7.5));
+    await client.nextReply();
+    const since = fromHere(client);
+
+    for (let pass = 0; pass < 32; pass += 1) {
+      running.clock.advance(everyMs);
+      running.sample();
+    }
+    await roundTrip(client);
+
+    const stream = since();
+    expect(new Set(stream.filter(isFrame).map((frame) => frame.clock.day))).toEqual(new Set([1, 2]));
+    const batches = stream.filter(isBatch);
+    expect(batches.length).toBeGreaterThan(0);
+    for (const message of batches) expect(quotesMessageSchema.parse(message)).toEqual(message);
+  });
+
+  it('sends nothing at all when no ticket moved and no whole picture is due', async () => {
+    const running = await boot(CADENCE);
+    const { client } = await play(running, { board: STRESS_SIZE });
+    // Before the opening bell every frame shows the day's opening price, so
+    // nothing moves from one pass to the next.
+    running.clock.advance(SAMPLE_MS);
+    running.sample();
+    await roundTrip(client);
+    const since = fromHere(client);
+
+    running.clock.advance(SAMPLE_MS);
+    running.sample();
+    running.clock.advance(SAMPLE_MS);
+    running.sample();
+    await roundTrip(client);
+
+    expect(since()).toEqual([]);
   });
 });
 

@@ -212,7 +212,7 @@ describe('the players of a session', () => {
 
     const before = { first: first.sent.length, second: second.sent.length };
     const stats = { sent: 0, skipped: 0 };
-    sampleSessions(registry, 1_000 + PRE_BELL_MS + SAMPLE_MS, stats);
+    sampleSessions(registry, 1_000 + PRE_BELL_MS + SAMPLE_MS, stats, LIMITS.stressFullFrameMs);
     expect(stats).toEqual({ sent: 2, skipped: 0 });
     expect(first.sent).toHaveLength(before.first + 1);
     expect(second.sent).toHaveLength(before.second + 1);

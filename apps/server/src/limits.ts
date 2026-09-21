@@ -56,6 +56,14 @@ export interface Limits {
    * ordinary player is never refused because of one.
    */
   maxStressSessions: number;
+  /**
+   * With the stress setting on, how often the whole picture is sent instead of
+   * the tickets that changed. It is the way back into step for a client whose
+   * last send was skipped, so it is a cadence and not a guard: the brief asks
+   * for "a full frame every second or two", and this is the middle of that.
+   * Five times a second is what the batches in between carry.
+   */
+  stressFullFrameMs: number;
 }
 
 export const LIMITS: Limits = {
@@ -71,6 +79,7 @@ export const LIMITS: Limits = {
   messagesPerWindow: 20,
   messageWindowMs: 10_000,
   maxStressSessions: 3,
+  stressFullFrameMs: 1_500,
 };
 
 /** A budget that holds a burst and recovers steadily. The time is given to it; it reads no clock. */

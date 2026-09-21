@@ -361,7 +361,7 @@ export function createApp(options: AppOptions): App {
   const heartbeatTimer = heartbeatMs > 0 ? setInterval(() => heartbeatOnce(now()), heartbeatMs) : null;
 
   function sampleOnce(nowMs: number): void {
-    sampleSessions(registry, nowMs, samplerStats);
+    sampleSessions(registry, nowMs, samplerStats, limits.stressFullFrameMs);
   }
 
   // One timer for every session; no game has a timer of its own. A pass is

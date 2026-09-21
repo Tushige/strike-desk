@@ -337,7 +337,7 @@ describe('offerFrame and sampleSessions', () => {
     for (const socket of [ready, alsoReady, backedUp, gone]) registry.attach(entry.session.id, FIRST_PLAYER_ID, socket);
 
     const stats = { sent: 0, skipped: 0 };
-    sampleSessions(registry, 5_000, stats);
+    sampleSessions(registry, 5_000, stats, LIMITS.stressFullFrameMs);
     expect(stats).toEqual({ sent: 2, skipped: 1 });
     expect(ready.sent).toHaveLength(1);
     expect(alsoReady.sent).toEqual(ready.sent);
@@ -348,7 +348,7 @@ describe('offerFrame and sampleSessions', () => {
     expect(frame.session).not.toBe(idle.session.id);
     expectThin(frame);
 
-    sampleSessions(registry, 5_200, stats);
+    sampleSessions(registry, 5_200, stats, LIMITS.stressFullFrameMs);
     expect(stats).toEqual({ sent: 4, skipped: 2 });
   });
 });
@@ -453,7 +453,7 @@ describe('the session registry', () => {
     if (entry === null) throw new Error('the registry refused a session it has room for');
     const before = entry.session;
     const stats = { sent: 0, skipped: 0 };
-    sampleSessions(registry, 1_000, stats);
+    sampleSessions(registry, 1_000, stats, LIMITS.stressFullFrameMs);
     expect(stats).toEqual({ sent: 0, skipped: 0 });
     expect(entry.session).toBe(before);
   });

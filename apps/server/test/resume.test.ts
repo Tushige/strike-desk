@@ -90,7 +90,7 @@ function rig(): Rig {
     clock,
     connect,
     sample() {
-      sampleSessions(registry, clock.now, { sent: 0, skipped: 0 });
+      sampleSessions(registry, clock.now, { sent: 0, skipped: 0 }, LIMITS.stressFullFrameMs);
     },
   };
 }

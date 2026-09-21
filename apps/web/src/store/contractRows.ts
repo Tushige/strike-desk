@@ -1,5 +1,5 @@
 import { contractId } from '@strike-desk/shared/protocol';
-import type { CompanyView, Frame, Side } from '@strike-desk/shared/protocol';
+import type { CompanyView, Frame, QuotesMessage, Side } from '@strike-desk/shared/protocol';
 
 /**
  * One table row per ticket, and the rule for which rows a frame changed.
@@ -141,4 +141,40 @@ export function changedRows(heldById: readonly (ContractRow | undefined)[], inpu
     changed.push(makeRow(input, id, companyId, side, targetCents, dir));
   });
   return changed;
+}
+
+/**
+ * One changed ticket as the wire carries it, with the stress setting on:
+ * `[contractId, priceCents, realCents, hopeCents, breakEvenCents]`. Taken from
+ * the message schema itself, so the two can never drift apart.
+ */
+export type QuoteChange = QuotesMessage['changes'][number];
+
+/** What a row needs beside the change itself, because a batch carries neither. */
+export interface QuoteChangeOptions {
+  /** True while tickets can be bought, which is the only time a row is dimmed. */
+  buyable: boolean;
+  minTicketCents: number;
+}
+
+/**
+ * The held row with one changed quote merged into it, or null when nothing the
+ * row shows moved. The same rule `changedRows` follows, one ticket at a time:
+ * a new object rather than a changed one, because the table tells an update
+ * from a repeat by identity, and a direction only for a price that really
+ * moved, because only a price may flash.
+ *
+ * The break-even in the fifth slot is taken and not used. The wire carries it
+ * so a stress table shows the same columns the game's table will, and no
+ * column reads it yet; the page could not work it out in any case, because it
+ * computes no money.
+ */
+export function applyQuoteChange(held: ContractRow, change: QuoteChange, options: QuoteChangeOptions): ContractRow | null {
+  const [, priceCents, realCents, hopeCents] = change;
+  const dimmed = options.buyable && priceCents < options.minTicketCents;
+  if (priceCents === held.priceCents && dimmed === held.dimmed && realCents === held.realCents && hopeCents === held.hopeCents) {
+    return null;
+  }
+  const dir = priceCents > held.priceCents ? 1 : priceCents < held.priceCents ? -1 : 0;
+  return { ...held, priceCents, realCents, hopeCents, dimmed, dir };
 }

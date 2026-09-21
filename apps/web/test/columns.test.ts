@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CellClassParams, ColDef, ValueFormatterParams, ValueGetterParams } from 'ag-grid-community';
 import { COLUMNS, DEFAULT_COL_DEF } from '../src/board/columns';
+import { ValueCell } from '../src/board/ValueCell';
 import type { ContractRow } from '../src/store/contractRows';
 
 function column(headerName: string): ColDef<ContractRow> {
@@ -116,10 +117,18 @@ describe('the contract table columns', () => {
     expect(cellValue('Real value', settled)).toBe(0);
   });
 
-  it('prints both parts as money from whole cents', () => {
-    expect(shown('Real value', 0)).toBe('$0');
-    expect(shown('Hope value', 8379)).toBe('$83.79');
-    expect(shown('Real value', null)).toBe('');
+  it('draws both parts with the one value cell, handed over by reference', () => {
+    // The same component object on both columns, and the grid is given the
+    // component itself rather than a name to look up: a new one per render
+    // would make the grid rebuild the column.
+    expect(column('Real value').cellRenderer).toBe(ValueCell);
+    expect(column('Hope value').cellRenderer).toBe(ValueCell);
+    expect(column('Real value').valueFormatter).toBeUndefined();
+  });
+
+  it('keeps both value cells right-aligned beside their own class', () => {
+    expect(column('Real value').cellClass).toEqual(['ag-right-aligned-cell', 'sd-value']);
+    expect(column('Hope value').cellClass).toBe(column('Real value').cellClass);
   });
 
   it('flashes the Price column and no other', () => {

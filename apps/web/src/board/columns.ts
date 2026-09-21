@@ -4,6 +4,7 @@ import type { Side } from '@strike-desk/shared/protocol';
 import type { ContractRow } from '../store/contractRows';
 import { CompanyCell } from './CompanyCell';
 import { PriceCell } from './PriceCell';
+import { ValueCell } from './ValueCell';
 
 /**
  * The table's columns, made once per page load. The grid compares these by
@@ -116,7 +117,7 @@ export const COLUMNS: ColDef<ContractRow>[] = [
     headerName: 'Real value',
     field: 'realCents',
     valueGetter: shownReal,
-    valueFormatter: money,
+    cellRenderer: ValueCell,
     type: 'rightAligned',
     cellClass: VALUE_CELL_CLASS,
     flex: 1,
@@ -126,7 +127,7 @@ export const COLUMNS: ColDef<ContractRow>[] = [
     headerName: 'Hope value',
     field: 'hopeCents',
     valueGetter: shownHope,
-    valueFormatter: money,
+    cellRenderer: ValueCell,
     type: 'rightAligned',
     cellClass: VALUE_CELL_CLASS,
     flex: 1,

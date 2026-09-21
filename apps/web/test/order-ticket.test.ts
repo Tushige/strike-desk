@@ -19,7 +19,7 @@ import {
   ticketReducer,
 } from '../src/modules/order-ticket/machine';
 import type { TicketSnapshot, TicketState } from '../src/modules/order-ticket/machine';
-import { REJECT_WORDS } from '../src/modules/order-ticket/words';
+import { BLOCKER_WORDS, CASH_OUT_BLOCKER_WORDS, REJECT_WORDS } from '../src/modules/order-ticket/words';
 
 /**
  * The order ticket's rules, tried with no page: the state machine is a pure
@@ -668,6 +668,23 @@ describe('the words of the order ticket', () => {
       expect(EMOJI.test(REJECT_WORDS[code]), `${code} has no emoji`).toBe(false);
     }
     expect(Object.keys(REJECT_WORDS).sort()).toEqual([...codes].sort());
+  });
+
+  it('says why, in words, for every reason a button can be off; only a form that is not in draft says it another way', () => {
+    const buyReasons = ['stale', 'offline', 'noContract', 'notOffered', 'cannotBuy', 'noSpend', 'waitingForQuote', 'tooCheap', 'spendTooSmall', 'overCap', 'notEnoughCash'] as const;
+    const cashOutReasons = ['stale', 'offline', 'noTicket'] as const;
+
+    for (const reason of buyReasons) {
+      expect((BLOCKER_WORDS[reason] ?? '').trim().length, `buy off because ${reason}`).toBeGreaterThan(0);
+    }
+    for (const reason of cashOutReasons) {
+      expect((CASH_OUT_BLOCKER_WORDS[reason] ?? '').trim().length, `cash-out off because ${reason}`).toBeGreaterThan(0);
+    }
+    // One more than the lists above in each table: `notDraft`, where pending, checking or the answer is on screen instead.
+    expect(Object.keys(BLOCKER_WORDS)).toHaveLength(12);
+    expect(Object.keys(CASH_OUT_BLOCKER_WORDS)).toHaveLength(4);
+    expect(BLOCKER_WORDS.notDraft).toBeNull();
+    expect(CASH_OUT_BLOCKER_WORDS.notDraft).toBeNull();
   });
 
   it('never states the numbers of the price tolerance', () => {

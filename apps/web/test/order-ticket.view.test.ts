@@ -11,6 +11,7 @@ import {
   ACCEPTED_WORDS,
   BLOCKER_WORDS,
   BUY_LABEL,
+  CASH_OUT_BLOCKER_WORDS,
   CASH_OUT_LABEL,
   CHECKING_WORDS,
   COST_LABEL,
@@ -37,6 +38,12 @@ function countOf(text: string, needle: string): number {
 /** The way React writes text into markup. */
 function escaped(text: string): string {
   return text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#x27;');
+}
+
+/** The words of a table entry that must have some. An entry with none makes the case fail, where `?? ''` would let it pass on any markup at all. */
+function wordsFor(words: string | null): string {
+  if (words === null || words.trim() === '') throw new Error('the form has nothing to say here, and it must');
+  return words;
 }
 
 const nothing = (): void => undefined;
@@ -90,7 +97,7 @@ describe('the order ticket, drawn', () => {
     expect(markup).not.toContain('$49,914');
     expect(markup).not.toContain('$120.36');
     expect(markup).toContain('disabled=""');
-    expect(markup).toContain(escaped(BLOCKER_WORDS.waitingForQuote ?? ''));
+    expect(markup).toContain(escaped(wordsFor(BLOCKER_WORDS.waitingForQuote)));
   });
 
   it('draws the what-if as a range over the stops, starting on the break-even, with its answer in words', () => {
@@ -162,8 +169,26 @@ describe('the order ticket, drawn', () => {
     const markup = markupOf({ snapshot: knownSnapshot({ line: 'stale' }) });
 
     expect(markup).toContain(LINE_WORDS.stale);
-    expect(markup).toContain(escaped(BLOCKER_WORDS.stale ?? ''));
+    expect(markup).toContain(escaped(wordsFor(BLOCKER_WORDS.stale)));
     expect(markup).toMatch(/<button[^>]*disabled=""[^>]*>[^<]*Buy/);
+  });
+
+  it('says not connected, says why the buy is off, and turns it off', () => {
+    const markup = markupOf({ snapshot: knownSnapshot({ line: 'offline' }) });
+
+    expect(markup).toContain(LINE_WORDS.offline);
+    expect(markup).toContain(escaped(wordsFor(BLOCKER_WORDS.offline)));
+    expect(markup).toMatch(/<button[^>]*disabled=""[^>]*>[^<]*Buy/);
+  });
+
+  it('says why the cash-out is off while the prices are stale', () => {
+    const markup = markupOf({
+      state: initialTicketState({ day: 1, contractId: 24, spendCents: 5_000_000, held: true }),
+      snapshot: knownSnapshot({ account: FAKE_ACCOUNT_AFTER_BUY, position: FAKE_OPEN_TICKET, line: 'stale' }),
+    });
+
+    expect(markup).toContain(escaped(wordsFor(CASH_OUT_BLOCKER_WORDS.stale)));
+    expect(markup).toMatch(/<button[^>]*disabled=""[^>]*>[^<]*Cash out/);
   });
 
   it('is the cash-out form once the ticket is held: its worth, what it cost, real value and hope value, as sent', () => {

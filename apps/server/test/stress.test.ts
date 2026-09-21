@@ -1,5 +1,16 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { HEALTH_PATH, PROTOCOL_VERSION } from '@strike-desk/shared/engine';
+import {
+  CONTENT_VERSION,
+  ENGINE_VERSION,
+  FIRST_PLAYER_ID,
+  HEALTH_PATH,
+  PROTOCOL_VERSION,
+  applyCommand,
+  contractId,
+  createSession,
+  frameFor,
+  handleCommand,
+} from '@strike-desk/shared/engine';
 import type { Frame } from '@strike-desk/shared/engine';
 import type { Harness, TestClient } from './harness';
 import { FIXED_SEEDS, startHarness } from './harness';
@@ -197,6 +208,62 @@ describe('how large a board the instance will build', () => {
     expect(frame.board?.targetsPerCompany).toBe(2084);
     expect(frame.quotes).toHaveLength(25_008);
     expect(frame.stress).toBe(true);
+  });
+});
+
+describe('a stress session can never buy', () => {
+  /** A session of the given size, started at pace 1, so a step is 200 ms from the start. */
+  function started(targetsPerCompany?: number): ReturnType<typeof createSession> {
+    const identity = { seed: FIXED_SEEDS[0] ?? 0, engine: ENGINE_VERSION, content: CONTENT_VERSION };
+    const fresh = createSession('s-rule', identity, { targetsPerCompany });
+    const handled = handleCommand(fresh, FIRST_PLAYER_ID, { t: 'start', commandId: 'start-0001', pace: 1 }, 0);
+    expect(handled.receipt.outcome).toBe('accepted');
+    return handled.session;
+  }
+
+  /** A step in day 1's open market, and the wall-clock reading it falls on at pace 1. */
+  const OPEN_STEP = 400;
+  const OPEN_AT = OPEN_STEP * 200;
+
+  it('is refused at the rule, not only at the door', () => {
+    const session = started(STRESS_TARGETS);
+    const buy = {
+      t: 'buy',
+      commandId: 'buy-000001',
+      day: 1,
+      contractId: contractId(STRESS_TARGETS, { companyId: 0, targetIndex: 125, side: 'up' }),
+      spendCents: 1_000_000,
+      seenPriceCents: 1000,
+    } as const;
+
+    const result = applyCommand(session.market, session.game, FIRST_PLAYER_ID, buy, OPEN_STEP);
+
+    expect(result.receipt).toMatchObject({ commandId: 'buy-000001', outcome: 'rejected', reason: 'stressMode' });
+  });
+
+  it('reports that buying is not available, where an ordinary open market reports that it is', () => {
+    // The full projection, not the sampler's live form: the live form sets
+    // `canBuy` false for every session, stress or not, because no frame it
+    // sends today has a ticket form to enable.
+    const sections = { history: false, sections: 'full' } as const;
+    const stressed = frameFor(started(STRESS_TARGETS), FIRST_PLAYER_ID, OPEN_AT, sections).frame;
+    const ordinary = frameFor(started(), FIRST_PLAYER_ID, OPEN_AT, sections).frame;
+
+    expect(stressed.clock.phase).toBe('open');
+    expect(stressed.stress).toBe(true);
+    expect(stressed.account.canBuy).toBe(false);
+
+    expect(ordinary.clock.phase).toBe('open');
+    expect(ordinary.stress).toBe(false);
+    expect(ordinary.account.canBuy).toBe(true);
+  });
+
+  it('never reaches the rule from the door, because the door takes no buy at all today', async () => {
+    const running = await boot();
+    const { client } = await play(running, { board: STRESS_SIZE });
+    client.send({ t: 'buy', commandId: 'buy-000001', day: 1, contractId: 0, spendCents: 1000, seenPriceCents: 1000 });
+
+    expect(await client.nextError()).toEqual({ t: 'error', code: 'badMessage', commandId: 'buy-000001' });
   });
 });
 

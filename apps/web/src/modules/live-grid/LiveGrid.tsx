@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import type { FocusEvent, PointerEvent, ReactElement, TouchEvent } from 'react';
+import type { FocusEvent, PointerEvent, ReactElement } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import type {
   AsyncTransactionsFlushedEvent,
@@ -189,6 +189,7 @@ export function LiveGridInner<Row extends GridRow>(props: LiveGridProps<Row> & I
   const sorted = useRef(false);
   const behind = useRef(false);
   const [holding, setHolding] = useState(false);
+  const table = useRef<HTMLDivElement>(null);
 
   const bringUpToDate = useCallback((grid: GridApi<Row>) => {
     behind.current = false;
@@ -239,15 +240,58 @@ export function LiveGridInner<Row extends GridRow>(props: LiveGridProps<Row> & I
     },
     [tell],
   );
-  const onTouchStart = useCallback(() => {
-    tell('touchStart');
+  useEffect(() => {
+    const element = table.current;
+    if (element === null) return;
+    const contacts = new Map<number, EventTarget>();
+    const targets = new Set<EventTarget>();
+    const options = { passive: true };
+
+    function forgetTarget(target: EventTarget): void {
+      target.removeEventListener('touchend', finish);
+      target.removeEventListener('touchcancel', finish);
+      targets.delete(target);
+    }
+
+    function finish(event: Event): void {
+      if (!(event instanceof globalThis.TouchEvent) || contacts.size === 0) return;
+      const remaining = new Set(Array.from(event.touches, (touch) => touch.identifier));
+      for (const id of contacts.keys()) {
+        if (!remaining.has(id)) contacts.delete(id);
+      }
+      const activeTargets = new Set(contacts.values());
+      for (const target of targets) {
+        if (!activeTargets.has(target)) forgetTarget(target);
+      }
+      // The original target and document may hear the same bubbling event.
+      // Only the transition to an empty table-local set releases the hold.
+      if (contacts.size === 0) tell('touchEnd');
+    }
+
+    function start(event: globalThis.TouchEvent): void {
+      for (const touch of Array.from(event.changedTouches)) {
+        if (!(touch.target instanceof Node) || !element?.contains(touch.target)) continue;
+        contacts.set(touch.identifier, touch.target);
+        if (targets.has(touch.target)) continue;
+        targets.add(touch.target);
+        // Redrawing a row can detach this node before its finger lifts.
+        touch.target.addEventListener('touchend', finish, options);
+        touch.target.addEventListener('touchcancel', finish, options);
+      }
+      if (contacts.size > 0) tell('touchStart');
+    }
+
+    element.addEventListener('touchstart', start, options);
+    document.addEventListener('touchend', finish, options);
+    document.addEventListener('touchcancel', finish, options);
+    return () => {
+      element.removeEventListener('touchstart', start);
+      document.removeEventListener('touchend', finish);
+      document.removeEventListener('touchcancel', finish);
+      for (const target of targets) forgetTarget(target);
+      contacts.clear();
+    };
   }, [tell]);
-  const onTouchEnd = useCallback(
-    (event: TouchEvent) => {
-      if (event.touches.length === 0) tell('touchEnd');
-    },
-    [tell],
-  );
   // Focus moving from one cell to the next never leaves the table.
   const onFocus = useCallback(
     (event: FocusEvent) => {
@@ -412,12 +456,10 @@ export function LiveGridInner<Row extends GridRow>(props: LiveGridProps<Row> & I
 
   return (
     <div
+      ref={table}
       className="relative h-full w-full"
       onPointerEnter={onPointerEnter}
       onPointerLeave={onPointerLeave}
-      onTouchStart={onTouchStart}
-      onTouchEnd={onTouchEnd}
-      onTouchCancel={onTouchEnd}
       onFocus={onFocus}
       onBlur={onBlur}
     >

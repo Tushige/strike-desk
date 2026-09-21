@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { createElement } from 'react';
-import { cleanup, render, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ColDef, ValueFormatterParams } from 'ag-grid-community';
 import { LiveGridInner } from '../src/modules/live-grid/LiveGrid';
@@ -107,5 +107,122 @@ describe('the live grid, filtered while its values stream', () => {
 
     // Nothing the table did along the way asked the caller to change the selection.
     expect(onSelect).not.toHaveBeenCalled();
+  });
+});
+
+// Read the grid's displayed positions, not the creation order of recycled DOM nodes.
+function displayedIds(container: HTMLElement): (string | null | undefined)[] {
+  return [0, 1, 2].map((index) => container.querySelector(`.ag-row[row-index="${String(index)}"]`)?.getAttribute('row-id'));
+}
+
+function contact(identifier: number, target: EventTarget): Touch {
+  return { identifier, target } as Touch;
+}
+
+async function touchGrid() {
+  const source = createFakeRowSource({ rowCount: 3, seed: 7 });
+  const props = {
+    source, columns: COLUMNS, label: 'Touch rows', selectedId: null,
+    onSelect: vi.fn(), filter: null, stale: false, drawEveryRow: true,
+  };
+  const view = render(createElement(LiveGridInner<FakeRow>, props));
+  await waitFor(() => expect(displayedIds(view.container)).toEqual(['r0', 'r1', 'r2']));
+  fireEvent.click(view.container.querySelector('[col-id="value"] .ag-header-cell-label')!);
+  await waitFor(() => expect(view.container.querySelector('[col-id="value"][aria-sort="ascending"]')).not.toBeNull());
+  const target = rowOf(view.container, 'r0')!.querySelector('[col-id="value"]')!;
+  const a = contact(1, target);
+  fireEvent.touchStart(target, { touches: [a], changedTouches: [a] });
+  act(() => {
+    // r0 starts at 10,000; 101 increments take it above r1's 10,100.
+    for (let i = 0; i < 101; i += 1) source.changeRows(['r0']);
+  });
+  await waitFor(() => expect(valueOf(view.container, 'r0')).toBe('10,101'));
+  expect(displayedIds(view.container)).toEqual(['r0', 'r1', 'r2']);
+  expect(view.getByRole('status').textContent).toContain('Sorting paused');
+  return { view, props, target, a };
+}
+
+async function expectReleased(view: ReturnType<typeof render>) {
+  await waitFor(() => {
+    expect(displayedIds(view.container)).toEqual(['r1', 'r0', 'r2']);
+    expect(view.getByRole('status').textContent).not.toContain('Sorting paused');
+  });
+}
+
+describe('the live grid touch lifecycle', () => {
+  it.each([false, true])('keeps both table contacts until the last ends (same target: %s)', async (sameTarget) => {
+    const { view, target, a } = await touchGrid();
+    const other = sameTarget ? target : rowOf(view.container, 'r1')!;
+    const b = contact(2, other);
+    fireEvent.touchStart(other, { touches: [a, b], changedTouches: [b] });
+    fireEvent.touchEnd(target, { touches: [b], changedTouches: [a] });
+    expect(displayedIds(view.container)).toEqual(['r0', 'r1', 'r2']);
+    expect(view.getByRole('status').textContent).toContain('Sorting paused');
+    fireEvent.touchCancel(other, { touches: [], changedTouches: [b] });
+    await expectReleased(view);
+  });
+
+  it('retains pointer and focus holds independently after the final touch', async () => {
+    const { view, target, a } = await touchGrid();
+    fireEvent.pointerOver(target, { pointerType: 'mouse' });
+    fireEvent.focusIn(target);
+    fireEvent.touchEnd(target, { touches: [], changedTouches: [a] });
+    expect(view.getByRole('status').textContent).toContain('Sorting paused');
+    fireEvent.pointerOut(target, { pointerType: 'mouse', relatedTarget: document.body });
+    expect(displayedIds(view.container)).toEqual(['r0', 'r1', 'r2']);
+    expect(view.getByRole('status').textContent).toContain('Sorting paused');
+    fireEvent.focusOut(target, { relatedTarget: document.body });
+    await expectReleased(view);
+  });
+
+  it('reconciles a terminal event at the document and removes native listeners on unmount', async () => {
+    const add = vi.spyOn(EventTarget.prototype, 'addEventListener');
+    const remove = vi.spyOn(EventTarget.prototype, 'removeEventListener');
+    try {
+      const { view, target, a } = await touchGrid();
+      fireEvent.touchEnd(document.body, { touches: [], changedTouches: [a] });
+      await expectReleased(view);
+      fireEvent.touchStart(target, { touches: [a], changedTouches: [a] });
+      const native = add.mock.calls.flatMap(([type, listener, options], index) =>
+        ['touchstart', 'touchend', 'touchcancel'].includes(type) &&
+        [document, target, view.container.firstElementChild].some((node) => node === add.mock.contexts[index]) &&
+        typeof options === 'object' && options.passive === true && !options.capture
+          ? [{ type, listener, target: add.mock.contexts[index] }] : []);
+      view.unmount();
+      expect(native.length).toBeGreaterThanOrEqual(5);
+      for (const attached of native) {
+        expect(remove.mock.calls.some(([type, listener], index) =>
+          type === attached.type && listener === attached.listener && remove.mock.contexts[index] === attached.target,
+        )).toBe(true);
+      }
+    } finally {
+      add.mockRestore();
+      remove.mockRestore();
+    }
+  });
+
+  it('releases its last contact while another finger remains outside the table', async () => {
+    const { view, target, a } = await touchGrid();
+    const b = contact(2, document.body);
+    fireEvent.touchStart(document.body, { touches: [a, b], changedTouches: [b] });
+    fireEvent.touchEnd(target, { touches: [b], changedTouches: [a] });
+    await expectReleased(view);
+  });
+
+  it.each(['touchend', 'touchcancel'])('hears %s on the detached original target', async (type) => {
+    const { view, props, target, a } = await touchGrid();
+    view.rerender(createElement(LiveGridInner<FakeRow>, { ...props, isHighlighted: () => true }));
+    await waitFor(() => expect(target.isConnected).toBe(false));
+    const reachedDocument = vi.fn();
+    document.addEventListener(type, reachedDocument);
+    try {
+      const event = new TouchEvent(type, { bubbles: true, touches: [], changedTouches: [a] });
+      act(() => { target.dispatchEvent(event); });
+      expect(event.target).toBe(target);
+      expect(reachedDocument).not.toHaveBeenCalled();
+      await expectReleased(view);
+    } finally {
+      document.removeEventListener(type, reachedDocument);
+    }
   });
 });

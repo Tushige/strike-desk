@@ -1,3 +1,4 @@
+import type { Side } from '@strike-desk/shared/protocol';
 import type { GamePhase, LineState, Trend } from './ports';
 
 /**
@@ -45,6 +46,36 @@ export const chipWords = {
   noPrice: 'No price yet',
   news: 'News',
   trend: (trend: Trend): string => TREND_WORDS[trend],
+} as const;
+
+const TRUST_NAMES: Record<1 | 2 | 3, string> = {
+  3: 'Solid news',
+  2: 'Could be true',
+  1: 'Wild rumor',
+};
+
+const CLAIMS: Record<Side, string> = {
+  up: 'This news says UP',
+  down: 'This news says DOWN',
+};
+
+export const newsWords = {
+  trust: (trust: 1 | 2 | 3): string => TRUST_NAMES[trust],
+  /** For a screen reader, in place of the three dots. */
+  trustDots: (trust: 1 | 2 | 3): string => `Trust: ${String(trust)} of 3`,
+  /** What the headline claims, worded as a claim and not as what will happen. */
+  claim: (direction: Side): string => CLAIMS[direction],
+  /** The whole of what a card says once its news has landed in the price. */
+  newsOut: 'The news is out',
+  /** Shown only when the game hands the card an outcome. */
+  outcomeTrue: 'This news turned out true.',
+  outcomeFalse: 'This news did not come true.',
+} as const;
+
+/** The banner names the company and nothing more: it never says whether the news was true. */
+export const bannerWords = {
+  title: 'Plot twist!',
+  body: (companyName: string): string => `The news is out for ${companyName}. Watch the price.`,
 } as const;
 
 export const stripWords = {

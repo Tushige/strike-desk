@@ -3,8 +3,8 @@ import type { ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { timeLeftText } from '../src/modules/desk/format';
-import { CompanyChip, CompanyMark, CompanyStrip, TopBar } from '../src/modules/desk/index';
-import type { CompanyChipProps, TopBarProps } from '../src/modules/desk/index';
+import { CompanyChip, CompanyMark, CompanyStrip, NewsCard, RevealBanner, TopBar } from '../src/modules/desk/index';
+import type { CompanyChipProps, NewsCardProps, TopBarProps } from '../src/modules/desk/index';
 
 /**
  * The desk pieces, rendered to static markup from props typed in here. Every
@@ -255,5 +255,153 @@ describe('the company strip', () => {
     expect(markup).toContain('aria-label="The six test companies"');
     expect(markup.split('<li').length - 1).toBe(2);
     expect(textOf(markup)).toBe('first second');
+  });
+});
+
+describe('the news card', () => {
+  const card: NewsCardProps = {
+    companyId: 2,
+    companyName: 'BubbleTest',
+    ticker: 'BTST',
+    trust: 3,
+    source: 'A test source says',
+    title: 'A test title',
+    body: 'A test body.',
+    direction: 'up',
+    revealed: false,
+    selected: false,
+    onSelect: nothing,
+  };
+
+  const cardOf = (over: Partial<NewsCardProps>): string => markupOf(createElement(NewsCard, { ...card, ...over }));
+
+  /** How many of the three trust dots are filled in. */
+  const filledDots = (markup: string): number => markup.split('data-filled="true"').length - 1;
+  const allDots = (markup: string): number => markup.split('data-filled=').length - 1;
+
+  /** The one element that says the news is out, and the one that says how it turned out. */
+  const NEWS_OUT_MARK = /<span data-news-out="true"[^>]*>[^<]*<\/span>/;
+  const OUTCOME_LINE = /<p data-outcome="(?:true|false)"[^>]*>[^<]*<\/p>/;
+
+  it('shows who is speaking, the title, the body, the company and its ticker', () => {
+    const text = textOf(cardOf({}));
+
+    expect(text).toContain('A test source says');
+    expect(text).toContain('A test title');
+    expect(text).toContain('A test body.');
+    expect(text).toContain('BubbleTest');
+    expect(text).toContain('BTST');
+  });
+
+  it('says the trust level in words and in dots: solid news, three of three', () => {
+    const markup = cardOf({ trust: 3 });
+
+    expect(textOf(markup)).toContain('Solid news');
+    expect(textOf(markup)).toContain('Trust: 3 of 3');
+    expect(filledDots(markup)).toBe(3);
+    expect(allDots(markup)).toBe(3);
+  });
+
+  it('says could be true with two dots, and wild rumor with one', () => {
+    const middle = cardOf({ trust: 2 });
+    const low = cardOf({ trust: 1 });
+
+    expect(textOf(middle)).toContain('Could be true');
+    expect(textOf(middle)).toContain('Trust: 2 of 3');
+    expect(filledDots(middle)).toBe(2);
+    expect(allDots(middle)).toBe(3);
+    expect(textOf(low)).toContain('Wild rumor');
+    expect(textOf(low)).toContain('Trust: 1 of 3');
+    expect(filledDots(low)).toBe(1);
+    expect(allDots(low)).toBe(3);
+  });
+
+  it('words the direction as what the news says, not as what will happen', () => {
+    expect(textOf(cardOf({ direction: 'up' }))).toContain('This news says UP');
+    expect(textOf(cardOf({ direction: 'down' }))).toContain('This news says DOWN');
+  });
+
+  it('says nothing about the outcome unless it is handed in: a card that is out differs only by its mark', () => {
+    const waiting = cardOf({ revealed: false });
+    const out = cardOf({ revealed: true });
+
+    expect(textOf(out)).toContain('The news is out');
+    expect(textOf(waiting)).not.toContain('The news is out');
+    expect(out.replace(NEWS_OUT_MARK, '')).toBe(waiting);
+
+    for (const markup of [waiting, out]) {
+      expect(markup).not.toContain('data-outcome');
+      expect(textOf(markup)).not.toContain('This news turned out true.');
+      expect(textOf(markup)).not.toContain('This news did not come true.');
+    }
+  });
+
+  it('says how the news turned out when the outcome is handed in, in words and in no direction colour', () => {
+    const out = cardOf({ revealed: true });
+    const cameTrue = cardOf({ revealed: true, outcome: 'true' });
+    const didNot = cardOf({ revealed: true, outcome: 'false' });
+
+    expect(textOf(cameTrue)).toContain('This news turned out true.');
+    expect(textOf(cameTrue)).not.toContain('This news did not come true.');
+    expect(textOf(didNot)).toContain('This news did not come true.');
+    expect(textOf(didNot)).not.toContain('This news turned out true.');
+
+    // The outcome line is the only thing an outcome adds or changes...
+    expect(cameTrue.replace(OUTCOME_LINE, '')).toBe(out);
+    expect(didNot.replace(OUTCOME_LINE, '')).toBe(out);
+    // ...and it wears neither the up nor the down colour, nor gold.
+    for (const markup of [cameTrue, didNot]) {
+      const line = OUTCOME_LINE.exec(markup)?.[0] ?? '';
+      expect(line).not.toBe('');
+      expect(line).not.toMatch(/-(?:up|down|gold)\b/);
+    }
+  });
+
+  it('holds a real button whose pressed state follows the selection, with a focus ring', () => {
+    const resting = cardOf({ selected: false });
+    const selected = cardOf({ selected: true });
+
+    expect(resting).toContain('<button type="button"');
+    expect(resting).toContain('aria-pressed="false"');
+    expect(selected).toContain('aria-pressed="true"');
+    expect(resting).toContain('outline-ring');
+  });
+
+  it('shows a headline as text, never as markup', () => {
+    const markup = cardOf({ title: '<img src=x onerror=alert(1)>', body: '<b>bold</b>' });
+
+    expect(markup).not.toContain('<img');
+    expect(markup).not.toContain('<b>');
+    expect(markup).toContain('&lt;img');
+  });
+});
+
+describe('the reveal banner', () => {
+  it('is an empty polite live region when there is no name', () => {
+    const markup = markupOf(createElement(RevealBanner, { companyName: null }));
+
+    expect(markup).toContain('aria-live="polite"');
+    expect(textOf(markup)).toBe('');
+  });
+
+  it('says the plot twist and names the company', () => {
+    const markup = markupOf(createElement(RevealBanner, { companyName: 'BubbleTest' }));
+    const text = textOf(markup);
+
+    expect(markup).toContain('aria-live="polite"');
+    expect(text).toContain('Plot twist!');
+    expect(text).toContain('BubbleTest');
+  });
+
+  it('never says whether the news was true', () => {
+    const text = textOf(markupOf(createElement(RevealBanner, { companyName: 'BubbleTest' })));
+
+    expect(text).not.toMatch(/\b(?:true|false|right|wrong|real|fake)\b/i);
+  });
+
+  it('keeps any movement behind the reduced-motion preference', () => {
+    const markup = markupOf(createElement(RevealBanner, { companyName: 'BubbleTest' }));
+
+    expect(markup).toContain('motion-reduce:transition-none');
   });
 });

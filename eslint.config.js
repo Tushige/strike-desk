@@ -62,6 +62,44 @@ const webDataModules = [
   'apps/web/src/autoStart.ts',
 ];
 
+const reactFreeGroup = {
+  group: ['react', 'react-dom'],
+  message:
+    "Live data stays outside React: this module must not import it. Components read the store through 'apps/web/src/store/hooks.ts'.",
+};
+
+// A building block, and the lab that shows it, are built and looked at on
+// their own. Neither is part of the running game, so neither may reach into
+// it: importing any of these would open a socket and start a real game from
+// a page that is supposed to talk to nothing.
+const webBlockFiles = [
+  'apps/web/src/modules/**/*.ts',
+  'apps/web/src/modules/**/*.tsx',
+  'apps/web/src/lab/**/*.ts',
+  'apps/web/src/lab/**/*.tsx',
+  'apps/web/src/fixtures/**/*.ts',
+];
+
+const runningGameGroup = {
+  group: ['**/boot', '**/store', '**/store/**', '**/feed', '**/feed/**', '**/autoStart', '**/App'],
+  message:
+    'A building block and the lab never reach the running game: no boot, no store, no socket feed, no App. A block is built against its port and shown against its stand-in source.',
+};
+
+// Matched as a regular expression rather than by the gitignore rules the
+// other groups use, because this fence has to say "exactly these three steps
+// and no more". A gitignore pattern always matches everything beneath what it
+// matches, so `../*/*` also swallows `../../fixtures/probe` and
+// `../../modules/other/index` — and a negation cannot let those back in,
+// since nothing under an excluded parent can be re-included. Both shapes
+// below are the ones the blocks, their stand-in sources and the lab's demos
+// actually use, and both are proved by probes.
+const siblingBlockGroup = {
+  regex: String.raw`^(?:\.\.|\.\./\.\./modules)/[^/]+/(?!index$|fake$)[^/]+$`,
+  message:
+    'Import another block only through its index.ts (or its fake.ts from a test or a lab demo), never its inner files.',
+};
+
 const WEB_SOCKET_MESSAGE =
   "Only 'apps/web/src/feed/wsFeed.ts' opens a socket. Read data through the Feed interface from '@strike-desk/shared/feed' instead.";
 
@@ -159,14 +197,36 @@ export default tseslint.config(
         'error',
         {
           paths: webSharedImportFence.paths,
-          patterns: [
-            ...webSharedImportFence.patterns,
-            {
-              group: ['react', 'react-dom'],
-              message:
-                "Live data stays outside React: this module must not import it. Components read the store through 'apps/web/src/store/hooks.ts'.",
-            },
-          ],
+          patterns: [...webSharedImportFence.patterns, reactFreeGroup],
+        },
+      ],
+    },
+  },
+  {
+    // A block and the lab are fenced off from the running game, and from each
+    // other's inner files. The shared-package fence is repeated here because
+    // a later block replaces a rule's options rather than adding to them.
+    files: webBlockFiles,
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: webSharedImportFence.paths,
+          patterns: [...webSharedImportFence.patterns, runningGameGroup, siblingBlockGroup],
+        },
+      ],
+    },
+  },
+  {
+    // A stand-in data source lives outside React, like every other module
+    // that holds or moves data.
+    files: ['apps/web/src/modules/*/fake.ts', 'apps/web/src/fixtures/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: webSharedImportFence.paths,
+          patterns: [...webSharedImportFence.patterns, runningGameGroup, siblingBlockGroup, reactFreeGroup],
         },
       ],
     },

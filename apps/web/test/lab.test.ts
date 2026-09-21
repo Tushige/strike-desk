@@ -30,14 +30,33 @@ function markupOf(entries: readonly LabEntry[]): string {
   return renderToStaticMarkup(createElement(LabPage, { entries }));
 }
 
-describe('the register of blocks', () => {
-  it('holds the live grid alone, first in the list and not built yet', () => {
-    expect(LAB_ENTRIES.map((one) => one.id)).toEqual(['live-grid']);
+/** Every block the lab lists, in the order it lists them. */
+const IDS = ['live-grid', 'price-chart', 'order-ticket', 'command-path', 'connection', 'news-engine', 'desk'];
 
-    const first = LAB_ENTRIES[0];
-    expect(first?.order).toBe(1);
-    expect(first?.title).toBe('Live grid');
-    expect(first?.demo).toBeUndefined();
+/** Their names, as the list and the panel head show them. */
+const TITLES = [
+  'Live grid',
+  'Price chart',
+  'Order ticket',
+  'Server command path',
+  'Connection and reconnect',
+  'News engine',
+  'Desk pieces',
+];
+
+describe('the register of blocks', () => {
+  it('holds the seven blocks, in the order they claim, none of them built yet', () => {
+    expect(LAB_ENTRIES.map((one) => one.id)).toEqual(IDS);
+    expect(LAB_ENTRIES.map((one) => one.order)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(LAB_ENTRIES.map((one) => one.demo)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    ]);
   });
 
   it('puts the blocks in the order each file claims, whatever order they arrive in', () => {
@@ -60,14 +79,16 @@ describe('the register of blocks', () => {
 });
 
 describe('the lab page', () => {
-  it('names itself, the block, the port it is built against and its state', () => {
+  it('names itself, every block, the port the selected one is built against and its state', () => {
     const markup = markupOf(LAB_ENTRIES);
 
     expect(markup).toContain('Module lab');
-    expect(markup).toContain('Live grid');
+    for (const title of TITLES) {
+      expect(markup).toContain(title);
+    }
     expect(markup).toContain('Built against');
-    // Once in the list, once in the selected block's panel.
-    expect(countOf(markup, 'not built yet')).toBe(2);
+    // Seven in the list, once more in the selected block's panel.
+    expect(countOf(markup, 'not built yet')).toBe(8);
   });
 
   it('links nowhere but its own fragments', () => {

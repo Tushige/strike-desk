@@ -32,7 +32,7 @@ const QUIET_BUTTON = `${BUTTON} border border-border bg-card text-foreground hov
 
 const DESK_ROOT = 'grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-3';
 const PANEL_ROOT = 'grid h-full min-h-0 place-items-center overflow-hidden';
-const PANEL = 'grid max-h-full w-full max-w-2xl gap-4 rounded-lg border border-border bg-card p-6';
+const PANEL = 'grid max-h-full w-full max-w-2xl gap-4 overflow-y-auto overscroll-contain rounded-lg border border-border bg-card p-6';
 const HEADING = 'm-0 text-xl leading-tight font-medium text-balance';
 const BODY = 'm-0 max-w-prose text-sm text-muted-foreground';
 const LABEL = 'text-xs text-muted-foreground';
@@ -116,7 +116,7 @@ export const PhaseScreen = memo(function PhaseScreen(props: PhaseScreenProps) {
       const { paces, canStart, onStart } = props;
       return (
         <section aria-labelledby={headingId} className={PANEL_ROOT}>
-          <div className={PANEL}>
+          <div data-region="content" className={PANEL}>
             <h2 id={headingId} className={HEADING}>
               {lobbyWords.heading}
             </h2>
@@ -194,7 +194,7 @@ export const PhaseScreen = memo(function PhaseScreen(props: PhaseScreenProps) {
       const { finalCents, changeCents, marketCode, days, onPlayAgain } = props;
       return (
         <section aria-labelledby={headingId} className={PANEL_ROOT}>
-          <div className={PANEL}>
+          <div data-region="content" className={PANEL}>
             <h2 id={headingId} className={HEADING}>
               {finalWords.heading}
             </h2>

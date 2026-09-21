@@ -98,6 +98,19 @@ describe('the price chart, as markup', () => {
     expect(afterTheImage).toContain('<li>Closing bell</li>');
   });
 
+  it('associates each image with its own existing description when two charts share a page', () => {
+    const props = { source: heldStill(THREE_POINTS), ...FAKE_RANGE, lines: FAKE_LINES,
+      markers: FAKE_MARKERS, stale: false, label: 'Company prices' };
+    const markup = renderToStaticMarkup(createElement('div', null,
+      createElement(PriceChart, props), createElement(PriceChart, props)));
+    const descriptions = [...markup.matchAll(/<svg[^>]*aria-describedby="([^"]+)"/g)].map((match) => match[1]);
+    expect(descriptions).toHaveLength(2);
+    expect(new Set(descriptions).size).toBe(2);
+    for (const id of descriptions) {
+      expect(markup).toContain(`<ul id="${id}" class="sr-only"><li>Target $85.00</li>`);
+    }
+  });
+
   it('keeps a line and a marker that are off the scale in that list, though they are not drawn', () => {
     const markup = markupOf({
       lines: [{ id: 'far', yCents: 20_000, label: 'A target far above', tone: 'target' }],

@@ -498,6 +498,16 @@ describe('the phase screens', () => {
     expect(disabledOf(lobby(false))).toBe(3);
   });
 
+  it('identifies the scrollable lobby and final panels without moving game actions inside the content', () => {
+    for (const markup of [lobby(true), final()]) {
+      expect(markup).toMatch(/<div data-region="content"[^>]*overflow-y-auto/);
+      expect(markup).not.toMatch(/<section[^>]*overflow-y-auto/);
+    }
+    for (const markup of [preBell(true), open(true), debrief(dayOne)]) {
+      expect(markup).toMatch(/data-region="content"[^>]*><p>the desk of the day<\/p><\/div><footer/);
+    }
+  });
+
   it('shows before the bell its heading for the day, its one button and the desk inside its content region', () => {
     const markup = preBell(true);
     const text = textOf(markup);

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { Command, Frame, ServerMessage } from '@strike-desk/shared/protocol';
+import type { Command, Frame, QuotesMessage, ServerMessage } from '@strike-desk/shared/protocol';
 import type { Feed, FeedEvent } from '@strike-desk/shared/feed';
 import { createGameStore } from '../src/store/gameStore';
 import type { GameStore } from '../src/store/gameStore';
-import { buildRows } from '../src/store/contractRows';
+import { applyQuoteChange, buildRows } from '../src/store/contractRows';
 import type { ContractRow } from '../src/store/contractRows';
 import { autoStart } from '../src/autoStart';
 import { testFrame } from './fakeSocket';
@@ -731,5 +731,296 @@ describe('when the store rebuilds the row set', () => {
     expect(counts.boardRows).toBe(1);
     expect(store.boardRows.get()[0]?.targetCents).toBe(1500);
     expect(counts.sinkCalls).toEqual([]);
+  });
+});
+
+// --------------------------------------------------- batches of changed quotes
+
+/**
+ * The stress setting's second message shape: only the tickets that changed,
+ * with a whole frame every second or so as the way back into step. A batch is
+ * not the whole picture, so everything it is applied against has to come from
+ * the frame the page already holds — the board, the day, the cheapest tradable
+ * price and whether the market is open.
+ */
+
+const BATCH_PRICES = [8401, 4201, 12001, 2801, 6501, 15001];
+
+/** A batch of the same session and day as `boardFrame`, one step later. */
+function batch(changes: QuotesMessage['changes'], over: Partial<QuotesMessage> = {}): QuotesMessage {
+  return {
+    t: 'quotes',
+    session: 's-1',
+    rev: 0,
+    step: 2,
+    day: 1,
+    priceIndex: 101,
+    prices: BATCH_PRICES,
+    changes,
+    ...over,
+  };
+}
+
+describe('applying one changed quote to one row', () => {
+  const held: ContractRow = {
+    id: '5',
+    contractId: 5,
+    companyId: 0,
+    company: 'RoboPup',
+    ticker: 'RPUP',
+    side: 'down',
+    targetCents: 1200,
+    priceCents: 1005,
+    realCents: 305,
+    hopeCents: 700,
+    dimmed: false,
+    dir: 0,
+  };
+  const open = { buyable: true, minTicketCents: 500 };
+
+  it('flashes up for a higher price, down for a lower one, and not at all for the same one', () => {
+    expect(applyQuoteChange(held, [5, 1100, 400, 700, 9], open)?.dir).toBe(1);
+    expect(applyQuoteChange(held, [5, 900, 200, 700, 9], open)?.dir).toBe(-1);
+    // The same price with its two parts moved: a different ticket at the same
+    // price, so the row is redrawn and must not flash.
+    expect(applyQuoteChange(held, [5, 1005, 405, 600, 9], open)?.dir).toBe(0);
+  });
+
+  it('takes the price and both its parts exactly as sent, on a new object', () => {
+    const next = applyQuoteChange(held, [5, 1100, 400, 700, 9], open);
+
+    expect(next).toMatchObject({ id: '5', contractId: 5, priceCents: 1100, realCents: 400, hopeCents: 700 });
+    expect(next).not.toBe(held);
+    expect(held).toMatchObject({ priceCents: 1005, realCents: 305, hopeCents: 700 });
+    // Everything a batch does not carry is the held row's.
+    expect(next).toMatchObject({ company: 'RoboPup', ticker: 'RPUP', side: 'down', targetCents: 1200 });
+  });
+
+  it('says nothing changed when every number it carries is the one already held', () => {
+    expect(applyQuoteChange(held, [5, 1005, 305, 700, 9], open)).toBeNull();
+  });
+
+  it('dims a ticket under the cheapest tradable price only while the market is open', () => {
+    expect(applyQuoteChange(held, [5, 400, 100, 300, 9], open)?.dimmed).toBe(true);
+    expect(applyQuoteChange(held, [5, 400, 100, 300, 9], { buyable: false, minTicketCents: 500 })?.dimmed).toBe(false);
+  });
+});
+
+describe('the store and a batch of changed quotes', () => {
+  it('merges it into the rows it holds and rebuilds nothing', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 1 }));
+    const before = store.boardRows.get().find((row) => row.contractId === 5);
+    const counts = watchBoard(store);
+
+    store.ingest(batch([[5, 9999, 4000, 5999, 12_345]]));
+
+    expect(counts.boardRows).toBe(0);
+    expect(counts.sinkCalls).toHaveLength(1);
+    const changed = counts.sinkCalls[0] ?? [];
+    expect(changed).toHaveLength(1);
+    expect(changed[0]).toMatchObject({ id: '5', contractId: 5, priceCents: 9999, realCents: 4000, hopeCents: 5999, dir: 1 });
+    expect(changed[0]).not.toBe(before);
+    expect(before?.priceCents).toBe(1005);
+    expect(store.counters).toEqual({ accepted: 2, dropped: 0 });
+  });
+
+  it('sets the six share prices it carries', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 1, prices: [1, 2, 3, 4, 5, 6] }));
+
+    store.ingest(batch([[5, 9999, 4000, 5999, 12_345]]));
+
+    expect(prices(store)).toEqual(BATCH_PRICES);
+  });
+
+  it('hands the sink a row whose two parts moved though its price stood still, with no direction', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 1 }));
+    const counts = watchBoard(store);
+
+    store.ingest(batch([[5, 1005, 405, 600, 12_345]]));
+
+    expect(counts.sinkCalls).toHaveLength(1);
+    expect(counts.sinkCalls[0]?.[0]).toMatchObject({ contractId: 5, priceCents: 1005, realCents: 405, hopeCents: 600, dir: 0 });
+  });
+
+  it('tells the sink nothing when every number in the batch is already held', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 1 }));
+    const counts = watchBoard(store);
+
+    store.ingest(batch([[5, 1005, 305, 700, 12_345]]));
+
+    expect(counts.sinkCalls).toEqual([]);
+    expect(store.counters.accepted).toBe(2);
+  });
+
+  it('dims a ticket whose sent price crosses the cheapest tradable one, while the market is open', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 1 }));
+    const counts = watchBoard(store);
+
+    store.ingest(batch([[7, 400, 100, 300, 12_345]]));
+
+    expect(counts.sinkCalls[0]?.[0]).toMatchObject({ contractId: 7, priceCents: 400, dimmed: true });
+  });
+
+  it('dims nothing at any price once the market is shut, because the last frame said so', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 1, clock: DEBRIEF_CLOCK }));
+    const counts = watchBoard(store);
+
+    store.ingest(batch([[7, 400, 100, 300, 12_345]]));
+
+    expect(counts.sinkCalls[0]?.[0]).toMatchObject({ contractId: 7, priceCents: 400, dimmed: false });
+  });
+
+  it('drops a batch that arrived before any frame, and changes nothing', () => {
+    const store = createGameStore();
+    const counts = watchBoard(store);
+
+    store.ingest(batch([[5, 9999, 4000, 5999, 12_345]]));
+
+    expect(store.counters).toEqual({ accepted: 0, dropped: 1 });
+    expect(counts.sinkCalls).toEqual([]);
+    expect(store.currentRows()).toEqual([]);
+    expect(prices(store)).toEqual([null, null, null, null, null, null]);
+  });
+
+  it('drops a batch of another session', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 1 }));
+    const counts = watchBoard(store);
+
+    store.ingest(batch([[5, 9999, 4000, 5999, 12_345]], { session: 's-2' }));
+
+    expect(store.counters).toEqual({ accepted: 1, dropped: 1 });
+    expect(counts.sinkCalls).toEqual([]);
+    expect(store.currentRows().find((row) => row.contractId === 5)?.priceCents).toBe(1005);
+  });
+
+  it('drops a batch older than what it holds, and takes one of the same step', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 10 }));
+    const counts = watchBoard(store);
+
+    store.ingest(batch([[5, 9999, 4000, 5999, 12_345]], { step: 9 }));
+
+    expect(store.counters).toEqual({ accepted: 1, dropped: 1 });
+    expect(counts.sinkCalls).toEqual([]);
+
+    // The same rule frames obey: an equal step is still the whole truth of
+    // that step, so it is taken.
+    store.ingest(batch([[5, 9999, 4000, 5999, 12_345]], { step: 10 }));
+
+    expect(store.counters).toEqual({ accepted: 2, dropped: 1 });
+    expect(counts.sinkCalls).toHaveLength(1);
+  });
+
+  it('drops a batch whose revision is not the one it holds', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 1, rev: 1 }));
+    const counts = watchBoard(store);
+
+    // The server sends a whole picture whenever the revision moves, but that
+    // one message can be skipped for a socket with a send backlog. Taking the
+    // batch that follows would move the page's ordering triple past a picture
+    // it never received, leaving it newer than what it is showing.
+    store.ingest(batch([[5, 9999, 4000, 5999, 12_345]], { step: 2, rev: 2 }));
+
+    expect(store.counters).toEqual({ accepted: 1, dropped: 1 });
+    expect(counts.sinkCalls).toEqual([]);
+    expect(store.currentRows().find((row) => row.contractId === 5)?.priceCents).toBe(1005);
+
+    // And the whole picture that does arrive puts it right.
+    store.ingest(boardFrame({ step: 3, rev: 2, quotes: quotes({ 5: 9999 }) }));
+
+    expect(store.currentRows().find((row) => row.contractId === 5)?.priceCents).toBe(9999);
+  });
+
+  it('drops a batch of the day before, arriving after the frame that opened the new one', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 1 }));
+    // The whole frame the server sends first on a new day.
+    store.ingest(boardFrame({ step: 2, board: testBoard(500), clock: { ...OPEN_CLOCK, day: 2 } }));
+    const counts = watchBoard(store);
+    const before = store.currentRows();
+
+    // A batch and a frame can cross on the wire; this one belongs to a board
+    // that is no longer on screen.
+    store.ingest(batch([[5, 9999, 4000, 5999, 12_345]], { step: 3, day: 1 }));
+
+    expect(store.counters.dropped).toBe(1);
+    expect(counts.sinkCalls).toEqual([]);
+    expect(store.currentRows()).toEqual(before);
+  });
+
+  it('changes nothing when a batch follows a frame that left no board at all', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 1 }));
+    // A lobby frame clears the row set; a batch after it has nothing to be
+    // applied to, and its day could not match a lobby frame's day 0 in any case.
+    store.ingest(testFrame({ step: 2 }));
+    const counts = watchBoard(store);
+
+    store.ingest(batch([[5, 9999, 4000, 5999, 12_345]], { step: 3 }));
+
+    expect(counts.sinkCalls).toEqual([]);
+    expect(store.currentRows()).toEqual([]);
+    expect(store.counters.dropped).toBe(1);
+  });
+
+  it('is put right by the next whole picture after a batch it had to drop', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 10 }));
+    store.ingest(batch([[5, 9999, 4000, 5999, 12_345]], { step: 9 }));
+    expect(store.counters.dropped).toBe(1);
+
+    const settled = quotes({ 5: 7777, 6: 8888 });
+    store.ingest(boardFrame({ step: 11, quotes: settled }));
+
+    // Every row is what that one frame says, and nothing of the dropped batch
+    // survives anywhere.
+    const rebuilt = buildRows({
+      board: testBoard(),
+      companies: testFrame().companies,
+      quotes: settled,
+      quoteReals: reals(),
+      quoteHopes: hopes(),
+      minTicketCents: 500,
+      buyable: true,
+    });
+    expect(store.currentRows().map((row) => ({ ...row, dir: 0 }))).toEqual(rebuilt);
+  });
+
+  it('stops dimming on the frame that closes the market, and a batch after it dims nothing', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 1, quotes: quotes({ 7: 400 }) }));
+    expect(store.currentRows().find((row) => row.contractId === 7)?.dimmed).toBe(true);
+
+    // The whole frame the server sends on a phase change is what tells the
+    // page the market is shut; without it the row would stay dimmed for a
+    // whole cadence, and every batch after it would keep dimming.
+    store.ingest(boardFrame({ step: 2, clock: DEBRIEF_CLOCK, quotes: quotes({ 7: 400 }) }));
+    expect(store.currentRows().find((row) => row.contractId === 7)?.dimmed).toBe(false);
+
+    store.ingest(batch([[7, 300, 0, 300, 12_345]], { step: 3 }));
+
+    expect(store.currentRows().find((row) => row.contractId === 7)).toMatchObject({ priceCents: 300, dimmed: false });
+  });
+
+  it('gives the merged rows back as the latest rows, in the default order', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 1 }));
+
+    store.ingest(batch([[5, 9999, 4000, 5999, 12_345]]));
+
+    const latest = store.currentRows();
+    expect(latest).toHaveLength(252);
+    expect(latest.map((row) => row.contractId)).toEqual(store.boardRows.get().map((row) => row.contractId));
+    expect(latest.find((row) => row.contractId === 5)?.priceCents).toBe(9999);
+    // The row set the table was handed on the day's first frame is untouched.
+    expect(store.boardRows.get().find((row) => row.contractId === 5)?.priceCents).toBe(1005);
   });
 });

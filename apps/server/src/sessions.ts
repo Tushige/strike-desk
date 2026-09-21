@@ -1,4 +1,4 @@
-import type { Session } from '@strike-desk/shared/engine';
+import type { Frame, Session } from '@strike-desk/shared/engine';
 import { CONTENT_VERSION, DEFAULT_TARGETS_PER_COMPANY, ENGINE_VERSION, createSession, playerOf } from '@strike-desk/shared/engine';
 import type { Limits } from './limits';
 import type { FrameSocket } from './sampler';
@@ -13,6 +13,29 @@ import type { FrameSocket } from './sampler';
  * A session made here has exactly one player, and nothing adds another.
  */
 
+/**
+ * What a switched-on session last sent, so the next sampling pass can send the
+ * difference. Held per session rather than per player because the ticket
+ * prices are the session's: they come from the market, the day and the point
+ * of the day's path, and not from whose game it is.
+ *
+ * `day`, `phase` and `rev` are here because a batch carries none of them, and
+ * each is a thing the brief never lets a client miss: a frame is sent whole
+ * whenever one of them moves.
+ */
+export interface StressStream {
+  quotes: readonly number[];
+  quoteReals: readonly number[];
+  quoteHopes: readonly number[];
+  quoteBreakEvens: readonly number[];
+  day: number;
+  /** The frame's own phase, not a string: a phase that was renamed or mistyped has to fail the typecheck, not compare quietly. */
+  phase: Frame['clock']['phase'];
+  rev: number;
+  /** The clock reading of the last whole frame, which is what the cadence is measured from. */
+  lastWholeFrameMs: number;
+}
+
 export interface SessionEntry {
   /** Replaced, never mutated, after a command or a sample. */
   session: Session;
@@ -23,6 +46,12 @@ export interface SessionEntry {
    * or when its last socket left. Null exactly while a socket is attached.
    */
   idleSinceMs: number | null;
+  /**
+   * What this session last sent, with the stress setting on. Null for an
+   * ordinary session, which always sends the whole picture, and null for a
+   * switched-on one until its first sampling pass.
+   */
+  stressStream: StressStream | null;
 }
 
 /** Why a socket was not attached. Both refusals leave what is already there alone. */
@@ -80,7 +109,10 @@ export function createRegistry(options: RegistryOptions): SessionRegistry {
       const identity = { seed: options.drawSeed(), engine: ENGINE_VERSION, content: CONTENT_VERSION };
       // A session nobody ever connects to is idle from the moment it is made,
       // so an abandoned one is swept on the same rule as any other.
-      const entry: SessionEntry = { session: createSession(id, identity, { targetsPerCompany }), sockets: new Map(), idleSinceMs: nowMs };
+      // The stream starts empty for every session: the sampler fills it, and
+      // until it has, there is nothing to send a difference against, so the
+      // first sampled message is the whole picture.
+      const entry: SessionEntry = { session: createSession(id, identity, { targetsPerCompany }), sockets: new Map(), idleSinceMs: nowMs, stressStream: null };
       sessions.set(id, entry);
       return entry;
     },
@@ -91,6 +123,15 @@ export function createRegistry(options: RegistryOptions): SessionRegistry {
       if (!entry.sockets.has(socket) && entry.sockets.size >= maxSocketsPerSession) return 'tooManySockets';
       entry.sockets.set(socket, playerOf(entry.session.game, playerId).id);
       entry.idleSinceMs = null;
+      // A socket that has just joined holds the frame the door answered its
+      // hello with, projected at its own moment, and not what the sampler last
+      // sent. Forgetting what was last sent makes the next pass send the whole
+      // picture, which is the only message every socket on this session can
+      // safely be given: they share one text, so the difference cannot be
+      // right for the one that just arrived and for the ones already here.
+      // One extra whole picture per hello, on a service holding at most a
+      // handful of these games.
+      entry.stressStream = null;
       return 'attached';
     },
     detach(id, socket, nowMs) {

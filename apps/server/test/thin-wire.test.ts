@@ -1,15 +1,26 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
   BELL_STEP_IN_DAY,
+  CONTENT_VERSION,
   DAY_STEPS,
+  ENGINE_VERSION,
+  FIRST_PLAYER_ID,
   GAME_STEPS,
   PRE_BELL_STEPS,
   PROTOCOL_VERSION,
   STEP_MS,
+  buildMarket,
   frameSchema,
+  handleCommand,
+  parseServerMessage,
   seedToMarketCode,
 } from '@strike-desk/shared/engine';
-import type { BuyCommand, CashOutCommand, ClockCommand, Frame } from '@strike-desk/shared/engine';
+import type { BuyCommand, CashOutCommand, ClockCommand, Frame, Market, QuotesMessage } from '@strike-desk/shared/engine';
+import { LIMITS } from '../src/limits';
+import type { FrameSocket } from '../src/sampler';
+import { sampleSessions } from '../src/sampler';
+import { drawSessionId } from '../src/seed';
+import { createRegistry } from '../src/sessions';
 import type { Harness } from './harness';
 import { FIXED_SEEDS, startHarness } from './harness';
 
@@ -207,6 +218,129 @@ describe('every frame this service emits', () => {
   it('keeps one session throughout', () => {
     const sessions = new Set(collected.map(({ frame }) => frame.session));
     expect(sessions.size).toBe(1);
+  });
+});
+
+/**
+ * The stress setting's second message shape, held to exactly the same secrecy
+ * claim as a frame: what it carries is what the market says at the moment it
+ * was sent, and nothing about what has not happened yet.
+ */
+describe('every batch of changed quotes this service emits', () => {
+  /** 2,500 contracts is 209 targets a company: the size a public instance grants. */
+  const STRESS_TARGETS = 209;
+  /** A step well inside day 1's open market, and the point of the day's path it falls on. */
+  const BATCH_STEP = PRE_BELL_STEPS + 50;
+  const BATCH_PRICE_INDEX = 50;
+
+  function fakeSocket(): FrameSocket & { sent: string[] } {
+    const sent: string[] = [];
+    return { OPEN: 1, readyState: 1, bufferedAmount: 0, sent, send: (text: string) => void sent.push(text) };
+  }
+
+  /**
+   * A copy of the market with every share price from `fromIndex` of `day` on,
+   * and every later day entirely, replaced by something else.
+   */
+  function scrambleFrom(source: Market, day: number, fromIndex: number): Market {
+    const copy = structuredClone(source);
+    for (const marketDay of copy.days) {
+      if (marketDay.day < day) continue;
+      const from = marketDay.day === day ? fromIndex : 0;
+      marketDay.paths = marketDay.paths.map((path) => path.map((price, index) => (index < from ? price : price * 1.37 + 11 + index)));
+    }
+    return copy;
+  }
+
+  /**
+   * One switched-on session on the fixed seed, sampled twice a step apart: the
+   * whole picture, then the batch. `market` replaces the one the session built
+   * for itself, which is how a scrambled future is fed in.
+   */
+  function batchOn(market: Market | null): QuotesMessage {
+    const registry = createRegistry({ drawSeed: () => SEED, drawId: drawSessionId, limits: LIMITS });
+    const entry = registry.create(0, STRESS_TARGETS);
+    if (entry === null) throw new Error('the registry refused a session it has room for');
+    const started = handleCommand(entry.session, FIRST_PLAYER_ID, { t: 'start', commandId: 'start-0001', pace: 1 }, 0);
+    expect(started.receipt.outcome).toBe('accepted');
+    registry.replace(entry.session.id, market === null ? started.session : { ...started.session, market });
+
+    const socket = fakeSocket();
+    registry.attach(entry.session.id, FIRST_PLAYER_ID, socket);
+    const stats = { sent: 0, skipped: 0 };
+    // At pace 1 a step is one STEP_MS of wall clock from a start at 0.
+    sampleSessions(registry, (BATCH_STEP - 1) * STEP_MS, stats, LIMITS.stressFullFrameMs);
+    sampleSessions(registry, BATCH_STEP * STEP_MS, stats, LIMITS.stressFullFrameMs);
+
+    const [whole, batch] = socket.sent;
+    if (whole === undefined || batch === undefined) throw new Error('the session did not send a whole picture and then a batch');
+    const parsed = parseServerMessage(JSON.parse(batch));
+    if (parsed === null || parsed.t !== 'quotes') throw new Error('the second message was not a batch');
+    // The session field is the one thing that is not the market's: pinned
+    // here so the comparisons below are about the numbers.
+    expect(parsed).toMatchObject({ day: 1, priceIndex: BATCH_PRICE_INDEX, step: BATCH_STEP });
+    return parsed;
+  }
+
+  it('carries neither the market code, nor the seed, nor even the name of the field it would live in', async () => {
+    const running = await startHarness({ limits: { stressFullFrameMs: 1_000_000 } });
+    try {
+      const client = running.connect();
+      await client.opened();
+      client.send({ ...HELLO, board: 2500 });
+      await client.nextFrame();
+      client.send({ t: 'start', commandId: 'start-0001', pace: 1 });
+      await client.nextReply();
+
+      const startedAtMs = running.clock.now();
+      const batches: unknown[] = [];
+      for (const step of [BATCH_STEP, BATCH_STEP + 1, BATCH_STEP + 2]) {
+        running.clock.advance(startedAtMs + step * STEP_MS - running.clock.now());
+        running.sample();
+      }
+      await new Promise<void>((resolve) => {
+        client.socket.once('pong', () => resolve());
+        client.socket.ping();
+      });
+      for (const raw of client.received()) {
+        const message = parseServerMessage(raw);
+        if (message !== null && message.t === 'quotes') batches.push(message);
+      }
+      expect(batches.length).toBeGreaterThan(0);
+
+      const code = seedToMarketCode(SEED);
+      const codeWithoutDashes = code.replace(/-/g, '');
+      for (const message of batches) {
+        const text = JSON.stringify(message);
+        expect({
+          marketCode: text.includes(code),
+          marketCodeWithoutDashes: text.includes(codeWithoutDashes),
+          seedInDecimal: text.includes(String(SEED)),
+          theFieldName: text.includes('marketCode'),
+        }).toEqual({ marketCode: false, marketCodeWithoutDashes: false, seedInDecimal: false, theFieldName: false });
+      }
+    } finally {
+      await running.close();
+    }
+  });
+
+  it('says exactly the same thing when everything still to come is scrambled', () => {
+    const market = buildMarket({ seed: SEED, engine: ENGINE_VERSION, content: CONTENT_VERSION });
+    const future = scrambleFrom(market, 1, BATCH_PRICE_INDEX + 1);
+    expect(future).not.toEqual(market);
+
+    expect(batchOn(future).changes).toEqual(batchOn(null).changes);
+    expect(batchOn(future).prices).toEqual(batchOn(null).prices);
+  });
+
+  it('says something different when the moment it is about is scrambled too', () => {
+    // The mutation that proves the assertion above discriminates: scrambling
+    // from the batch's own point of the path, rather than from the one after
+    // it, has to change what the batch says.
+    const market = buildMarket({ seed: SEED, engine: ENGINE_VERSION, content: CONTENT_VERSION });
+    const now = scrambleFrom(market, 1, BATCH_PRICE_INDEX);
+
+    expect(batchOn(now).changes).not.toEqual(batchOn(null).changes);
   });
 });
 

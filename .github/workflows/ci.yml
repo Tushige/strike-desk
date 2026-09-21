@@ -106,3 +106,9 @@ jobs:
       - name: A printout names the market it is of
         run: |
           head -1 "$RUNNER_TEMP/fresh-1.txt" | grep -Eq '^market [2-9A-HJ-NP-Z]{3}-[2-9A-HJ-NP-Z]{3}-[2-9A-HJ-NP-Z]{4} engine '
+      - name: The same market number and day twice prints the same day
+        run: |
+          pnpm --filter @strike-desk/server exec tsx scripts/day.ts --market 7NS-URH-ME42 --day 3 > "$RUNNER_TEMP/day-1.txt"
+          pnpm --filter @strike-desk/server exec tsx scripts/day.ts --market 7NS-URH-ME42 --day 3 > "$RUNNER_TEMP/day-2.txt"
+          cmp "$RUNNER_TEMP/day-1.txt" "$RUNNER_TEMP/day-2.txt"
+          head -1 "$RUNNER_TEMP/day-1.txt" | grep -Eq '^market [2-9A-HJ-NP-Z]{3}-[2-9A-HJ-NP-Z]{3}-[2-9A-HJ-NP-Z]{4} engine [^ ]+ content [^ ]+ day 3$'

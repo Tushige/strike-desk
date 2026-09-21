@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { Company } from '../src/cast';
 import { CAST, MARKET_WOBBLE } from '../src/cast';
 import { OPEN_STEPS } from '../src/clock';
 import { exactExp } from '../src/exact';
@@ -217,9 +218,69 @@ describe('the whole-market shocks', () => {
   });
 });
 
+describe('a move is the whole market\'s times the company\'s sensitivity, plus the company\'s own', () => {
+  const scale = 1 / Math.sqrt(OPEN_STEPS);
+
+  /** Six stand-ins, five of one shape and one of another, so every day leaves two of the five quiet. */
+  function castOf(shape: (id: number) => Pick<Company, 'beta' | 'ownWobble'>): Company[] {
+    return [0, 1, 2, 3, 4, 5].map((id): Company => ({
+      id,
+      ticker: `TST${id}`,
+      name: `Test ${id}`,
+      product: 'test things',
+      kind: 'toys',
+      rivalId: (id + 1) % 6,
+      startPrice: 100,
+      ...shape(id),
+    }));
+  }
+
+  /** Two of the first five companies that drew no headline that day. */
+  function twoQuiet(each: Market, day: number): [number, number] {
+    const data = marketDay(each, day);
+    const quiet = [0, 1, 2, 3, 4].filter((id) => !data.news.some((item) => item.headline.companyId === id));
+    const [first, second] = quiet;
+    if (first === undefined || second === undefined) throw new Error('a day without two quiet companies to compare');
+    return [first, second];
+  }
+
+  it('gives two quiet companies with no own wobble the same market shocks, each scaled by its sensitivity', () => {
+    const cast = castOf((id) => (id === 5 ? { beta: 1, ownWobble: 0.02 } : { beta: 0.5 + id * 0.25, ownWobble: 0 }));
+    const each = buildMarket(identity, { cast });
+    const paths = marketDay(each, 1).paths;
+    // Take the drift out and divide by beta: what is left is the market's own shock, the same for both.
+    const shocksOf = (companyId: number): number[] => {
+      const company = cast[companyId];
+      if (company === undefined) throw new Error('no such company');
+      const marketSd = company.beta * MARKET_WOBBLE * scale;
+      const drift = -0.5 * marketSd * marketSd;
+      const path = paths[companyId] ?? [];
+      const shocks: number[] = [];
+      for (let k = 1; k <= OPEN_STEPS; k += 1) shocks.push((Math.log((path[k] ?? NaN) / (path[k - 1] ?? NaN)) - drift) / company.beta);
+      return shocks;
+    };
+    const [a, b] = twoQuiet(each, 1);
+    const first = shocksOf(a);
+    const second = shocksOf(b);
+    expect(first).toHaveLength(OPEN_STEPS);
+    // A path that never moved would make the comparison below pass for the wrong reason.
+    expect(first.some((value) => Math.abs(value) > 1e-6)).toBe(true);
+    first.forEach((value, k) => expect(Math.abs(value - (second[k] ?? NaN))).toBeLessThan(1e-9));
+  });
+
+  it('does not move two companies together when all they share is the size of their own wobble', () => {
+    const cast = castOf((id) => (id === 5 ? { beta: 1, ownWobble: 0.02 } : { beta: 0, ownWobble: 0.035 }));
+    const each = buildMarket(identity, { cast });
+    const paths = marketDay(each, 1).paths;
+    const [a, b] = twoQuiet(each, 1);
+    expect(paths[a]?.[0]).toBe(paths[b]?.[0]);
+    expect(paths[a]).not.toEqual(paths[b]);
+  });
+});
+
 describe('the engine version', () => {
-  it('is e2', () => {
-    expect(ENGINE_VERSION).toBe('e2');
+  it('is e3', () => {
+    expect(ENGINE_VERSION).toBe('e3');
   });
 });
 

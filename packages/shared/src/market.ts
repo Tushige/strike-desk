@@ -18,9 +18,14 @@ import { createStream } from './rng';
  */
 
 /** Bump when the model changes: the same seed then means a different market. */
-export const ENGINE_VERSION = 'e2';
-/** Bump when headline content changes. */
-export const CONTENT_VERSION = 'c0';
+export const ENGINE_VERSION = 'e3';
+/**
+ * Bump when the cast or the headline content changes: the same seed then
+ * means a different market, so a market number only names one market for as
+ * long as this label holds. `packages/shared/test/cast.test.ts` pins a digest
+ * of the cast against it, so a cast edit that forgets the bump fails there.
+ */
+export const CONTENT_VERSION = 'c1';
 
 /**
  * What names a market. The same identity always gives the same market, so

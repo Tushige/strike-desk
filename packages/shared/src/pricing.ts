@@ -12,8 +12,20 @@ import type { Side } from './protocol';
  */
 
 export const SHARES_PER_TICKET = 100;
-/** Below this a contract shows as too cheap to trade and cannot be bought. */
-export const MIN_TICKET_PRICE_CENTS: Cents = 1000;
+/**
+ * The cheapest tradable ticket. Below this a contract shows as too cheap to
+ * trade and cannot be bought.
+ *
+ * One dollar per 100-share ticket is a one-cent tick per share. With the
+ * smallest mark-up at 1.10, $5 is the lowest whole-dollar floor at which a
+ * ticket made entirely of hope value, which is every row at the opening bell,
+ * is never priced under its fair value; a ticket with real value can still
+ * round down by up to half a dollar, at this floor or any other.
+ *
+ * Provisional, like `QUIET_MARKUP`: both stand until the balance robots have
+ * measured them.
+ */
+export const MIN_TICKET_PRICE_CENTS: Cents = 500;
 
 export type Trust = 1 | 2 | 3;
 
@@ -30,8 +42,12 @@ export const TRUST_RULES: Record<Trust, TrustRule> = {
   1: { chanceTrue: 0.5, move: 0.15, markup: 1.1 },
 };
 
-/** Mark-up for a company with no headline today. */
-export const QUIET_MARKUP = 1.2;
+/**
+ * Mark-up for a company with no headline today: the tightest, equal to a
+ * rumor's, because a quiet company is where the least is known. Provisional
+ * until the balance robots have measured it.
+ */
+export const QUIET_MARKUP = 1.1;
 
 export interface TicketValue {
   /** Whole-dollar ticket price in cents: real plus hope. */

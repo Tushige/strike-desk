@@ -160,6 +160,35 @@ describe('resume: a hello that names a running game', () => {
     expect(returning.sent.at(-1)).toBe(first.sent.at(-1));
   });
 
+  it('is handed no receipts, and neither is anybody else: today no frame the service sends carries any', () => {
+    // What the service does today, written down as a gap and not as the goal.
+    // The game holds a receipt by now, the one for `start`, and every frame
+    // leaves it out: the answer to a hello, the frame inside a reply and the
+    // sampled frame are all the live form, whose receipts are empty. So a page
+    // whose reply was lost cannot learn the outcome from a frame; only sending
+    // the command again, with the same id, brings the first receipt back. The
+    // day a frame carries receipts this goes red, and that is the day to
+    // delete it.
+    const { made, first } = runningGame();
+    const returning = made.connect();
+    say(made, returning, { ...HELLO, session: 'session-a' });
+
+    expect(lastFrame(returning).receipts).toEqual([]);
+    expect(lastFrame(first).receipts).toEqual([]);
+
+    const reply = JSON.parse(first.sent[1] ?? 'null') as { t: string; receipt: { commandId: string }; frame: unknown };
+    expect(reply.t).toBe('reply');
+    expect(reply.receipt.commandId).toBe('start-0001');
+    expect(frameSchema.parse(reply.frame).receipts).toEqual([]);
+
+    // The same id again: the first receipt comes back, in a reply, and nothing else changes.
+    say(made, returning, { t: 'start', commandId: 'start-0001', pace: 1 });
+    const again = JSON.parse(returning.sent.at(-1) ?? 'null') as { t: string; receipt: Record<string, unknown>; frame: unknown };
+    expect(again.t).toBe('reply');
+    expect(again.receipt).toMatchObject({ commandId: 'start-0001', kind: 'start', outcome: 'accepted' });
+    expect(frameSchema.parse(again.frame).rev).toBe(1);
+  });
+
   it('takes no new game from the budget, and starts no new market', () => {
     const { made } = runningGame();
     for (let again = 0; again < 3; again += 1) {

@@ -5,6 +5,8 @@ import { recordedFrame } from '../src/fixtures/recordedGame';
 import { FAKE_ACCOUNT_AFTER_BUY, FAKE_CONTRACT_A, FAKE_OPEN_TICKET, createFakeTicketDesk, createHeldTicketDesk } from '../src/modules/order-ticket/fake';
 import type { FakeTicketDesk } from '../src/modules/order-ticket/fake';
 import { DRAFT_MIN_GAP_MS, createDraftPacer } from '../src/modules/order-ticket/draftPacer';
+import { createLatestState, createTicketHandlers } from '../src/modules/order-ticket/handlers';
+import type { TicketHandlers } from '../src/modules/order-ticket/handlers';
 import type { TicketAccount, TicketDraft, TicketQuote } from '../src/modules/order-ticket/index';
 import {
   breakEvenStopIndex,
@@ -18,7 +20,7 @@ import {
   stopAt,
   ticketReducer,
 } from '../src/modules/order-ticket/machine';
-import type { TicketSnapshot, TicketState } from '../src/modules/order-ticket/machine';
+import type { TicketEvent, TicketSnapshot, TicketState } from '../src/modules/order-ticket/machine';
 import { BLOCKER_WORDS, CASH_OUT_BLOCKER_WORDS, REJECT_WORDS } from '../src/modules/order-ticket/words';
 
 /**
@@ -405,26 +407,116 @@ describe('the order ticket: when the line stops being live', () => {
     expect(desk.controls.submitted()).toEqual([]);
   });
 
-  it('offers the retry only while checking and only when the desk offers it; the retry asks the desk and submits nothing', () => {
+  it('offers the retry only while checking and only when the desk offers it, and a press still builds nothing then', () => {
     const desk = deskWithKnownDraft();
-    const props = desk.props();
-    let state = chosen();
-    const first = pressOf(state, snapshotOf(desk), props.newCommandId);
-    if (first === null) throw new Error('the first press should have been allowed');
-    state = ticketReducer(state, first.event);
-    void props.submit(first.command);
-    expect(retryAllowed(state, true)).toBe(false);
+    const pending = pressed('buy');
+    expect(retryAllowed(pending, true)).toBe(false);
 
     desk.controls.setLine('offline');
-    state = ticketReducer(state, { type: 'line', line: 'offline' });
-    expect(retryAllowed(state, false)).toBe(false);
-    expect(retryAllowed(state, true)).toBe(true);
+    const checking = ticketReducer(pending, { type: 'line', line: 'offline' });
+    expect(retryAllowed(checking, false)).toBe(false);
+    expect(retryAllowed(checking, true)).toBe(true);
+    expect(pressOf(checking, snapshotOf(desk), desk.props().newCommandId)).toBeNull();
+  });
+});
 
-    // What the form does on a press of the retry control: it asks the desk, and that is all.
-    if (retryAllowed(state, true)) props.onRetry();
-    expect(desk.controls.retries()).toBe(1);
+describe('the order ticket: what its handlers do, which are the ones the form is drawn with', () => {
+  /** The handlers wired as the component wires them: the latest state in a holder, the desk's props read at each press, every id counted. */
+  function wired(desk: FakeTicketDesk, from: TicketState = chosen()): { handlers: TicketHandlers; state: () => TicketState; minted: () => number; drawn: TicketEvent[] } {
+    let minted = 0;
+    const drawn: TicketEvent[] = [];
+    const latest = createLatestState(from, (event) => {
+      drawn.push(event);
+    });
+    const handlers = createTicketHandlers({
+      state: latest.state,
+      send: latest.send,
+      props: () => {
+        const props = desk.props();
+        return {
+          ...props,
+          newCommandId: () => {
+            minted += 1;
+            return props.newCommandId();
+          },
+        };
+      },
+    });
+    return { handlers, state: latest.state, minted: () => minted, drawn };
+  }
+
+  it('sends one command and takes one id for two presses in the same moment', () => {
+    const desk = deskWithKnownDraft();
+    const form = wired(desk);
+
+    form.handlers.onPress();
+    form.handlers.onPress();
+
+    expect(form.minted()).toBe(1);
+    expect(desk.controls.submitted()).toEqual([{ t: 'buy', commandId: 'fake-cmd-0001', day: 1, contractId: 24, spendCents: 5000000, seenPriceCents: 11800 }]);
+    expect(form.state().form).toBe('pending');
+    // React is told each event once, in order: that is what it draws from.
+    expect(form.drawn).toEqual([{ type: 'pressed', commandId: 'fake-cmd-0001', kind: 'buy' }]);
+  });
+
+  it('hands the outcome to the machine when the desk answers', async () => {
+    const desk = deskWithKnownDraft();
+    const form = wired(desk);
+    form.handlers.onPress();
+    const sent = desk.controls.submitted()[0];
+    if (sent === undefined) throw new Error('the press should have sent a command');
+
+    desk.controls.answer({ outcome: 'rejected', receipt: { commandId: sent.commandId, kind: 'buy', step: 400, outcome: 'rejected', reason: 'overCap' } });
+    // The same id submitted again is the same promise: awaiting it here runs after the form's own handling of it.
+    await desk.props().submit(sent);
+
+    expect(form.state().form).toBe('rejected');
+    expect(form.state().notice).toEqual({ kind: 'rejected', of: 'buy', reason: 'overCap' });
     expect(desk.controls.submitted()).toHaveLength(1);
-    expect(pressOf(state, snapshotOf(desk), props.newCommandId)).toBeNull();
+  });
+
+  it('asks the desk once on a retry, takes no new id and submits nothing', () => {
+    const desk = deskWithKnownDraft();
+    const form = wired(desk);
+    form.handlers.onPress();
+    desk.controls.setLine('offline');
+    desk.controls.offerRetry(true);
+    const checking = wired(desk, ticketReducer(form.state(), { type: 'line', line: 'offline' }));
+
+    checking.handlers.onRetry();
+
+    expect(desk.controls.retries()).toBe(1);
+    // A retry reuses the command's id: the only id ever taken is the first press's.
+    expect(form.minted()).toBe(1);
+    expect(checking.minted()).toBe(0);
+    expect(desk.controls.submitted()).toHaveLength(1);
+  });
+
+  it('does not reach the desk on a retry that is not offered, or while nothing is being checked', () => {
+    const desk = deskWithKnownDraft();
+    const form = wired(desk);
+    form.handlers.onPress();
+    desk.controls.setLine('offline');
+    const checking = wired(desk, ticketReducer(form.state(), { type: 'line', line: 'offline' }));
+
+    checking.handlers.onRetry();
+    desk.controls.offerRetry(true);
+    wired(desk).handlers.onRetry();
+
+    expect(desk.controls.retries()).toBe(0);
+  });
+
+  it('reports a pick to the desk and changes nothing of its own; a chosen spend is kept by the form', () => {
+    const desk = deskWithKnownDraft();
+    const form = wired(desk);
+    const before = form.state();
+
+    form.handlers.onPick(28);
+    expect(desk.controls.picks()).toEqual([28]);
+    expect(form.state()).toBe(before);
+
+    form.handlers.onChooseSpend(10_000_000);
+    expect(form.state().spendCents).toBe(10000000);
   });
 });
 

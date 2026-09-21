@@ -1,10 +1,11 @@
-import { memo, useCallback, useEffect, useId, useReducer, useRef, useState, useSyncExternalStore } from 'react';
+import { memo, useEffect, useId, useReducer, useRef, useState, useSyncExternalStore } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import { formatCents } from '@strike-desk/shared/money';
 import type { Side } from '@strike-desk/shared/protocol';
 import { createDraftPacer } from './draftPacer';
-import { breakEvenStopIndex, buyBlocker, cashOutBlocker, initialTicketState, pressOf, quoteEchoes, retryAllowed, stopAt, ticketReducer } from './machine';
-import type { TicketEvent, TicketNotice, TicketSnapshot, TicketState } from './machine';
+import { createLatestState, createTicketHandlers } from './handlers';
+import { breakEvenStopIndex, buyBlocker, cashOutBlocker, initialTicketState, quoteEchoes, retryAllowed, stopAt, ticketReducer } from './machine';
+import type { TicketNotice, TicketSnapshot, TicketState } from './machine';
 import type { OpenTicket, OrderTicketProps, SimpleChoice, TicketAccount, TicketContract, TicketDraft, TicketQuote } from './ports';
 import {
   ACCEPTED_WORDS,
@@ -55,9 +56,10 @@ import {
  * player's is what they chose.
  *
  * Two parts. `TicketView` draws a state and a snapshot and has no rules in
- * it. `OrderTicket` holds the machine and is the only part that talks to the
- * desk: one handler, `onPress`, is the only caller of `pressOf` and the only
- * place `submit` is called.
+ * it. `OrderTicket` holds the machine and feeds it what the server and the
+ * desk say. What a press does is in `handlers.ts`, with no React in it: its
+ * `onPress` is the only caller of `pressOf` and the only place `submit` is
+ * called.
  */
 
 const SIDES: readonly Side[] = ['up', 'down'];
@@ -405,17 +407,6 @@ export function TicketView({ state, snapshot, choices, spendChoices, retryOffere
   );
 }
 
-function snapshotOf(props: OrderTicketProps): TicketSnapshot {
-  return {
-    day: props.day,
-    contract: props.contract,
-    quote: props.quote.get(),
-    account: props.account.get(),
-    position: props.position.get(),
-    line: props.line,
-  };
-}
-
 export const OrderTicket = memo(function OrderTicket(props: OrderTicketProps): ReactElement {
   const quote = useSyncExternalStore(props.quote.subscribe, props.quote.get, props.quote.get);
   const account = useSyncExternalStore(props.account.subscribe, props.account.get, props.account.get);
@@ -424,21 +415,22 @@ export const OrderTicket = memo(function OrderTicket(props: OrderTicketProps): R
   const contractId = props.contract?.contractId ?? null;
   const [state, dispatch] = useReducer(ticketReducer, { day: props.day, contractId, spendCents: null, held: position !== null }, initialTicketState);
 
-  /**
-   * The machine's latest state, moved forward by `send` in the same moment as
-   * the event is dispatched. A handler reads this and never the rendered
-   * state, so a second press in the same moment already sees `pending`.
-   */
-  const latestState = useRef(state);
   const latestProps = useRef(props);
   useEffect(() => {
     latestProps.current = props;
   });
 
-  const send = useCallback((event: TicketEvent): void => {
-    latestState.current = ticketReducer(latestState.current, event);
-    dispatch(event);
-  }, []);
+  /**
+   * The machine's latest state, moved forward by `send` in the same moment as
+   * the event is dispatched to React. The handlers read it and never the
+   * rendered state, so a second press in the same moment already sees
+   * `pending`. Both are made once per mount and are plain functions with no
+   * React in them (`handlers.ts`), which is where they are tried.
+   */
+  const [{ send, handlers }] = useState(() => {
+    const latest = createLatestState(state, dispatch);
+    return { send: latest.send, handlers: createTicketHandlers({ state: latest.state, props: () => latestProps.current, send: latest.send }) };
+  });
 
   // The desk owns the selection: the form follows it.
   useEffect(() => {
@@ -485,35 +477,6 @@ export const OrderTicket = memo(function OrderTicket(props: OrderTicketProps): R
     pacer.change(handedOn.current);
   }, [pacer, state.contractId, state.spendCents]);
 
-  const onPick = useCallback((picked: number): void => {
-    latestProps.current.onPick(picked);
-  }, []);
-
-  const onChooseSpend = useCallback(
-    (spendCents: number): void => {
-      send({ type: 'spend', spendCents });
-    },
-    [send],
-  );
-
-  /** The one place a command leaves the form. */
-  const onPress = useCallback((): void => {
-    const now = latestProps.current;
-    const press = pressOf(latestState.current, snapshotOf(now), now.newCommandId);
-    if (press === null) return;
-    send(press.event);
-    const { commandId } = press.command;
-    void now.submit(press.command).then((outcome) => {
-      send({ type: 'outcome', commandId, outcome });
-    });
-  }, [send]);
-
-  /** The retry asks the desk to send the unanswered command again, under its own id. The form itself sends nothing. */
-  const onRetry = useCallback((): void => {
-    const now = latestProps.current;
-    if (retryAllowed(latestState.current, now.retryOffered)) now.onRetry();
-  }, []);
-
   return (
     <TicketView
       state={state}
@@ -521,10 +484,10 @@ export const OrderTicket = memo(function OrderTicket(props: OrderTicketProps): R
       choices={props.choices}
       spendChoices={props.spendChoices}
       retryOffered={props.retryOffered}
-      onPick={onPick}
-      onChooseSpend={onChooseSpend}
-      onPress={onPress}
-      onRetry={onRetry}
+      onPick={handlers.onPick}
+      onChooseSpend={handlers.onChooseSpend}
+      onPress={handlers.onPress}
+      onRetry={handlers.onRetry}
     />
   );
 });

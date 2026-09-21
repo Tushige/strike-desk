@@ -1,5 +1,5 @@
 import { memo, useCallback, useState, useSyncExternalStore } from 'react';
-import { NewsCard } from '../modules/desk/index';
+import { NewsCard, RevealBanner } from '../modules/desk/index';
 import type { NewsStore, PublicNews } from './newsStore';
 
 const SelectableCard = memo(function SelectableCard({ news, selected, onSelect }: {
@@ -27,6 +27,9 @@ export const NewsPanel = memo(function NewsPanel({ store }: { store: NewsStore }
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
   return (
     <div className="max-h-[38dvh] shrink-0 overflow-y-auto overscroll-contain">
+      <div className={snapshot.bannerCompanyName === null ? '' : 'mb-2'}>
+        <RevealBanner companyName={snapshot.bannerCompanyName} />
+      </div>
       <Cards key={`${snapshot.session ?? ''}:${snapshot.day}`} news={snapshot.news} />
     </div>
   );

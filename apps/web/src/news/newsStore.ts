@@ -10,6 +10,7 @@ export interface NewsSnapshot {
   readonly session: string | null;
   readonly day: number;
   readonly news: readonly PublicNews[];
+  readonly bannerCompanyName: string | null;
 }
 
 export interface NewsStore {
@@ -28,7 +29,7 @@ function sameNews(a: PublicNews, b: PublicNews): boolean {
 /** Keeps public card data and an ordering watermark, never the frame or its money. */
 export function createNewsStore(): NewsStore {
   let held: FrameOrder | null = null;
-  let snapshot: NewsSnapshot = { session: null, day: 0, news: [] };
+  let snapshot: NewsSnapshot = { session: null, day: 0, news: [], bannerCompanyName: null };
   const listeners = new Set<() => void>();
 
   function ingest(message: ServerMessage): void {
@@ -66,12 +67,23 @@ export function createNewsStore(): NewsStore {
       }
       news.push(publicItem);
     }
+    let latest: PublicNews | undefined;
+    if (frame.clock.phase === 'open') {
+      for (const item of news) {
+        if (!item.revealed || item.revealIndex === undefined) continue;
+        if (latest === undefined || item.revealIndex > (latest.revealIndex ?? -1) ||
+          (item.revealIndex === latest.revealIndex && (item.companyId < latest.companyId ||
+            (item.companyId === latest.companyId && item.id < latest.id)))) latest = item;
+      }
+    }
+    const bannerCompanyName = latest?.companyName ?? null;
     if (snapshot.session === frame.session && snapshot.day === frame.clock.day &&
+      snapshot.bannerCompanyName === bannerCompanyName &&
       news.length === snapshot.news.length && news.every((item, index) => {
         const previous = snapshot.news[index];
         return previous !== undefined && sameNews(previous, item);
       })) return;
-    snapshot = { session: frame.session, day: frame.clock.day, news };
+    snapshot = { session: frame.session, day: frame.clock.day, news, bannerCompanyName };
     for (const listener of [...listeners]) listener();
   }
 

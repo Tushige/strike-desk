@@ -9,7 +9,9 @@ import path from 'node:path';
 import { createElement } from 'react';
 import { act, cleanup, render, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { ServerMessage } from '@strike-desk/shared/protocol';
+import type { Frame, ServerMessage } from '@strike-desk/shared/protocol';
+import { createNewsStore } from '../src/news/newsStore';
+import { NewsPanel } from '../src/news/NewsPanel';
 import { createWsFeed } from '../src/feed/wsFeed';
 import type { SocketLike, WsFeedOptions } from '../src/feed/wsFeed';
 
@@ -47,6 +49,9 @@ it.each([null, 2500])('boot delivers three actual headlines beside the mounted l
   let feed: ReturnType<typeof createWsFeed> | undefined;
   let unsubscribe = () => {};
   let sockets = 0;
+  let activeSocket: SocketLike | undefined;
+  const continuous = createNewsStore();
+  let skipped: Frame | undefined;
   try {
     const serviceUrl = await ready;
     // Replace only connection configuration. Boot, autostart, Feed, both
@@ -54,12 +59,25 @@ it.each([null, 2500])('boot delivers three actual headlines beside the mounted l
     const makeFeed = vi.fn((options: WsFeedOptions) => {
       feed = createWsFeed({ ...options, url: serviceUrl, createSocket: (url) => {
         sockets += 1;
-        return new Socket(url, { origin: window.location.origin });
+        activeSocket = new Socket(url, { origin: window.location.origin });
+        return activeSocket;
       } });
       unsubscribe = feed.subscribe((event) => {
-        if (event.type === 'message') messages.push(event.message);
+        if (event.type === 'message') {
+          messages.push(event.message);
+          continuous.ingest(event.message);
+        }
       });
-      return feed;
+      const connectedFeed = feed;
+      return { ...connectedFeed, subscribe: (listener: Parameters<typeof connectedFeed.subscribe>[0]) =>
+        connectedFeed.subscribe((event) => {
+          if (event.type === 'message' && event.message.t === 'frame' && skipped === undefined &&
+            event.message.news.some((news) => news.revealed)) {
+            skipped = event.message;
+            return;
+          }
+          listener(event);
+        }) };
     });
     vi.doMock('../src/feed/wsFeed', () => ({ createWsFeed: makeFeed }));
     const { store, newsStore } = await import('../src/boot');
@@ -107,6 +125,76 @@ it.each([null, 2500])('boot delivers three actual headlines beside the mounted l
     expect(makeFeed).toHaveBeenCalledTimes(1);
     expect(makeFeed.mock.calls[0]?.[0].board).toBe(board);
     expect(sockets).toBe(1);
+
+    const region = view.getAllByRole('status').find((element) => element.getAttribute('aria-live') === 'polite');
+    expect(region?.textContent).toBe('');
+    let beforeReveal: Frame | undefined;
+    // From 23 seconds, each pass advances 4.5 game seconds. Every pass is
+    // also a whole-frame deadline on the large board's 1.5-second cadence.
+    for (let pass = 0; pass < 15 && skipped === undefined; pass += 1) {
+      const prior = messages.at(-1);
+      if (prior?.t === 'frame') beforeReveal = prior;
+      const count = messages.length;
+      await act(async () => {
+        child.stdin.write('1500\n');
+        await waitFor(() => expect(messages.length).toBe(count + 1));
+      });
+    }
+    if (skipped === undefined || beforeReveal === undefined) throw new Error('no reveal in the bounded window');
+    expect(region?.textContent).toBe('');
+    expect(newsStore.getSnapshot().bannerCompanyName).toBeNull();
+    const revealed = skipped.news.filter((news) => news.revealed);
+    expect(revealed.length).toBeGreaterThan(0);
+    const targets = skipped.board?.targetsPerCompany ?? 0;
+    const eligible = skipped.quoteHopes.some((hope, id) => {
+      const companyId = Math.floor(id / (targets * 2));
+      return revealed.some((news) => news.companyId === companyId) &&
+        Number.isInteger(hope) && hope < (beforeReveal.quoteHopes[id] ?? 0);
+    });
+    expect(eligible).toBe(true);
+    const missedCount = messages.length;
+    await act(async () => {
+      child.stdin.write('1500\n');
+      await waitFor(() => expect(messages.length).toBe(missedCount + 1));
+    });
+    const recovered = messages.at(-1);
+    if (recovered?.t !== 'frame') throw new Error('whole frame did not recover news');
+    expect(newsStore.getSnapshot()).toEqual(continuous.getSnapshot());
+    const winner = [...recovered.news].filter((news) => news.revealed).sort((a, b) =>
+      (b.revealIndex ?? -1) - (a.revealIndex ?? -1) || a.companyId - b.companyId || a.id - b.id)[0];
+    if (winner === undefined) throw new Error('missing revealed headline');
+    const companyName = recovered.companies[winner.companyId]?.name;
+    expect(region?.textContent).toBe(`Plot twist!The news is out for ${companyName}. Watch the price.`);
+    expect(view.getAllByText('The news is out')).toHaveLength(recovered.news.filter((news) => news.revealed).length);
+    expect(view.container.textContent).not.toMatch(/turned out true|did not come true/i);
+    expect(recovered.news).toHaveLength(3); // The other three companies stay quiet.
+    const stable = newsStore.getSnapshot();
+    const recoveredCount = messages.length;
+    await act(async () => {
+      child.stdin.write('200\n');
+      await waitFor(() => expect(messages.length).toBe(recoveredCount + 1));
+    });
+    expect(messages.at(-1)?.t).toBe(board === null ? 'frame' : 'quotes');
+    expect(newsStore.getSnapshot()).toBe(stable);
+
+    // Attach before reconnect: a new store must recover from hello alone.
+    const fresh = createNewsStore();
+    const stopFresh = feed?.subscribe((event) => { if (event.type === 'message') fresh.ingest(event.message); });
+    const reconnectCount = messages.length;
+    await act(async () => {
+      activeSocket?.close();
+      await waitFor(() => expect(messages.length).toBe(reconnectCount + 1), { timeout: 5000 });
+    });
+    const resumed = messages.at(-1);
+    expect(resumed?.t).toBe('frame');
+    expect(fresh.getSnapshot()).toEqual(newsStore.getSnapshot());
+    expect(fresh.getSnapshot().session).toBe(reply.frame.session);
+    const freshView = render(createElement(NewsPanel, { store: fresh }));
+    expect(freshView.container.querySelector('[role="status"]')?.textContent).toBe(region?.textContent);
+    expect(messages.filter((message) => message.t === 'reply')).toHaveLength(1);
+    expect(makeFeed).toHaveBeenCalledTimes(1);
+    expect(sockets).toBe(2);
+    stopFresh?.();
   } finally {
     unsubscribe();
     feed?.close();

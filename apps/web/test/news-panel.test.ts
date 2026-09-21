@@ -18,6 +18,74 @@ vi.mock('../src/boot', async () => {
 
 afterEach(cleanup);
 
+it('keeps the neutral reveal in its original live region without redrawing on prices', () => {
+  const store = createNewsStore();
+  const current = frame();
+  store.ingest(current);
+  const rendered = vi.fn();
+  const view = render(createElement(Profiler, { id: 'news', onRender: rendered }, createElement(NewsPanel, { store })));
+  const region = view.getByRole('status');
+  expect(region.getAttribute('aria-live')).toBe('polite');
+  expect(region.textContent).toBe('');
+  const revealed: Frame = { ...current, step: 550, clock: { ...current.clock, priceIndex: 250 },
+    news: current.news.map((news) => ({ ...news, revealed: news.companyId === 2, ...(news.companyId === 2 ? { revealIndex: 240 } : {}) })) };
+  act(() => store.ingest(revealed));
+  expect(view.getByRole('status')).toBe(region);
+  expect(region.textContent).toContain('Plot twist!');
+  expect(region.textContent).toContain('Third company');
+  expect(view.getAllByText('The news is out')).toHaveLength(1);
+  expect(region.querySelector('p')?.className).toContain('motion-reduce:transition-none');
+  const snapshot = store.getSnapshot();
+  const count = rendered.mock.calls.length;
+  act(() => {
+    store.ingest(revealed);
+    store.ingest({ ...revealed, step: 551, prices: [10100], clock: { ...revealed.clock, priceIndex: 251 } });
+    store.ingest({ t: 'quotes', session: current.session, rev: 1, step: 552, day: 1, priceIndex: 252, prices: [10100], changes: [] });
+  });
+  expect(store.getSnapshot()).toBe(snapshot);
+  expect(rendered.mock.calls.length).toBe(count);
+  expect(view.getByRole('status')).toBe(region);
+  expect(region.textContent).not.toMatch(/turned out true|did not come true/i);
+});
+
+it('selects the latest passed reveal deterministically and ignores unrevealed or future entries', () => {
+  const store = createNewsStore();
+  const current = frame();
+  const revealed: Frame = { ...current, step: 550, clock: { ...current.clock, priceIndex: 250 },
+    news: current.news.map((news) => ({ ...news, revealed: true, revealIndex: news.companyId === 0 ? 200 : 240 })) };
+  store.ingest({ ...revealed, news: [...revealed.news].reverse() });
+  expect(store.getSnapshot().bannerCompanyName).toBe('Third company');
+  store.ingest({ ...revealed, step: 551, news: revealed.news.map((news) => news.companyId === 4 ? { ...news, revealIndex: 250 } : news) });
+  expect(store.getSnapshot().bannerCompanyName).toBe('Fifth company');
+  store.ingest({ ...revealed, step: 552, news: revealed.news.map((news) => ({ ...news, revealed: news.companyId !== 4, revealIndex: news.companyId === 2 ? 251 : 200 })) });
+  expect(store.getSnapshot().bannerCompanyName).toBe('First company');
+});
+
+it.each(['preBell', 'lobby', 'debrief', 'final'] as const)('clears the banner outside open, including %s with unchanged news', (phase) => {
+  const store = createNewsStore();
+  const current = frame();
+  const revealed: Frame = { ...current, clock: { ...current.clock, priceIndex: 250 },
+    news: current.news.map((news) => ({ ...news, revealed: true, revealIndex: 200 })) };
+  store.ingest(revealed);
+  expect(store.getSnapshot().bannerCompanyName).toBe('First company');
+  store.ingest({ ...revealed, step: 600, clock: { ...revealed.clock, phase } });
+  expect(store.getSnapshot().bannerCompanyName).toBeNull();
+});
+
+it('clears the banner across day and session changes without relying on a transition', () => {
+  const store = createNewsStore();
+  const current = frame();
+  const revealed: Frame = { ...current, clock: { ...current.clock, priceIndex: 250 },
+    news: current.news.map((news) => ({ ...news, revealed: true, revealIndex: 200 })) };
+  store.ingest(revealed);
+  store.ingest({ ...revealed, step: 1200, clock: { ...revealed.clock, day: 2 } });
+  expect(store.getSnapshot().bannerCompanyName).toBeNull();
+  store.ingest({ ...revealed, session: 'resumed-session' });
+  expect(store.getSnapshot().bannerCompanyName).toBe('First company');
+  store.ingest({ ...current, session: 'fresh-session' });
+  expect(store.getSnapshot().bannerCompanyName).toBeNull();
+});
+
 function frame(): Frame {
   return {
     t: 'frame', session: 'card-session', rev: 1, step: 300,

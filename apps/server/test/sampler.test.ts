@@ -61,7 +61,9 @@ async function sampleFrame(from: Harness, client: TestClient): Promise<Frame> {
  * and its break-even, plus three public headlines. Trade sections stay empty.
  */
 function expectThin(frame: Frame): void {
-  expect(frame).toMatchObject({ positions: [], receipts: [], days: [], stress: false });
+  expect(frame).toMatchObject({ positions: [], stress: false });
+  expect(frame.receipts).toHaveLength(frame.clock.phase === 'lobby' ? 0 : 1);
+  for (const day of frame.days) expect(day).toMatchObject({ startCents: 100000000, endCents: 100000000, changeCents: 0 });
   if (frame.clock.phase === 'lobby') {
     expect(frame).toMatchObject({ news: [], board: null, quotes: [], quoteReals: [], quoteHopes: [], quoteBreakEvens: [] });
   } else {
@@ -84,7 +86,7 @@ function expectThin(frame: Frame): void {
   expect(frame.companies.map((company) => Object.keys(company).sort())).toEqual(Array.from({ length: 6 }, () => ['name', 'ticker']));
   expect(frame.account).toEqual({ cashCents: 100_000_000, worthCents: 100_000_000, capCents: 50_000_000, canBuy: false });
   expect('history' in frame).toBe(false);
-  expect('final' in frame).toBe(false);
+  expect('final' in frame).toBe(frame.clock.phase === 'final');
   expect(frame.prices).toHaveLength(6);
   for (const price of frame.prices) expect(Number.isInteger(price)).toBe(true);
   expect(frameSchema.parse(frame)).toEqual(frame);
@@ -365,9 +367,6 @@ describe('commands this service does not take yet', () => {
   const REFUSED = [
     { t: 'buy', commandId: 'refused-buy', day: 1, contractId: 3, spendCents: 1_000_000, seenPriceCents: 5_000 },
     { t: 'cashOut', commandId: 'refused-cashOut', positionId: 'd1' },
-    { t: 'openBell', commandId: 'refused-openBell', day: 1 },
-    { t: 'skipToBell', commandId: 'refused-skipToBell', day: 1 },
-    { t: 'nextDay', commandId: 'refused-nextDay', day: 1 },
   ];
 
   it.each(REFUSED)('$t is answered badMessage with its id and changes nothing', async (command) => {
@@ -386,15 +385,27 @@ describe('commands this service does not take yet', () => {
     expect(after).toEqual(before);
   });
 
-  it('openBell before the bell does not open the market', async () => {
+  it('openBell opens the current day and later reads keep that jump', async () => {
     const running = await boot();
     const { client } = await join(running);
     client.send(start('start-0001'));
     await client.nextReply();
     client.send({ t: 'openBell', commandId: 'refused-openBell', day: 1 });
-    await client.nextError();
+    expect((await client.nextReply()).receipt).toMatchObject({ kind: 'openBell', outcome: 'accepted' });
     running.clock.advance(SAMPLE_MS);
-    expect(await sampleFrame(running, client)).toMatchObject({ rev: 1, step: 1, clock: { phase: 'preBell' } });
+    expect(await sampleFrame(running, client)).toMatchObject({ rev: 2, step: 301, clock: { phase: 'open' } });
+  });
+
+  it.each(['skipToBell', 'nextDay'])('%s before the opening bell gets a stored refusal', async (t) => {
+    const running = await boot();
+    const { client } = await join(running);
+    client.send(start('start-0001'));
+    await client.nextReply();
+    client.send({ t, commandId: `early-${t}`, day: 1 });
+    const reply = await client.nextReply();
+    expect(reply.receipt).toMatchObject({ kind: t, outcome: 'rejected', reason: 'wrongPhase', step: 0 });
+    expect(reply.frame).toMatchObject({ rev: 2, clock: { phase: 'preBell' } });
+    expect(reply.frame.receipts).toContainEqual(reply.receipt);
   });
 });
 

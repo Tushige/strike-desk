@@ -70,6 +70,7 @@ it.each([null, 2500])('selects and previews a live contract through boot and the
     const { store, comparisonStore } = await import('../src/boot');
     const { default: App } = await import('../src/App');
     const view = render(createElement(App));
+    fireEvent.click(await view.findByRole('button', { name: 'Start fast (3x)' }));
     await waitFor(() => expect(store.currentRows()).toHaveLength(board === null ? 252 : 2508), { timeout: 5000 });
     expect(view.queryByRole('textbox', { name: 'How much to spend' })).not.toBeNull();
     expect(view.queryByRole('combobox', { name: 'Company' })).not.toBeNull();

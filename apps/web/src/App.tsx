@@ -1,8 +1,6 @@
-import { ComparisonDesk } from './comparison/ComparisonDesk';
-import { Strip } from './board/Strip';
+import { GameDesk } from './gameplay/GameDesk';
 import { VERSION } from './generated/version';
-import { comparisonStore, newsStore, store } from './boot';
-import { NewsPanel } from './news/NewsPanel';
+import { comparisonStore, gameLoop, newsStore, store } from './boot';
 
 /**
  * One screen: six share prices, the day's news and the contract table in a
@@ -15,11 +13,7 @@ import { NewsPanel } from './news/NewsPanel';
 export default function App() {
   return (
     <main>
-      <Strip />
-      <NewsPanel store={newsStore} />
-      <div className="min-h-0 flex-1">
-        <ComparisonDesk comparison={comparisonStore} game={store} />
-      </div>
+      <GameDesk loop={gameLoop} game={store} comparison={comparisonStore} news={newsStore} />
       {/*
         The one element styled in utilities rather than in the stylesheet:
         small proof, on the live page, that the utility engine runs and that

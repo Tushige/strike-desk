@@ -2,7 +2,7 @@ import { WS_PATH } from '@strike-desk/shared/paths';
 import { boardFromSearch } from './boardSize';
 import { createWsFeed } from './feed/wsFeed';
 import { createGameStore } from './store/gameStore';
-import { autoStart } from './autoStart';
+import { createGameLoop } from './gameplay/gameLoop';
 import { createNewsStore } from './news/newsStore';
 import { createComparisonStore } from './comparison/comparisonStore';
 
@@ -47,9 +47,6 @@ feed.subscribe((event) => {
   }
 });
 
-// Saying hello leaves the clock stopped, so the page starts the game
-// itself. The pace is this one number: 1 makes day 1 stand still for a
-// minute before the opening bell, 7.5 finishes the whole game in two.
-autoStart(feed, { pace: 3, makeId: () => crypto.randomUUID() });
+export const gameLoop = createGameLoop(feed, () => crypto.randomUUID());
 
 feed.connect();

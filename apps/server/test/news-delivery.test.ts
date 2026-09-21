@@ -39,10 +39,11 @@ function scrambleFuture(session: Session, step: number): Session {
 
 function expectPublicOnly(frame: Frame): void {
   expect(frame.positions).toEqual([]);
-  expect(frame.receipts).toEqual([]);
-  expect(frame.days).toEqual([]);
+  expect(frame.receipts).toEqual([{ commandId: 'start-news', kind: 'start', step: 0, outcome: 'accepted' }]);
+  for (const day of frame.days) expect(day).toMatchObject({ startCents: 100000000, endCents: 100000000, changeCents: 0 });
   expect(frame).not.toHaveProperty('history');
-  expect(frame).not.toHaveProperty('final');
+  if (frame.clock.phase === 'final') expect(frame.final).toMatchObject({ finalCents: 100000000, changeCents: 0 });
+  else expect(frame).not.toHaveProperty('final');
   expect(frame).not.toHaveProperty('draft');
   expect(frame.account).toEqual({ cashCents: 100000000, worthCents: 100000000, capCents: 50000000, canBuy: false });
   for (const news of frame.news) {

@@ -918,6 +918,27 @@ describe('the store and a batch of changed quotes', () => {
     expect(counts.sinkCalls).toHaveLength(1);
   });
 
+  it('drops a batch whose revision is not the one it holds', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 1, rev: 1 }));
+    const counts = watchBoard(store);
+
+    // The server sends a whole picture whenever the revision moves, but that
+    // one message can be skipped for a socket with a send backlog. Taking the
+    // batch that follows would move the page's ordering triple past a picture
+    // it never received, leaving it newer than what it is showing.
+    store.ingest(batch([[5, 9999, 4000, 5999, 12_345]], { step: 2, rev: 2 }));
+
+    expect(store.counters).toEqual({ accepted: 1, dropped: 1 });
+    expect(counts.sinkCalls).toEqual([]);
+    expect(store.currentRows().find((row) => row.contractId === 5)?.priceCents).toBe(1005);
+
+    // And the whole picture that does arrive puts it right.
+    store.ingest(boardFrame({ step: 3, rev: 2, quotes: quotes({ 5: 9999 }) }));
+
+    expect(store.currentRows().find((row) => row.contractId === 5)?.priceCents).toBe(9999);
+  });
+
   it('drops a batch of the day before, arriving after the frame that opened the new one', () => {
     const store = createGameStore();
     store.ingest(boardFrame({ step: 1 }));

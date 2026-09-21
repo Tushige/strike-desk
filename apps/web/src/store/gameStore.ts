@@ -190,9 +190,15 @@ export function createGameStore(companyCount = 6): GameStore {
    * frame first on every new day, but a batch and a frame can cross on the
    * wire, and a batch of yesterday applied to today's board would be wrong on
    * every row it touched.
+   *
+   * The revision rule is the same kind of belt. The server sends a whole frame
+   * whenever the revision moves, but that one message can be skipped for a
+   * socket with a send backlog. A batch carrying a revision this store never
+   * saw a picture for would leave the ordering triple ahead of what is on
+   * screen, which is the one thing the revision trigger exists to prevent.
    */
   function ingestQuotes(message: QuotesMessage): void {
-    if (held === null || held.session !== message.session || message.day !== heldDay || !isNewerFrame(held, message)) {
+    if (held === null || held.session !== message.session || message.rev !== held.rev || message.day !== heldDay || !isNewerFrame(held, message)) {
       counters.dropped += 1;
       return;
     }

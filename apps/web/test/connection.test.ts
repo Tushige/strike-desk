@@ -690,6 +690,66 @@ describe('a command that will never be answered', () => {
   });
 });
 
+describe('a message the server refused without saying which', () => {
+  // The server counts a message against its budget before it reads it, so a
+  // refusal for sending too many names no command.
+  const REFUSED_UNNAMED = '{"t":"error","code":"tooManyCommands"}';
+
+  it('turns a sent command to checking, so it is never left waiting for an answer that will not come', async () => {
+    const { transport, connection } = liveRig();
+    const result = watch(connection.submit(START));
+    transport.last().fireMessage(REFUSED_UNNAMED);
+
+    expect(connection.pending.get()).toEqual([{ command: START, status: 'checking', sentAt: 0, sends: 1 }]);
+    expect(await result.outcome()).toBe('still pending');
+    // Nothing goes out again by itself: the line never dropped, so nobody is asked.
+    expect(transport.last().sent).toEqual(['{"t":"hello","v":1}', START_TEXT]);
+
+    connection.resend('command-1');
+    expect(transport.last().sent).toEqual(['{"t":"hello","v":1}', START_TEXT, START_TEXT]);
+    expect(connection.pending.get()).toEqual([{ command: START, status: 'sent', sentAt: 0, sends: 2 }]);
+
+    transport.last().fireMessage(replyText(START_ACCEPTED));
+    expect(await result.outcome()).toEqual({ outcome: 'accepted', receipt: START_ACCEPTED });
+  });
+
+  it('turns every sent command to checking, since any of them may be the one, and a reply still settles its own', async () => {
+    const { transport, connection } = liveRig();
+    const start = watch(connection.submit(START));
+    const buy = watch(connection.submit(BUY));
+    transport.last().fireMessage(REFUSED_UNNAMED);
+
+    expect(connection.pending.get().map((one) => [one.command.commandId, one.status, one.sends])).toEqual([
+      ['command-1', 'checking', 1],
+      ['command-2', 'checking', 1],
+    ]);
+    expect(transport.last().sent).toEqual(['{"t":"hello","v":1}', START_TEXT, BUY_TEXT]);
+
+    // The one the server did take is answered as usual.
+    transport.last().fireMessage(replyText(START_ACCEPTED));
+    expect(await start.outcome()).toEqual({ outcome: 'accepted', receipt: START_ACCEPTED });
+    expect(await buy.outcome()).toBe('still pending');
+    expect(connection.pending.get().map((one) => [one.command.commandId, one.status])).toEqual([
+      ['command-2', 'checking'],
+    ]);
+  });
+
+  it('tells a pending listener once, and changes nothing when no command was sent', () => {
+    const { transport, connection } = liveRig();
+    let told = 0;
+    connection.pending.subscribe(() => {
+      told += 1;
+    });
+    transport.last().fireMessage(REFUSED_UNNAMED);
+    expect(told).toBe(0);
+
+    void connection.submit(START);
+    transport.last().fireMessage(REFUSED_UNNAMED);
+    // Once for the submit, once for the turn to checking.
+    expect(told).toBe(2);
+  });
+});
+
 describe('how old the data is', () => {
   it('is stale once nothing has arrived for 1,500 ms, and live again with the next message', () => {
     const { transport, connection } = rig();

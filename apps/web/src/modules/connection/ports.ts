@@ -140,7 +140,8 @@ export interface PendingCommand {
   /**
    * - `sent`: handed to a socket that is still the current one.
    * - `checking`: the line dropped, or never was up, before an answer came,
-   *   so nobody knows yet whether the server has it.
+   *   or the server refused a message for being one too many without saying
+   *   which, so nobody knows yet whether the server has it.
    */
   status: 'sent' | 'checking';
   /** When it was first submitted, on the seam's clock. */

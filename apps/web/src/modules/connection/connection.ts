@@ -238,6 +238,17 @@ export const createConnection: CreateConnection = (options) => {
     entry.settle(outcome);
   }
 
+  /**
+   * Every `sent` command becomes `checking`: nobody knows any longer whether
+   * the server has it. Nothing is sent by this, and a reply or a receipt
+   * settles a `checking` command exactly as it settles a `sent` one.
+   */
+  function doubtWhatWasSent(): void {
+    for (const entry of entries.values()) {
+      if (entry.view.status === 'sent') entry.view = { ...entry.view, status: 'checking' };
+    }
+  }
+
   function loseAll(): void {
     for (const commandId of [...entries.keys()]) end(commandId, { outcome: 'lost' });
   }
@@ -287,9 +298,7 @@ export const createConnection: CreateConnection = (options) => {
       droppedSinceFrame = true;
       callOffStaleCheck();
       // Nobody knows now whether the server has what was sent.
-      for (const entry of entries.values()) {
-        if (entry.view.status === 'sent') entry.view = { ...entry.view, status: 'checking' };
-      }
+      doubtWhatWasSent();
       publishPending();
       change({ phase: 'reconnecting', attempt: retry.attempt, retryAt: retry.retryAt });
       return;
@@ -366,6 +375,13 @@ export const createConnection: CreateConnection = (options) => {
       } else if (message.commandId !== undefined) {
         // The server refused the message itself: no receipt will ever come.
         end(message.commandId, { outcome: 'lost' });
+      } else if (message.code === 'tooManyCommands') {
+        // Refused for being one too many, before the server read it, so it
+        // cannot say which message that was. Any `sent` command may be the
+        // one: left as `sent` it would wait for good for an answer that is
+        // not coming, with no resend on offer. `checking` sends nothing by
+        // itself and says honestly that nobody knows.
+        doubtWhatWasSent();
       }
       publishPending();
       return;

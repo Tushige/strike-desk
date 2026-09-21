@@ -249,6 +249,7 @@ export function createGameStore(companyCount = 6): GameStore {
       // works neither of them out.
       quoteReals: frame.quoteReals,
       quoteHopes: frame.quoteHopes,
+      quoteBreakEvens: frame.quoteBreakEvens,
       minTicketCents: heldMinTicketCents,
       buyable: heldBuyable,
     };

@@ -27,6 +27,7 @@ const ROW: ContractRow = {
   side: 'up',
   targetCents: 8379,
   priceCents: 1200,
+  breakEvenCents: 95_432,
   realCents: 500,
   hopeCents: 700,
   dimmed: false,
@@ -98,6 +99,7 @@ describe('the contract table columns', () => {
       'Ticket',
       'Target',
       'Price',
+      'Break-even',
       'Real value',
       'Hope value',
     ]);
@@ -126,6 +128,14 @@ describe('the contract table columns', () => {
     expect(priceValue(ROW)).toBe(1200);
     expect(priceValue({ ...ROW, priceCents: 0 })).toBe(0);
     expect(priceValue({ ...ROW, priceCents: 300, dimmed: true })).toBeNull();
+  });
+
+  it('reads the server break-even with the existing numeric value cell and dimming', () => {
+    expect(cellValue('Break-even', ROW)).toBe(95_432);
+    expect(cellValue('Break-even', { ...ROW, dimmed: true })).toBeNull();
+    expect(column('Break-even').cellRenderer).toBe(ValueCell);
+    expect(column('Break-even').cellClass).toBe(column('Real value').cellClass);
+    expect(column('Break-even').enableCellChangeFlash).toBeUndefined();
   });
 
   it('gives a row that stops being dimmed a new value, so its number comes back though the price stood still', () => {
@@ -194,6 +204,7 @@ describe('the contract table columns', () => {
     expect(COLUMNS.filter((one) => one.type === 'rightAligned').map((one) => one.headerName)).toEqual([
       'Target',
       'Price',
+      'Break-even',
       'Real value',
       'Hope value',
     ]);

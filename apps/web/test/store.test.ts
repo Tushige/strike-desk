@@ -397,6 +397,13 @@ function hopes(changes: Readonly<Record<number, number>> = {}): number[] {
   return all;
 }
 
+// Deliberately unrelated to synthetic target/price values: this is a wire lookup test.
+function breakEvens(changes: Readonly<Record<number, number>> = {}): number[] {
+  const all = Array.from({ length: CONTRACTS }, () => 12_345);
+  for (const [id, cents] of Object.entries(changes)) all[Number(id)] = cents;
+  return all;
+}
+
 function boardFrame(changes: Partial<Frame> = {}): Frame {
   return testFrame({
     clock: OPEN_CLOCK,
@@ -404,6 +411,7 @@ function boardFrame(changes: Partial<Frame> = {}): Frame {
     quotes: quotes(),
     quoteReals: reals(),
     quoteHopes: hopes(),
+    quoteBreakEvens: breakEvens(),
     minTicketCents: 500,
     ...changes,
   });
@@ -439,6 +447,7 @@ describe('building the rows of a board', () => {
       quotes: quotes(),
       quoteReals: reals(),
       quoteHopes: hopes(),
+      quoteBreakEvens: breakEvens(),
       minTicketCents: 500,
       buyable: true,
     });
@@ -453,6 +462,7 @@ describe('building the rows of a board', () => {
       side: 'up',
       targetCents: 1000,
       priceCents: 1000,
+      breakEvenCents: 12_345,
       realCents: 300,
       hopeCents: 700,
       dimmed: false,
@@ -487,6 +497,7 @@ describe('building the rows of a board', () => {
       quotes: quotes(),
       quoteReals: sentReals,
       quoteHopes: sentHopes,
+      quoteBreakEvens: breakEvens(),
       minTicketCents: 500,
       buyable: true,
     });
@@ -503,6 +514,23 @@ describe('building the rows of a board', () => {
 });
 
 describe('the store and the board', () => {
+  it('copies server break-even and sends only changed rows without a price flash', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 1, quoteBreakEvens: breakEvens({ 5: 43_210 }) }));
+    const rowSet = store.boardRows.get();
+    const before = store.currentRows().find((row) => row.contractId === 5);
+    expect(before).toMatchObject({ breakEvenCents: 43_210, priceCents: 1005, targetCents: 1200 });
+    const counts = watchBoard(store);
+    store.ingest(boardFrame({ step: 2, quoteBreakEvens: breakEvens({ 5: 54_321 }) }));
+    expect(counts.sinkCalls).toHaveLength(1);
+    expect(counts.sinkCalls[0]).toHaveLength(1);
+    expect(counts.sinkCalls[0]?.[0]).toMatchObject({ contractId: 5, breakEvenCents: 54_321, dir: 0 });
+    expect(counts.sinkCalls[0]?.[0]).not.toBe(before);
+    store.ingest(boardFrame({ step: 3, quoteBreakEvens: breakEvens({ 5: 54_321 }) }));
+    expect(counts.sinkCalls).toHaveLength(1);
+    expect(store.boardRows.get()).toBe(rowSet);
+    expect(counts.boardRows).toBe(0);
+  });
   it('builds the whole row set on the first frame with a board and calls no sink', () => {
     const store = createGameStore();
     const counts = watchBoard(store);
@@ -771,6 +799,7 @@ describe('applying one changed quote to one row', () => {
     side: 'down',
     targetCents: 1200,
     priceCents: 1005,
+    breakEvenCents: 9,
     realCents: 305,
     hopeCents: 700,
     dimmed: false,
@@ -807,6 +836,40 @@ describe('applying one changed quote to one row', () => {
 });
 
 describe('the store and a batch of changed quotes', () => {
+  it('merges a break-even-only delta and recovers from the next whole frame', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 1 }));
+    const rowSet = store.boardRows.get();
+    const before = store.currentRows().find((row) => row.contractId === 5);
+    const counts = watchBoard(store);
+    store.ingest(batch([[5, 1005, 305, 700, 54_321]]));
+    expect(counts.sinkCalls).toHaveLength(1);
+    expect(counts.sinkCalls[0]).toHaveLength(1);
+    expect(counts.sinkCalls[0]?.[0]).toMatchObject({ contractId: 5, breakEvenCents: 54_321, dir: 0 });
+    expect(counts.sinkCalls[0]?.[0]).not.toBe(before);
+    store.ingest(batch([[5, 1005, 305, 700, 54_321]], { step: 3 }));
+    expect(counts.sinkCalls).toHaveLength(1);
+    expect(store.boardRows.get()).toBe(rowSet);
+    store.ingest(boardFrame({ step: 4, quoteBreakEvens: breakEvens({ 5: 65_432 }) }));
+    expect(store.currentRows().find((row) => row.contractId === 5)).toMatchObject({ breakEvenCents: 65_432, dir: 0 });
+    expect(counts.sinkCalls).toHaveLength(2);
+    expect(counts.boardRows).toBe(0);
+  });
+
+  it.each([{ step: 9 }, { session: 'other' }, { day: 2 }, { rev: 1 }])(
+    'does not rewind break-even from an incompatible delta: %j', (overrides) => {
+      const store = createGameStore();
+      store.ingest(boardFrame({ step: 10, quoteBreakEvens: breakEvens({ 5: 54_321 }) }));
+      const counts = watchBoard(store);
+      store.ingest(batch([[5, 1005, 305, 700, 99_999]], { step: 11, ...overrides }));
+      expect(store.currentRows().find((row) => row.contractId === 5)).toMatchObject({ breakEvenCents: 54_321 });
+      expect(counts.sinkCalls).toEqual([]);
+      store.ingest(boardFrame({ step: 12, clock: { ...OPEN_CLOCK, day: 2 }, quoteBreakEvens: breakEvens({ 5: 65_432 }) }));
+      expect(store.boardRows.get().find((row) => row.contractId === 5)).toMatchObject({ breakEvenCents: 65_432 });
+      expect(counts.boardRows).toBe(1);
+    },
+  );
+
   it('merges it into the rows it holds and rebuilds nothing', () => {
     const store = createGameStore();
     store.ingest(boardFrame({ step: 1 }));
@@ -988,6 +1051,7 @@ describe('the store and a batch of changed quotes', () => {
       quotes: settled,
       quoteReals: reals(),
       quoteHopes: hopes(),
+      quoteBreakEvens: breakEvens(),
       minTicketCents: 500,
       buyable: true,
     });

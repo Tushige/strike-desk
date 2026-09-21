@@ -50,6 +50,11 @@ function shownHope(params: ValueGetterParams<ContractRow, number | null>): numbe
   return row === undefined || row.dimmed ? null : row.hopeCents;
 }
 
+function shownBreakEven(params: ValueGetterParams<ContractRow, number | null>): number | null {
+  const row = params.data;
+  return row === undefined || row.dimmed ? null : row.breakEvenCents;
+}
+
 type Cell = CellClassParams<ContractRow>;
 
 /**
@@ -84,8 +89,8 @@ const VALUE_CELL_CLASS = ['ag-right-aligned-cell', 'sd-value'];
 
 /*
  * Widths share out whatever the panel offers. The minimums are what each
- * column needs to stay readable; six columns fit side by side from laptop
- * width up, and below that the table scrolls sideways inside its own panel,
+ * column needs to stay readable; the table scrolls sideways inside its own panel
+ * when they cannot all fit,
  * never the page.
  */
 export const COLUMNS: ColDef<ContractRow>[] = [
@@ -120,6 +125,16 @@ export const COLUMNS: ColDef<ContractRow>[] = [
     enableCellChangeFlash: true,
     flex: 1,
     minWidth: 80,
+  },
+  {
+    headerName: 'Break-even',
+    field: 'breakEvenCents',
+    valueGetter: shownBreakEven,
+    cellRenderer: ValueCell,
+    type: 'rightAligned',
+    cellClass: VALUE_CELL_CLASS,
+    flex: 1,
+    minWidth: 88,
   },
   // The price, told in its two parts. Neither flashes: the price is the one
   // number the eye should be pulled to, and these two are what the player

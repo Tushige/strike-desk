@@ -8,6 +8,7 @@ import { FAKE_ACCOUNT, FAKE_ACCOUNT_AFTER_BUY, FAKE_CHOICES, FAKE_CONTRACT_A, FA
 import { initialTicketState, ticketReducer } from '../src/modules/order-ticket/machine';
 import type { TicketSnapshot, TicketState } from '../src/modules/order-ticket/machine';
 import {
+  ACCEPTED_WORDS,
   BLOCKER_WORDS,
   BUY_LABEL,
   CASH_OUT_LABEL,
@@ -110,6 +111,29 @@ describe('the order ticket, drawn', () => {
     expect(countOf(markup, '<fieldset')).toBe(2);
     expect(markup.match(/<fieldset[^>]*disabled=""/g)).toHaveLength(2);
     expect(markupOf({}).match(/<fieldset[^>]*disabled=""/g)).toBeNull();
+  });
+
+  it('keeps the choices locked once a buy is accepted, until the server moves the form on', () => {
+    const accepted = ticketReducer(pending(), {
+      type: 'outcome',
+      commandId: 'fake-cmd-0001',
+      outcome: { outcome: 'accepted', receipt: { commandId: 'fake-cmd-0001', kind: 'buy', step: 400, outcome: 'accepted', positionId: 'd1' } },
+    });
+
+    const markup = markupOf({ state: accepted });
+
+    expect(markup).toContain(ACCEPTED_WORDS.buy);
+    expect(markup.match(/<fieldset[^>]*disabled=""/g)).toHaveLength(2);
+  });
+
+  it('leaves the choices open on a rejected form, because changing one is a way back to draft', () => {
+    const rejected = ticketReducer(pending(), {
+      type: 'outcome',
+      commandId: 'fake-cmd-0001',
+      outcome: { outcome: 'rejected', receipt: { commandId: 'fake-cmd-0001', kind: 'buy', step: 400, outcome: 'rejected', reason: 'priceMoved' } },
+    });
+
+    expect(markupOf({ state: rejected }).match(/<fieldset[^>]*disabled=""/g)).toBeNull();
   });
 
   it('holds the plain words for the code of a rejected buy', () => {

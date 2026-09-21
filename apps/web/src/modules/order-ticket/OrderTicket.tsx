@@ -341,7 +341,8 @@ export function TicketView({ state, snapshot, choices, spendChoices, retryOffere
 
   const { contract, quote, account, position, line } = snapshot;
   const holding = position !== null;
-  const locked = state.form === 'pending' || state.form === 'checking';
+  // The choices are open in `draft`, and in `rejected`, where changing one is a way back to `draft`. An accepted form waits for the server.
+  const locked = state.form !== 'draft' && state.form !== 'rejected';
   const buyOff = buyBlocker(state, snapshot);
   const cashOutOff = cashOutBlocker(state, snapshot);
   const blocked = holding ? cashOutOff !== null : buyOff !== null;

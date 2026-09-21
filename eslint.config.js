@@ -122,15 +122,25 @@ const runningGameDynamicImport = {
 };
 
 // Matched as a regular expression rather than by the gitignore rules the
-// other groups use, because this fence has to say "exactly these three steps
-// and no more". A gitignore pattern always matches everything beneath what it
+// other groups use, because this fence has to say "into that folder, and no
+// further". A gitignore pattern always matches everything beneath what it
 // matches, so `../*/*` also swallows `../../fixtures/probe` and
 // `../../modules/other/index` — and a negation cannot let those back in,
-// since nothing under an excluded parent can be re-included. Both shapes
-// below are the ones the blocks, their stand-in sources and the lab's demos
-// actually use, and both are proved by probes.
+// since nothing under an excluded parent can be re-included.
+//
+// Read left to right: a path that climbs out of the file's own folder
+// (`../`, however many), optionally through a `modules/` step, into some
+// named folder — and then anything at all except that folder's `index` or
+// `fake`, with or without an extension. It says nothing about how deep the
+// file doing the importing sits, so it reads the same from a block, from a
+// stand-in source, from `lab/` and from `lab/modules/`.
+//
+// It is text, not resolved paths, so it has to be told which folders are not
+// blocks: `fixtures/` and `lab/` are the two a block legitimately reaches
+// sideways into, and a further `../` is a climb that has not landed yet. A
+// third such folder has to be added here.
 const siblingBlockGroup = {
-  regex: String.raw`^(?:\.\.|\.\./\.\./modules)/[^/]+/(?!index$|fake$)[^/]+$`,
+  regex: String.raw`^(?:\.\./)+(?:modules/)?(?!\.\.|fixtures/|modules/|lab/)[^/]+/(?!(?:index|fake)(?:\.[jt]sx?)?$)`,
   message:
     'Import another block only through its index.ts (or its fake.ts from a test or a lab demo), never its inner files.',
 };

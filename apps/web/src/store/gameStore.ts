@@ -168,6 +168,10 @@ export function createGameStore(companyCount = 6): GameStore {
       board,
       companies: frame.companies,
       quotes: frame.quotes,
+      // Both parts of every price travel with it: the page shows them and
+      // works neither of them out.
+      quoteReals: frame.quoteReals,
+      quoteHopes: frame.quoteHopes,
       minTicketCents: frame.minTicketCents,
       // Too cheap to trade is a statement about buying, so it applies only
       // while there is something to buy. From the closing bell on, a row

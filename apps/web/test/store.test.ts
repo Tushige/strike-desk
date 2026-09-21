@@ -376,8 +376,34 @@ function quotes(changes: Readonly<Record<number, number>> = {}): number[] {
   return all;
 }
 
+/*
+ * The two parts of every one of those prices, as the server sends them: they
+ * add up to the price on every ticket, and they are never equal to each
+ * other, so a row that read them the wrong way round would fail rather than
+ * pass by luck.
+ */
+function reals(changes: Readonly<Record<number, number>> = {}): number[] {
+  const all = Array.from({ length: CONTRACTS }, (_unused, id) => 300 + id);
+  for (const [id, cents] of Object.entries(changes)) all[Number(id)] = cents;
+  return all;
+}
+
+function hopes(changes: Readonly<Record<number, number>> = {}): number[] {
+  const all = Array.from({ length: CONTRACTS }, () => 700);
+  for (const [id, cents] of Object.entries(changes)) all[Number(id)] = cents;
+  return all;
+}
+
 function boardFrame(changes: Partial<Frame> = {}): Frame {
-  return testFrame({ clock: OPEN_CLOCK, board: testBoard(), quotes: quotes(), minTicketCents: 500, ...changes });
+  return testFrame({
+    clock: OPEN_CLOCK,
+    board: testBoard(),
+    quotes: quotes(),
+    quoteReals: reals(),
+    quoteHopes: hopes(),
+    minTicketCents: 500,
+    ...changes,
+  });
 }
 
 interface BoardCounts {
@@ -408,6 +434,8 @@ describe('building the rows of a board', () => {
       board,
       companies: testFrame().companies,
       quotes: quotes(),
+      quoteReals: reals(),
+      quoteHopes: hopes(),
       minTicketCents: 500,
       buyable: true,
     });
@@ -422,6 +450,8 @@ describe('building the rows of a board', () => {
       side: 'up',
       targetCents: 1000,
       priceCents: 1000,
+      realCents: 300,
+      hopeCents: 700,
       dimmed: false,
       dir: 0,
     });
@@ -443,6 +473,29 @@ describe('building the rows of a board', () => {
     expect(rows.map((row) => row.id)).toEqual(rows.map((row) => String(row.contractId)));
     expect(rows.map((row) => row.priceCents)).toEqual(rows.map((row) => 1000 + row.contractId));
     expect(rows.every((row) => row.dir === 0)).toBe(true);
+  });
+
+  it("carries the server's own real and hope values on every row, and works neither of them out", () => {
+    const sentReals = reals();
+    const sentHopes = hopes();
+    const rows = buildRows({
+      board: testBoard(),
+      companies: testFrame().companies,
+      quotes: quotes(),
+      quoteReals: sentReals,
+      quoteHopes: sentHopes,
+      minTicketCents: 500,
+      buyable: true,
+    });
+
+    // Each part is the number the frame sent for that contract id, not a
+    // number the page arrived at. The two arrays differ on every ticket, so a
+    // row that read them the wrong way round fails here.
+    expect(rows.map((row) => row.realCents)).toEqual(rows.map((row) => sentReals[row.contractId]));
+    expect(rows.map((row) => row.hopeCents)).toEqual(rows.map((row) => sentHopes[row.contractId]));
+
+    // What the player is meant to be able to see on every line of the table.
+    expect(rows.every((row) => row.realCents + row.hopeCents === row.priceCents)).toBe(true);
   });
 });
 
@@ -491,6 +544,25 @@ describe('the store and the board', () => {
     expect(counts.sinkCalls).toHaveLength(2);
     expect(counts.sinkCalls[1]).toHaveLength(1);
     expect(counts.sinkCalls[1]?.[0]).toMatchObject({ contractId: 5, priceCents: 2000, dir: -1 });
+  });
+
+  it('hands the sink a row whose two parts moved though its price stood still, with no direction', () => {
+    const store = createGameStore();
+    store.ingest(boardFrame({ step: 1 }));
+    const before = store.boardRows.get().find((row) => row.contractId === 5);
+    const counts = watchBoard(store);
+
+    // A dollar of hope turns into a dollar of real value: the same price, a
+    // different ticket. The row must be redrawn, and must not flash.
+    store.ingest(boardFrame({ step: 2, quoteReals: reals({ 5: 405 }), quoteHopes: hopes({ 5: 600 }) }));
+
+    expect(counts.boardRows).toBe(0);
+    expect(counts.sinkCalls).toHaveLength(1);
+    const moved = counts.sinkCalls[0] ?? [];
+    expect(moved).toHaveLength(1);
+    expect(moved[0]).toMatchObject({ contractId: 5, priceCents: 1005, realCents: 405, hopeCents: 600, dir: 0 });
+    expect(before).toMatchObject({ realCents: 305, hopeCents: 700 });
+    expect(moved[0]).not.toBe(before);
   });
 
   it('dims a ticket under the cheapest tradable price only while tickets are buyable', () => {

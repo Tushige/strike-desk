@@ -24,7 +24,15 @@ export interface ContractRow {
   side: Side;
   targetCents: number;
   priceCents: number;
-  /** True while this ticket is too cheap to trade: its price cell shows a dash. */
+  /**
+   * The two parts of the price, exactly as the server sends them: how far the
+   * share price is past the target right now, and what the time still to run
+   * is worth. They add up to the price, and the page never works either of
+   * them out — it only shows what it was sent.
+   */
+  realCents: number;
+  hopeCents: number;
+  /** True while this ticket is too cheap to trade: its money cells show a dash. */
   dimmed: boolean;
   /** Which way the price just moved: 1 up, -1 down, 0 for no move. */
   dir: -1 | 0 | 1;
@@ -36,6 +44,9 @@ export interface RowInput {
   board: Board;
   companies: readonly CompanyView[];
   quotes: readonly number[];
+  /** The real and hope parts of every quote, by contract id, as the frame sends them. */
+  quoteReals: readonly number[];
+  quoteHopes: readonly number[];
   minTicketCents: number;
   /** True while tickets can be bought, which is the only time a row is dimmed. */
   buyable: boolean;
@@ -81,6 +92,8 @@ function makeRow(
     side,
     targetCents,
     priceCents,
+    realCents: input.quoteReals[id] ?? 0,
+    hopeCents: input.quoteHopes[id] ?? 0,
     dimmed: input.buyable && priceCents < input.minTicketCents,
     dir,
   };
@@ -96,10 +109,15 @@ export function buildRows(input: RowInput): ContractRow[] {
 }
 
 /**
- * The rows this frame changed: a new object for every contract whose shown
- * price or dimmed state differs from the row held for it, and nothing at all
- * for the rest. A held row is never modified, because the table tells an
- * update from a repeat by the object's identity.
+ * The rows this frame changed: a new object for every contract whose price,
+ * real value, hope value or dimmed state differs from the row held for it,
+ * and nothing at all for the rest. A held row is never modified, because the
+ * table tells an update from a repeat by the object's identity.
+ *
+ * A ticket's two parts can move while its price stands still — a dollar of
+ * hope becoming a dollar of real value is the same price and a different
+ * ticket — so such a row is sent too, with no direction, because only the
+ * price is allowed to flash.
  */
 export function changedRows(heldById: readonly (ContractRow | undefined)[], input: RowInput): ContractRow[] {
   const changed: ContractRow[] = [];
@@ -111,7 +129,14 @@ export function changedRows(heldById: readonly (ContractRow | undefined)[], inpu
       changed.push(makeRow(input, id, companyId, side, targetCents, 0));
       return;
     }
-    if (priceCents === held.priceCents && dimmed === held.dimmed) return;
+    if (
+      priceCents === held.priceCents &&
+      dimmed === held.dimmed &&
+      (input.quoteReals[id] ?? 0) === held.realCents &&
+      (input.quoteHopes[id] ?? 0) === held.hopeCents
+    ) {
+      return;
+    }
     const dir = priceCents > held.priceCents ? 1 : priceCents < held.priceCents ? -1 : 0;
     changed.push(makeRow(input, id, companyId, side, targetCents, dir));
   });

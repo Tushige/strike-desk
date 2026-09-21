@@ -17,7 +17,7 @@ function sideText(params: ValueFormatterParams<ContractRow, Side>): string {
   return params.value == null ? '' : SIDE_TEXT[params.value];
 }
 
-function money(params: ValueFormatterParams<ContractRow, number>): string {
+function money(params: ValueFormatterParams<ContractRow, number | null>): string {
   return params.value == null ? '' : formatCents(params.value);
 }
 
@@ -31,6 +31,22 @@ function money(params: ValueFormatterParams<ContractRow, number>): string {
 function shownPrice(params: ValueGetterParams<ContractRow, number | null>): number | null {
   const row = params.data;
   return row === undefined || row.dimmed ? null : row.priceCents;
+}
+
+/*
+ * The two parts of the price follow the same rule, and need it more: a ticket
+ * that ends out of the money settles at $0 with $0 of real value, so its real
+ * value never moves. Were the field itself the cell's value, that cell would
+ * still be showing a dash after the closing bell.
+ */
+function shownReal(params: ValueGetterParams<ContractRow, number | null>): number | null {
+  const row = params.data;
+  return row === undefined || row.dimmed ? null : row.realCents;
+}
+
+function shownHope(params: ValueGetterParams<ContractRow, number | null>): number | null {
+  const row = params.data;
+  return row === undefined || row.dimmed ? null : row.hopeCents;
 }
 
 type Cell = CellClassParams<ContractRow>;
@@ -56,9 +72,17 @@ const SIDE_CLASS_RULES = {
  */
 const PRICE_CELL_CLASS = ['ag-right-aligned-cell', 'sd-price'];
 
+/**
+ * The two parts are read, not scanned for movement: quieter than the price,
+ * and with digits of one width so the column does not shuffle as they move.
+ */
+const VALUE_CELL_CLASS = ['ag-right-aligned-cell', 'sd-value'];
+
 /*
  * Widths share out whatever the panel offers. The minimums are what each
- * column needs at phone width, so all four still fit there side by side.
+ * column needs to stay readable; six columns fit side by side from laptop
+ * width up, and below that the table scrolls sideways inside its own panel,
+ * never the page.
  */
 export const COLUMNS: ColDef<ContractRow>[] = [
   { headerName: 'Company', field: 'company', cellRenderer: CompanyCell, flex: 2, minWidth: 104 },
@@ -84,6 +108,29 @@ export const COLUMNS: ColDef<ContractRow>[] = [
     enableCellChangeFlash: true,
     flex: 1,
     minWidth: 80,
+  },
+  // The price, told in its two parts. Neither flashes: the price is the one
+  // number the eye should be pulled to, and these two are what the player
+  // reads once they have landed on it.
+  {
+    headerName: 'Real value',
+    field: 'realCents',
+    valueGetter: shownReal,
+    valueFormatter: money,
+    type: 'rightAligned',
+    cellClass: VALUE_CELL_CLASS,
+    flex: 1,
+    minWidth: 88,
+  },
+  {
+    headerName: 'Hope value',
+    field: 'hopeCents',
+    valueGetter: shownHope,
+    valueFormatter: money,
+    type: 'rightAligned',
+    cellClass: VALUE_CELL_CLASS,
+    flex: 1,
+    minWidth: 88,
   },
 ];
 

@@ -42,15 +42,16 @@ export interface Situation {
  * online is a wild rumor (1). A phrase belongs to one level and to no other.
  */
 export const SOURCES: Readonly<Record<Trust, readonly string[]>> = {
-  3: ['The company itself says'],
-  2: ['A store manager says'],
-  1: ['Someone online says'],
+  3: ['The company itself says', "The company's boss says", 'An official company report says'],
+  2: ['A store manager says', 'A worker at the company says', 'A delivery driver says'],
+  1: ['Someone online says', 'A post going around online says', 'A friend of a friend says'],
 };
 
 /**
- * What is said to have happened. A company has at most one headline a day, so
- * at most five in a game: with at least five situations for each direction,
- * there is always one a company has not had yet.
+ * What is said to have happened: six situations that claim good news, then
+ * six that claim bad. A company has at most one headline a day, so at most
+ * five in a game: with at least five situations for each direction, there is
+ * always one a company has not had yet. Never let a direction drop below five.
  */
 export const SITUATIONS: readonly Situation[] = [
   {
@@ -79,6 +80,11 @@ export const SITUATIONS: readonly Situation[] = [
     body: 'It can now make twice as many {product} as before.',
   },
   {
+    direction: 'up',
+    title: 'A famous star loves {name}',
+    body: 'A famous singer was spotted with its {product}, and fans want the same.',
+  },
+  {
     direction: 'down',
     title: '{name} runs low on supplies',
     body: 'Something needed to make {product} is hard to get, so fewer can be made this month.',
@@ -102,5 +108,10 @@ export const SITUATIONS: readonly Situation[] = [
     direction: 'down',
     title: '{name} delays its big launch',
     body: 'Its newest {product} will not be ready in time and are pushed back by months.',
+  },
+  {
+    direction: 'down',
+    title: 'Factory trouble at {name}',
+    body: 'A big machine broke down, and no {product} can be made until it is fixed.',
   },
 ];

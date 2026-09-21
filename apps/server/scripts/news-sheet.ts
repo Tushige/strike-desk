@@ -27,7 +27,7 @@ import { buildMarket, CONTENT_VERSION, ENGINE_VERSION, SITUATIONS, SOURCES } fro
 
 const SAMPLE_GAMES = [
   { label: 'Game A', market: 1101 },
-  { label: 'Game B', market: 2202 },
+  { label: 'Game B', market: 2203 },
   { label: 'Game C', market: 3303 },
 ] as const;
 

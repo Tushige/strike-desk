@@ -2,3 +2,5 @@ node_modules/
 dist/
 .DS_Store
 apps/*/src/generated/
+# The prototypes this port was made from stay out of the public repository.
+reference/

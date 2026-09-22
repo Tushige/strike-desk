@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto';
+import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildMarket, CAST, CONTENT_VERSION, createHeadlineWriter, ENGINE_VERSION, SITUATIONS, SOURCES } from '@strike-desk/shared/engine';
-import type { CompanyKind, EventType, HeadlineText, NewsPool, Rng } from '@strike-desk/shared/engine';
+import { buildMarket, CAST, CONTENT_VERSION, createHeadlineWriter, createStream, ENGINE_VERSION, EVENTS, SITUATIONS, SOURCES } from '@strike-desk/shared/engine';
+import type { CompanyKind, EventType, HeadlineSlot, HeadlineText, NewsPool, Rng, WriteHeadlines } from '@strike-desk/shared/engine';
 
 /**
  * Writes the news sheet: every string of the headline pool, and the fifteen
@@ -151,13 +152,37 @@ function parsePool(value: unknown): NewsPool {
 
 export interface Review {
   status: 'UNAPPROVED';
-  mode: 'sample';
+  mode: 'sample' | 'full';
   digest: string;
+  counts?: { events: number; situations: number; variants: number; sources: number; pairings: number };
   groups: {
     company: string;
     kind: CompanyKind;
+    digest?: string;
     rows: (Pick<SheetHeadline, 'direction' | 'trust' | 'source' | 'title' | 'body'> & { event: string; variant: number })[];
   }[];
+}
+
+function hash(value: unknown): string {
+  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
+}
+
+function fullBounds(pool: NewsPool): void {
+  if (pool.events.length < 25 || pool.events.length > 30) throw new Error('full pool needs 25 to 30 events');
+  const pairs = pool.events.reduce((count, event) => count + event.kinds.length, 0);
+  if (pairs < 60 || pairs > 100) throw new Error('full pool needs 60 to 100 event/company situations');
+  for (const trust of TRUSTS) {
+    if (pool.sources[trust].length < 4 || pool.sources[trust].length > 5) throw new Error(`trust ${trust} needs 4 to 5 sources`);
+  }
+  for (const event of pool.events) for (const kind of event.kinds) {
+    const count = event.wordings[kind]?.length ?? 0;
+    if (count < 2 || count > 3) throw new Error(`${event.id}/${kind} needs 2 to 3 variants`);
+  }
+  for (const kind of KINDS) for (const direction of ['up', 'down']) {
+    if (pool.events.filter((event) => event.direction === direction && event.kinds.includes(kind)).length < 5) {
+      throw new Error(`${kind}/${direction} needs at least five events`);
+    }
+  }
 }
 
 /** Controlled draws still pass through the real writer, never a second renderer. */
@@ -179,9 +204,10 @@ function checkWords(value: string, limit: number, field: string): void {
 }
 
 /** A partial sample is reviewed one slot at a time, never used to build a market. */
-export function buildReview(value: unknown, options: { mode: 'sample' }): Review {
+export function buildReview(value: unknown, options: { mode: 'sample' | 'full' }): Review {
   const pool = parsePool(value);
   const write = createHeadlineWriter(pool);
+  if (options.mode === 'full') fullBounds(pool);
   for (const trust of TRUSTS) for (const phrase of pool.sources[trust]) checkWords(phrase, 40, `sources.${trust}`);
   const groups = CAST.map((company) => {
     const titleOwners = new Map<string, string>();
@@ -205,22 +231,112 @@ export function buildReview(value: unknown, options: { mode: 'sample' }): Review
         }));
       });
     });
-    return { company: company.name, kind: company.kind, rows };
+    const group = { company: company.name, kind: company.kind, rows };
+    return options.mode === 'full' ? { ...group, digest: hash(group) } : group;
   });
-  return { status: 'UNAPPROVED', mode: options.mode, digest: createHash('sha256').update(JSON.stringify(pool)).digest('hex'), groups };
+  const review: Review = { status: 'UNAPPROVED', mode: options.mode, digest: hash(pool), groups };
+  if (options.mode === 'full') review.counts = {
+    events: pool.events.length,
+    situations: pool.events.reduce((n, event) => n + event.kinds.length, 0),
+    variants: pool.events.reduce((n, event) => n + event.kinds.reduce((sum, kind) => sum + (event.wordings[kind]?.length ?? 0), 0), 0),
+    sources: TRUSTS.reduce((n, trust) => n + pool.sources[trust].length, 0),
+    pairings: groups.reduce((n, group) => n + group.rows.length, 0),
+  };
+  return review;
 }
 
 export function renderReview(review: Review): string {
-  const lines = ['# News sample review', '', `Status: ${review.status}`, `SHA256: ${review.digest}`, '',
-    'Sample voice review only. Full-pool approval remains pending.', ''];
+  const lines = [review.mode === 'full' ? '# News full review' : '# News sample review', '', `Status: ${review.status}`, `SHA256: ${review.digest}`, '',
+    review.mode === 'full' ? 'Every company group is pending approval. Sample approval does not approve these groups.' : 'Sample voice review only. Full-pool approval remains pending.', ''];
+  if (review.counts !== undefined) {
+    const counts = review.counts;
+    lines.push(`${counts.events} events; ${counts.situations} event/company situations; ${counts.variants} variants; ${counts.sources} sources; ${counts.pairings} assembled pairings.`, '',
+      'Every row below is one complete source/variant pairing, rendered through the game writer. The group hash covers its company, kind and every ordered row. No lab copy changed.', '',
+      '| Company | Up events | Down events | Variants | Pairings |', '| --- | ---: | ---: | ---: | ---: |');
+    for (const group of review.groups) lines.push(`| ${group.company} | ${new Set(group.rows.filter((row) => row.direction === 'up').map((row) => row.event)).size} | ${new Set(group.rows.filter((row) => row.direction === 'down').map((row) => row.event)).size} | ${new Set(group.rows.map((row) => `${row.event}/${row.variant}`)).size} | ${group.rows.length} |`);
+    lines.push('', '## Event compatibility', '', '| Event | Direction | Companies |', '| --- | --- | --- |');
+    const events = new Map<string, { direction: string; companies: string[] }>();
+    for (const group of review.groups) for (const row of group.rows) {
+      const entry = events.get(row.event) ?? { direction: row.direction, companies: [] };
+      if (!entry.companies.includes(group.company)) entry.companies.push(group.company);
+      events.set(row.event, entry);
+    }
+    for (const [event, entry] of events) lines.push(`| ${event} | ${entry.direction} | ${entry.companies.join(', ')} |`);
+    lines.push('');
+  }
   for (const group of review.groups) {
     lines.push(`## ${group.company} (${group.kind})`, '');
+    if (group.digest !== undefined) lines.push(`Group SHA256: ${group.digest}`, '', 'Approval: PENDING', '');
     for (const row of group.rows) {
       lines.push(`### ${row.event} / ${row.direction} / wording ${row.variant} / trust ${row.trust}`, '',
         row.source, '', `**${row.title}**`, '', row.body, '');
     }
   }
   return `${lines.join('\n')}\n`;
+}
+
+/** Public legal schedules only; this is not a market-input secrecy test. */
+function legalSlots(seed: number): HeadlineSlot[] {
+  const rng = createStream(seed, 'newsPick');
+  const slots: HeadlineSlot[] = [];
+  for (let day = 1; day <= 5; day += 1) {
+    const remaining = CAST.map((company) => company.id);
+    for (const trust of TRUSTS) {
+      const [companyId] = remaining.splice(rng.nextInt(remaining.length), 1);
+      assert.ok(companyId !== undefined);
+      slots.push({ id: slots.length, day, companyId, trust, direction: rng.nextInt(2) === 0 ? 'up' : 'down' });
+    }
+  }
+  return slots;
+}
+
+/** Recognises emitted words independently of the writer's selection state. */
+export function checkCandidate(value: unknown, options: { games: number; write?: WriteHeadlines }): { games: number; headlines: number; digest: string } {
+  const review = buildReview(value, { mode: 'full' });
+  const pool = parsePool(value);
+  const write = options.write ?? createHeadlineWriter(pool);
+  if (!Number.isSafeInteger(options.games) || options.games < 1 || options.games > 10000) throw new Error('games must be an integer from 1 to 10000');
+  const rendered = new Map(CAST.map((company) => [company.id, pool.events.filter((event) => event.kinds.includes(company.kind)).flatMap((event) =>
+    (event.wordings[company.kind] ?? []).map((variant) => {
+      const fill = (text: string) => text.replaceAll('{name}', company.name).replaceAll('{product}', company.product);
+      return { event: event.id, direction: event.direction, title: fill(variant.title), body: fill(variant.body) };
+    }))]));
+  let headlines = 0;
+  for (let seed = 0; seed < options.games; seed += 1) {
+    const slots = legalSlots(seed);
+    const words = write(slots, CAST, createStream(seed, 'newsWording'));
+    const label = `game ${seed}`;
+    assert.equal(slots.length, 15, label);
+    assert.equal(words.length, 15, `${label}: fifteen headlines`);
+    for (let day = 1; day <= 5; day += 1) {
+      const today = slots.filter((slot) => slot.day === day);
+      assert.equal(today.length, 3, label);
+      assert.equal(new Set(today.map((slot) => slot.companyId)).size, 3, label);
+      assert.deepEqual(today.map((slot) => slot.trust).sort(), [1, 2, 3], label);
+    }
+    const used = new Set<string>();
+    for (const [index, word] of words.entries()) {
+      const slot = slots[index];
+      assert.ok(slot);
+      assert.deepEqual(TRUSTS.filter((trust) => pool.sources[trust].includes(word.source)), [slot.trust], `${label}: source trust`);
+      const matches = (rendered.get(slot.companyId) ?? []).filter((variant) => variant.title === word.title && variant.body === word.body);
+      const ids = new Set(matches.map((match) => match.event));
+      assert.equal(ids.size, 1, `${label}: exactly one compatible event`);
+      assert.equal(matches[0]?.direction, slot.direction, `${label}: event direction`);
+      const identity = `${slot.companyId}/${matches[0]?.event}`;
+      assert.ok(!used.has(identity), `${label}: repeated situation`);
+      used.add(identity);
+    }
+    assert.equal(used.size, 15, label);
+    assert.equal(new Set(words.map((word) => word.title)).size, 15, `${label}: repeated title`);
+    assert.deepEqual(write(slots, CAST, createStream(seed, 'newsWording')), words, `${label}: deterministic replay`);
+    if (seed < 200) for (let day = 1; day < 5; day += 1) {
+      const changed = slots.map((slot) => slot.day <= day ? slot : { ...slot, direction: slot.direction === 'up' ? 'down' as const : 'up' as const });
+      assert.deepEqual(write(changed, CAST, createStream(seed, 'newsWording')).slice(0, day * 3), words.slice(0, day * 3), `${label}: later-day look-ahead`);
+    }
+    headlines += words.length;
+  }
+  return { games: options.games, headlines, digest: review.digest };
 }
 
 // Written only when this file is the one being run, never when a test imports it.
@@ -231,13 +347,29 @@ if (process.argv[1] !== undefined && path.resolve(process.argv[1]) === fileURLTo
       writeFileSync(OUTPUT, renderSheet(buildSheet()));
       process.stdout.write(`wrote the news sheet: ${SAMPLE_GAMES.length} games\n`);
     } else {
-      const candidateIndex = args.indexOf('--candidate');
-      const candidatePath = args[candidateIndex + 1];
-      if (args.length !== 4 || candidateIndex < 0 || candidatePath === undefined || candidatePath.startsWith('--') ||
-        !args.includes('--review') || !args.includes('--sample')) throw new Error('expected --candidate <path> --review --sample');
+      let candidatePath: string | undefined;
+      let mode: 'sample' | 'full' | undefined;
+      let action: 'review' | 'check' | undefined;
+      let games: number | undefined;
+      for (let i = 0; i < args.length; i += 1) {
+        const arg = args[i];
+        if (arg === '--candidate' && candidatePath === undefined) {
+          candidatePath = args[++i];
+          if (candidatePath === undefined || candidatePath.startsWith('--')) throw new Error('--candidate needs a path');
+        }
+        else if ((arg === '--sample' || arg === '--full') && mode === undefined) mode = arg === '--sample' ? 'sample' : 'full';
+        else if ((arg === '--review' || arg === '--check-candidate') && action === undefined) action = arg === '--review' ? 'review' : 'check';
+        else if (arg === '--games' && games === undefined) games = Number(args[++i]);
+        else throw new Error(`unexpected argument: ${arg}`);
+      }
+      if (mode === undefined || action === undefined || candidatePath?.startsWith('--') ||
+        (action === 'check' && (mode !== 'full' || games === undefined || candidatePath === undefined)) ||
+        (action === 'review' && games !== undefined) || (mode === 'sample' && candidatePath === undefined)) {
+        throw new Error('expected --candidate <path> --review --sample|--full, --review --full, or --candidate <path> --check-candidate --full --games 10000');
+      }
       const root = fileURLToPath(new URL('../../../', import.meta.url));
-      const input: unknown = JSON.parse(readFileSync(path.resolve(root, candidatePath), 'utf8'));
-      process.stdout.write(renderReview(buildReview(input, { mode: 'sample' })));
+      const input: unknown = candidatePath === undefined ? { sources: SOURCES, events: EVENTS } : JSON.parse(readFileSync(path.resolve(root, candidatePath), 'utf8'));
+      process.stdout.write(action === 'review' ? renderReview(buildReview(input, { mode })) : `${JSON.stringify(checkCandidate(input, { games: games ?? 0 }))}\n`);
     }
   } catch (error) {
     process.stderr.write(`news review: ${error instanceof Error ? error.message : String(error)}\n`);

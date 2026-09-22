@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { CONTENT_VERSION, ENGINE_VERSION } from '@strike-desk/shared/engine';
+import { CONTENT_VERSION, ENGINE_VERSION, PROTOCOL_VERSION, frameSchema } from '@strike-desk/shared/engine';
 
 /**
  * The recorded game is a frozen file: the frames one real game sent, taken
@@ -23,10 +23,17 @@ const RECORDING = new URL('../../web/src/fixtures/recorded-game.json', import.me
 
 describe('the recorded game', () => {
   it('was recorded from the rules as they stand today', () => {
-    const { recordedWith } = JSON.parse(readFileSync(RECORDING, 'utf8')) as {
-      recordedWith: { engine: string; content: string };
+    const { recordedWith, frames } = JSON.parse(readFileSync(RECORDING, 'utf8')) as {
+      recordedWith: { protocol: number; engine: string; content: string };
+      frames: { label: string; frame: unknown }[];
     };
 
-    expect([recordedWith.engine, recordedWith.content], RETAKE).toEqual([ENGINE_VERSION, CONTENT_VERSION]);
+    expect(recordedWith, RETAKE).toEqual({ protocol: PROTOCOL_VERSION, engine: ENGINE_VERSION, content: CONTENT_VERSION });
+    const finals = frames.map(({ label, frame }) => ({ label, final: frameSchema.parse(frame).final }))
+      .filter(({ final }) => final !== undefined);
+    expect(finals.length, RETAKE).toBeGreaterThan(0);
+    for (const { label, final } of finals) {
+      expect([final?.engine, final?.content], `${label}: ${RETAKE}`).toEqual([ENGINE_VERSION, CONTENT_VERSION]);
+    }
   });
 });

@@ -40,7 +40,7 @@ function digestOf(cast: readonly Company[]): string {
 
 /** The pinned pair. Both move together, in the one commit that changes the cast. */
 const PINNED = {
-  content: 'c2',
+  content: 'c3',
   digest: '2dd8bd6d467bc13fe506d72206de39d7bdac71beaf70beefcd0a619e079ec432',
 } as const;
 

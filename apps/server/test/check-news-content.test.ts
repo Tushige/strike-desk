@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { compareContentRevision } from '../scripts/check-news-content';
 import type { ContentRevision } from '../scripts/check-news-content';
@@ -158,7 +158,7 @@ const files: Record<keyof ContentRevision, string> = {
   sheet: 'apps/server/test/fixtures/news-engine.sheet.json', transcript: 'apps/server/test/fixtures/command-path.transcript.json',
 };
 const script = fileURLToPath(new URL('../scripts/check-news-content.ts', import.meta.url));
-const loader = createRequire(import.meta.url).resolve('tsx');
+const loader = pathToFileURL(createRequire(import.meta.url).resolve('tsx')).href;
 
 describe('content revision command', () => {
   it('reads an immutable Git baseline and current files, rejects bad input, and never writes', () => {
@@ -211,5 +211,6 @@ describe('content revision command', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  }, 15000);
+  // This CLI matrix launches many real Node and Git processes. Windows startup dominates it.
+  }, process.platform === 'win32' ? 90_000 : 15_000);
 });

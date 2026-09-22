@@ -1,5 +1,6 @@
-import type { Frame, Side } from '@strike-desk/shared/protocol';
+import type { Side } from '@strike-desk/shared/protocol';
 import type { TicketContract } from '../../modules/order-ticket/index';
+import { useScreenFrame } from '../../store/hooks';
 import type { Pick } from '../desk/pick';
 import { CashedOut, LiveTicket } from './LiveTicket';
 import { ResultPanel } from './ResultPanel';
@@ -14,7 +15,6 @@ import { useTicketMachine } from './useTicketMachine';
  * at the bell.
  */
 export function TicketPanel({
-  frame,
   companyId,
   contract,
   pick,
@@ -22,7 +22,6 @@ export function TicketPanel({
   onChooseSide,
   onChooseChoice,
 }: {
-  frame: Frame;
   companyId: number;
   contract: TicketContract | null;
   pick: Pick;
@@ -30,6 +29,7 @@ export function TicketPanel({
   onChooseSide: (side: Side) => void;
   onChooseChoice: (choice: Pick['choice']) => void;
 }) {
+  const frame = useScreenFrame('ticket');
   const machine = useTicketMachine(frame, contract, onPick);
   const ticket = todaysTicket(frame);
   const phase = frame.clock.phase;

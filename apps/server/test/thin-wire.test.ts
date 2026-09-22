@@ -386,6 +386,10 @@ describe("every frame this service emits", () => {
                         frame.clock.priceIndex,
                     );
                 }
+                if (frame.clock.phase === 'debrief' || frame.clock.phase === 'final') {
+                    keys.push('wasTrue');
+                    expect(news.wasTrue).toBeTypeOf('boolean');
+                }
                 expect(Object.keys(news).sort()).toEqual(keys.sort());
                 expect(news.day).toBe(frame.clock.day);
                 expect(news.source.length).toBeGreaterThan(0);
@@ -792,7 +796,10 @@ function expectDraftAtFrame(
         });
     } else expect(frame).not.toHaveProperty("leadIn");
     expect(frame).not.toHaveProperty("final");
-    for (const news of frame.news) expect(news).not.toHaveProperty("wasTrue");
+    for (const news of frame.news) {
+        if (frame.clock.phase === 'debrief' || frame.clock.phase === 'final') expect(news.wasTrue).toBeTypeOf('boolean');
+        else expect(news).not.toHaveProperty('wasTrue');
+    }
     expect(JSON.stringify(frame)).not.toContain(seedToMarketCode(SEED));
     expect(JSON.stringify(frame)).not.toContain(String(SEED));
 }

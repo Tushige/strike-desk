@@ -1,7 +1,8 @@
 import { expect, it } from 'vitest';
 import { CONTENT_VERSION, ENGINE_VERSION, FIRST_PLAYER_ID, PROTOCOL_VERSION, createSession, frameSchema, handleCommand, momentAt } from '@strike-desk/shared/engine';
 import type { Frame, Session } from '@strike-desk/shared/engine';
-import { liveNewsFrameFor } from '../src/liveNewsFrame';
+import { liveNewsFrameFor, previewFrame } from '../src/liveNewsFrame';
+import { handle } from '../src/modules/command-path/handle';
 import { FIXED_SEEDS, startHarness } from './harness';
 
 function started(): Session {
@@ -53,7 +54,7 @@ function expectPublicOnly(frame: Frame): void {
     canBuy: !frame.stress && (frame.clock.phase === 'preBell' || frame.clock.phase === 'open') });
   for (const news of frame.news) {
     expect(Object.keys(news).sort()).toEqual([
-      'body', 'companyId', 'day', 'direction', 'id', ...(news.revealed ? ['revealIndex'] : []), 'revealed', 'source', 'title', 'trust',
+      'body', 'companyId', 'day', 'direction', 'id', ...(news.revealed ? ['revealIndex'] : []), 'revealed', 'source', 'title', 'trust', ...(['debrief', 'final'].includes(frame.clock.phase) ? ['wasTrue'] : []),
     ].sort());
     if (news.revealed) expect(news.revealIndex).toBeLessThanOrEqual(frame.clock.priceIndex);
   }
@@ -76,11 +77,25 @@ it.each(['before', 'mixed'] as const)('scrambling future values cannot change th
   expect(publicFrame(altered, 1200).news).not.toEqual(publicFrame(session, 1200).news);
 });
 
-it.each([0, 300, 800, 4500])('keeps outcomes and unrelated sections absent at step %s', (step) => {
+it.each([0, 300, 800, 4500])('reveals outcomes only after the day completes at step %s', (step) => {
   const frame = publicFrame(started(), step);
   expect(frame.news).toHaveLength(3);
   expectPublicOnly(frame);
   if (step >= 800) expect(frame.news.every((news) => news.revealed)).toBe(true);
+});
+
+it('exposes the actual hidden truth only at debrief, in both samples and command replies', () => {
+  const session = started();
+  const during = publicFrame(session, 700);
+  expect(during.news.every((item) => item.revealed && item.wasTrue === undefined)).toBe(true);
+  const debrief = publicFrame(session, 800);
+  for (const item of debrief.news) {
+    expect(item.wasTrue).toBe(session.market.days[0]?.news.find((news) => news.headline.companyId === item.companyId)?.hidden.wasTrue);
+  }
+  const reply = handle({ session, playerId: FIRST_PLAYER_ID, command: { t: 'skipToBell', commandId: 'close-day', day: 1 }, nowMs: 140_000, draft: null });
+  const publicReply = previewFrame(reply.reply.frame);
+  expect(publicReply.clock.phase).toBe('debrief');
+  expect(publicReply.news.map((item) => item.wasTrue)).toEqual(debrief.news.map((item) => item.wasTrue));
 });
 
 it.each([undefined, 2500])('delivers the passed reveal on samples and resuming hello (board %s)', async (board) => {

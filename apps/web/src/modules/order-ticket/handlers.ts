@@ -21,7 +21,7 @@ export interface TicketHandlerSource {
 
 export interface TicketHandlers {
   onPick: (contractId: number) => void;
-  onChooseSpend: (spendCents: number) => void;
+  onChooseSpend: (spendCents: number | null) => void;
   /** `drawnAs` is the command the pressed button was drawn for. */
   onPress: (drawnAs: CommandKind) => void;
   onRetry: () => void;

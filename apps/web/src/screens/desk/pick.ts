@@ -12,9 +12,9 @@ import type { SimpleChoice, TicketContract } from '../../modules/order-ticket/in
 export type Choice = SimpleChoice['choice'];
 export const CHOICES: readonly Choice[] = ['close', 'far', 'moonshot'];
 export const CHOICE_NOTES: Record<Choice, string> = {
-  close: 'Easier to hit. Pays less.',
-  far: 'Harder to hit. Pays more.',
-  moonshot: 'Long shot. Pays huge.',
+  close: 'Smaller move',
+  far: 'Larger move',
+  moonshot: 'Biggest move',
 };
 
 type Board = NonNullable<Frame['board']>;

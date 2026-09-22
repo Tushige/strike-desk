@@ -69,7 +69,7 @@ export const startWords = {
   footer:
     'Made-up companies. Pretend money. Real trading ideas. For teachers: an UP ticket is a call option, a DOWN ticket is a put option, the target is the strike price, and the closing bell is expiry.',
   example:
-    'Up does not always mean profit: a $100 share and a $3 ticket for a $100 target need the price above $103 before you are ahead. That extra $3 is the break-even.',
+    'Up does not always mean profit: a $100 share and a $300 ticket for a $100 target need the price above $103 before you are ahead. Each ticket represents 100 shares; $103 is the break-even share price.',
   connecting: 'Connecting to the desk…',
   serverFull: 'The desk is full right now. Try again in a minute.',
   gameGone: 'That game is over on the server, so this is a fresh one.',
@@ -87,7 +87,7 @@ export const finalWords = {
   lessons: [
     'News can be wrong. The less sure it is, the bigger the swing.',
     'Far targets are cheap and pay big, but they miss most of the time.',
-    'Hope value melts. Waiting for more always has a price.',
+    'Hope value expires at the bell. It can rise or fall before then.',
   ],
   notPlayed: 'Not played',
   satOut: 'Sat out',

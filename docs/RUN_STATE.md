@@ -1,5 +1,7 @@
 # Run state
 
+**Current work:** the donor port on `feature/layout-improvements` supersedes this historical screen-rewrite bookmark. Read [PORT_STATUS.md](PORT_STATUS.md) and [VERIFICATION.md](VERIFICATION.md) for current implementation and remaining browser/deployment checks.
+
 The bookmark for the screen rewrite described in the bridge brief. Updated at every checkpoint so a fresh session can pick up in one line: read this, read `DECISIONS.md`, run the checks, continue with the next step.
 
 ## How to resume

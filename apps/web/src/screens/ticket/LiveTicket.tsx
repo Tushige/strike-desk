@@ -17,10 +17,10 @@ function BigMoney({ label, value, paid, profit, dim = false }: { label: string; 
   return (
     <div className={cx('flex flex-col gap-1.5 transition-opacity', dim && 'opacity-60')}>
       <Label>{label}</Label>
-      <div className={cx('font-display text-[38px] leading-tight font-extrabold tabular-nums short:text-[32px]', good ? 'text-mint' : 'text-coral')}>{money(value)}</div>
-      <div className="flex items-center justify-between">
+      <div className={cx('ticket-live-money font-display leading-tight font-extrabold tabular-nums', good ? 'text-mint' : 'text-coral')}>{money(value)}</div>
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
         <span className="text-sm text-muted">You paid {money(paid)}</span>
-        <span className={cx('rounded-[10px] px-2.5 py-1 text-sm font-bold tabular-nums', good ? 'bg-mint/15 text-mint' : 'bg-coral/15 text-coral')}>
+        <span className={cx('w-[15ch] rounded-[10px] px-2.5 py-1 text-right text-sm font-bold whitespace-nowrap tabular-nums', good ? 'bg-mint/15 text-mint' : 'bg-coral/15 text-coral')}>
           {signedMoney(profit)}
         </span>
       </div>
@@ -55,22 +55,22 @@ function ValueBar({ position }: { position: PositionView }) {
       <dl className="m-0 flex flex-col gap-2.5 short:gap-1.5">
         <div className="flex gap-2.5">
           <span className="mt-1 size-3 shrink-0 rounded bg-cloud" />
-          <div className="flex grow flex-col gap-0.5">
-            <div className="flex justify-between text-sm font-semibold">
+          <div className="flex min-w-0 grow flex-col gap-0.5">
+            <div className="grid grid-cols-[5rem_minmax(0,1fr)] text-sm font-semibold">
               <dt>Real value</dt>
-              <dd className="m-0 tabular-nums">{money(real)} a ticket</dd>
+              <dd className="m-0 text-right whitespace-nowrap tabular-nums">{money(real)} /ticket</dd>
             </div>
             <div className="text-xs leading-snug text-muted short:hidden">How far the price is past your target right now.</div>
           </div>
         </div>
         <div className="flex gap-2.5">
           <span className="mt-1 size-3 shrink-0 rounded bg-grape" />
-          <div className="flex grow flex-col gap-0.5">
-            <div className="flex justify-between text-sm font-semibold">
+          <div className="flex min-w-0 grow flex-col gap-0.5">
+            <div className="grid grid-cols-[5rem_minmax(0,1fr)] text-sm font-semibold">
               <dt>Hope value</dt>
-              <dd className="m-0 tabular-nums">{money(hope)} a ticket</dd>
+              <dd className="m-0 text-right whitespace-nowrap tabular-nums">{money(hope)} /ticket</dd>
             </div>
-            <div className="text-xs leading-snug text-muted short:hidden">What traders pay for the time that is left. It melts to $0 by the bell.</div>
+            <div className="text-xs leading-snug text-muted short:hidden">What traders pay for the time that is left. It expires at the bell; it can rise or fall before then.</div>
           </div>
         </div>
       </dl>
@@ -101,8 +101,8 @@ export function LiveTicket({ frame, position, machine }: { frame: Frame; positio
       <BigMoney label="Worth right now" value={position.valueCents} paid={position.costCents} profit={position.profitCents} dim={machine.snapshot.line !== 'live'} />
       <ValueBar position={position} />
       <ActionDock>
-        <PrimaryButton className="h-16 short:h-[52px]" disabled={blocker !== null} onClick={() => { machine.handlers.onPress('cashOut'); }}>
-          Cash out {money(position.valueCents)}
+        <PrimaryButton className="live-trade-action h-16 short:h-[52px]" disabled={blocker !== null} onClick={() => { machine.handlers.onPress('cashOut'); }}>
+          <span>Cash out</span><span>{money(position.valueCents)}</span>
         </PrimaryButton>
         {blocker !== null && CASH_OUT_BLOCKER_WORDS[blocker] !== null && (
           <p className="m-0 text-xs text-muted" role="status">{CASH_OUT_BLOCKER_WORDS[blocker]}</p>
@@ -128,7 +128,7 @@ export function CashedOut({ frame, position }: { frame: Frame; position: Positio
       {position.ifHeldCents !== undefined && (
         <div className="flex flex-col gap-1.5 rounded-2xl border border-line p-4">
           <div className="text-sm font-semibold">If you had held on</div>
-          <div className="font-display text-2xl font-bold tabular-nums">{money(position.ifHeldCents)}</div>
+          <div className="font-display text-2xl font-bold whitespace-nowrap tabular-nums">{money(position.ifHeldCents)}</div>
           <div className="text-[13px] leading-snug text-muted">This is what your ticket would be worth right now. Keep watching. It can still go either way.</div>
         </div>
       )}

@@ -240,20 +240,22 @@ describe('complete candidate', () => {
     },
   );
 
-  it('runs full proof and review from the CLI with no sheet mutation', () => {
+  it.each(['proof', 'review', 'invalid count'] as const)('runs CLI %s with no sheet mutation', (mode) => {
     const directory = mkdtempSync(path.join(tmpdir(), 'news-full-'));
     try {
       const candidate = path.join(directory, 'candidate.json');
       const pool = fullPool();
       writeFileSync(candidate, JSON.stringify(pool));
       const run = (...args: string[]) => spawnSync(process.execPath, ['--import', 'tsx', 'scripts/news-sheet.ts', '--candidate', candidate, ...args], { cwd: fileURLToPath(new URL('..', import.meta.url)), encoding: 'utf8' });
-      const proof = run('--check-candidate', '--full', '--games', '10000');
-      expect(proof.status, proof.stderr).toBe(0);
-      expect(JSON.parse(proof.stdout)).toEqual({ games: 10000, headlines: 150000, digest: buildReview(pool, { mode: 'full' }).digest });
-      const review = run('--review', '--full');
-      expect(review.status, review.stderr).toBe(0);
-      expect(review.stdout).toBe(renderReview(buildReview(pool, { mode: 'full' })));
-      expect(run('--check-candidate', '--full', '--games', '0').status).toBe(1);
+      if (mode === 'proof') {
+        const proof = run('--check-candidate', '--full', '--games', '10000');
+        expect(proof.status, proof.stderr).toBe(0);
+        expect(JSON.parse(proof.stdout)).toEqual({ games: 10000, headlines: 150000, digest: buildReview(pool, { mode: 'full' }).digest });
+      } else if (mode === 'review') {
+        const review = run('--review', '--full');
+        expect(review.status, review.stderr).toBe(0);
+        expect(review.stdout).toBe(renderReview(buildReview(pool, { mode: 'full' })));
+      } else expect(run('--check-candidate', '--full', '--games', '0').status).toBe(1);
       expect(readFileSync(SHEET, 'utf8')).toBe(committedText);
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });

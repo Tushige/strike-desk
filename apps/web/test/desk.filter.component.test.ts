@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { createElement } from 'react';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, expect, it, vi } from 'vitest';
 import type { Frame, ServerMessage } from '@strike-desk/shared/protocol';
 import { contractId } from '@strike-desk/shared/protocol';
 import { createSocketFactory, testFrame } from './fakeSocket';
@@ -64,17 +64,21 @@ function preBellFrame(step: number, base: number): Frame {
   });
 }
 
-it('filtering the table while quotes stream keeps the half-built ticket', async () => {
-  // Draft reports to the server are paced to one a second; the clock is moved by hand.
-  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance'] });
-  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 800, 500));
-  const sockets = createSocketFactory();
+const sockets = createSocketFactory();
+let App: typeof import('../src/App')['default'];
+beforeAll(async () => {
   vi.stubGlobal('WebSocket', function FakeWebSocket(url: string) { return sockets.create(url); });
-  vi.stubGlobal('ResizeObserver', class { observe(): void {} disconnect(): void {} });
-
   const { connection } = await import('../src/boot');
   stops.push(() => { connection.close(); });
-  const { default: App } = await import('../src/App');
+  App = (await import('../src/App')).default;
+}, 30_000);
+
+it('filtering the table while quotes stream keeps the half-built ticket', async () => {
+  // Draft reports to the server are paced to one a second; the clock is moved by hand.
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 800, 500));
+  vi.stubGlobal('ResizeObserver', class { observe(): void {} disconnect(): void {} });
+
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance'] });
   render(createElement(App));
 
   const send = (message: ServerMessage): void => { act(() => { sockets.last().fireMessage(JSON.stringify(message)); }); };
@@ -100,7 +104,9 @@ it('filtering the table while quotes stream keeps the half-built ticket', async 
   expect(screen.getByRole('button', { name: /^Buy for/ })).toBeTruthy();
 
   // Open the table and filter it down to DOWN tickets, which hides the chosen UP row, while prices stream.
-  fireEvent.click(screen.getByRole('button', { name: 'Compare options' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Compare contracts' }));
+  vi.useRealTimers();
+  await act(async () => { await vi.dynamicImportSettled(); });
   const filters = screen.getByRole('group', { name: 'Filters' });
   fireEvent.click(within(filters).getByRole('button', { name: 'DOWN' }));
   for (let step = 3; step <= 7; step += 1) {
@@ -113,9 +119,38 @@ it('filtering the table while quotes stream keeps the half-built ticket', async 
   const panel = screen.getByRole('region', { name: 'Your ticket' });
   expect(within(panel).getByRole('button', { name: /^Far/ }).getAttribute('aria-pressed')).toBe('true');
   expect(within(panel).getByRole('button', { name: '$100K' }).getAttribute('aria-pressed')).toBe('true');
-  expect(within(panel).getByText(/You get 9 UP tickets for/)).toBeTruthy();
+  expect(within(panel).getByText('9 UP tickets')).toBeTruthy();
+  expect(within(panel).getByText('Price limit')).toBeTruthy();
   expect(within(panel).getByRole('button', { name: /^Buy for/ })).toBeTruthy();
-  expect(within(panel).getByText(/What if, at the closing bell, RPUP is at/)).toBeTruthy();
+  const scenarioToggle = within(panel).getByText('Explore a price scenario');
+  const scenario = scenarioToggle.closest('details');
+  expect(scenario?.open).toBe(false);
+  fireEvent.click(scenarioToggle);
+  expect(scenario?.open).toBe(true);
+  expect(within(panel).getByRole('slider')).toBeTruthy();
+  expect(within(panel).getByText(/what if, at the closing bell, RPUP is at/)).toBeTruthy();
   const later = sockets.last().sent.map((text) => JSON.parse(text) as { t: string }).filter((message) => message.t === 'draft');
   expect(later).toHaveLength(drafts.length);
+
+  // Hiding comparison keeps the same grid/filter instance and the same budget.
+  fireEvent.click(screen.getByRole('button', { name: 'Back to news' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Compare contracts' }));
+  expect(within(screen.getByRole('group', { name: 'Filters' })).getByRole('button', { name: 'DOWN' }).getAttribute('aria-pressed')).toBe('true');
+  expect(within(panel).getByRole('button', { name: '$100K' }).getAttribute('aria-pressed')).toBe('true');
+
+  // An invalid edit removes the old authoritative quote from the actionable draft.
+  expect(within(panel).queryByLabelText('Custom amount (dollars)')).toBeNull();
+  fireEvent.click(within(panel).getByRole('button', { name: 'Custom' }));
+  const custom = within(panel).getByLabelText('Custom amount (dollars)');
+  for (const invalid of ['', '-1', '1.5', '500001', '9007199254740991']) {
+    fireEvent.change(custom, { target: { value: invalid } });
+    expect(within(panel).getByRole('button', { name: 'Buy ticket' }).hasAttribute('disabled')).toBe(true);
+    expect(custom.getAttribute('aria-invalid')).toBe('true');
+  }
+  fireEvent.change(custom, { target: { value: '12345' } });
+  expect(custom.getAttribute('aria-invalid')).toBe('false');
+  expect(within(panel).getByRole('button', { name: 'Buy ticket' }).hasAttribute('disabled')).toBe(true);
+  fireEvent.click(within(panel).getByRole('button', { name: '$100K' }));
+  expect(within(panel).queryByLabelText('Custom amount (dollars)')).toBeNull();
+  expect(within(panel).getByRole('button', { name: 'Custom' }).getAttribute('aria-expanded')).toBe('false');
 });

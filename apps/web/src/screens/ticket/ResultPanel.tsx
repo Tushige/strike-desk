@@ -21,6 +21,7 @@ export function ResultPanel({ frame, companyId }: { frame: Frame; companyId: num
   const bell = series.today[series.today.length - 1] ?? null;
   const result = frame.days.find((day) => day.day === frame.clock.day);
   const change = result?.changeCents ?? 0;
+  const news = headlineFor(frame, shown);
   const held = ticket !== null && ticket.status !== 'cashedOut';
 
   return (
@@ -29,6 +30,10 @@ export function ResultPanel({ frame, companyId }: { frame: Frame; companyId: num
 
       <div className="flex flex-col gap-1 rounded-2xl bg-raised px-4 py-3.5 short:py-2.5">
         <div className="font-bold">{headlineFor(frame, shown) === null ? `${company?.name ?? ''} had no news today.` : `Did the ${company?.name ?? ''} news come true?`}</div>
+        <div className="text-sm text-muted">
+          {news === null ? 'No event for this company.' : news.wasTrue === undefined ? 'Outcome not available.' : news.wasTrue ? 'The claimed direction happened.' : 'The event reversed the claimed direction.'}
+          {news !== null && <span className="block">{news.source} / {news.trust} source dots</span>}
+        </div>
         <div className="text-sm text-muted">
           {opening !== null && bell !== null ? `${company?.ticker ?? ''} moved ${percentChange(opening, bell)} today.` : 'The price says enough.'}
         </div>

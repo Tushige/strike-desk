@@ -328,7 +328,8 @@ async function runAgainstLocalBuild() {
 
     child.kill('SIGTERM');
     const { code, signal } = await waitForExit(child, SHUTDOWN_TIMEOUT_MS);
-    if (code !== 0) {
+    // Windows TerminateProcess reports the requested signal instead of running a POSIX handler.
+    if (code !== 0 && !(process.platform === 'win32' && code === null && signal === 'SIGTERM')) {
       throw new Error(`server exited with code ${code} (signal ${signal}) after SIGTERM, expected 0`);
     }
   } finally {

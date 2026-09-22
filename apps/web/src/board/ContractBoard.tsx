@@ -20,6 +20,7 @@ import { COLUMNS, DEFAULT_COL_DEF } from './columns';
  */
 
 const LABEL = 'Contracts';
+const WORKLOAD_COLUMNS = COLUMNS.filter((column) => column.field !== 'costCents');
 
 /**
  * A ticket too cheap to trade keeps its place as a dimmed row. The store
@@ -46,7 +47,7 @@ export const ContractBoard = memo(function ContractBoard({ selectedId, onSelect,
   const grid = (
     <LiveGrid<ContractRow>
       source={boardRowSource}
-      columns={COLUMNS}
+      columns={stress ? WORKLOAD_COLUMNS : COLUMNS}
       defaultColDef={DEFAULT_COL_DEF}
       label={LABEL}
       selectedId={selectedId}

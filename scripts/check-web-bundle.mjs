@@ -10,6 +10,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { gzipSync } from 'node:zlib';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '..');
@@ -77,6 +78,29 @@ function main() {
     );
     return;
   }
+
+  const manifest = JSON.parse(readFileSync(path.join(assetsDir, '../.vite/manifest.json'), 'utf8'));
+  const initial = new Set();
+  function visit(key) {
+    if (initial.has(key)) return;
+    initial.add(key);
+    for (const dependency of manifest[key]?.imports ?? []) visit(dependency);
+  }
+  for (const [key, chunk] of Object.entries(manifest)) if (chunk.isEntry) visit(key);
+  const grid = Object.entries(manifest).find(([key]) => key.endsWith('/CompareOptions.tsx'));
+  if (!grid || initial.has(grid[0])) {
+    fail('Comparison/grid must be a deferred chunk, outside the initial entry graph.');
+    return;
+  }
+  const initialScripts = [...initial].map((key) => readFileSync(path.join(assetsDir, '..', manifest[key].file)));
+  if (initialScripts.some((source) => source.includes('AG Grid'))) {
+    fail('AG Grid implementation leaked into the initial route.');
+    return;
+  }
+  const gridScript = readFileSync(path.join(assetsDir, '..', grid[1].file));
+  const bytes = initialScripts.reduce((sum, source) => sum + source.length, 0);
+  const compressed = initialScripts.reduce((sum, source) => sum + gzipSync(source).length, 0);
+  console.log(`Initial JavaScript: ${bytes} bytes (${compressed} gzip); deferred grid: ${gridScript.length} bytes (${gzipSync(gridScript).length} gzip). CSS/fonts are separate.`);
 
   console.log(`BUNDLE OK (${scripts.length} script(s) checked, ${ENGINE_ONLY_MARKERS.length} engine markers absent)`);
 }

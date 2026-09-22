@@ -3,6 +3,10 @@ import { boardFromSearch } from './boardSize';
 import { createStressMeasurements } from './board/stressMeasurements';
 import { createConnection, resendWhileFresh } from './modules/connection/index';
 import { createGameStore } from './store/gameStore';
+import { createJournal, intentEligible } from './modules/connection/journal';
+import type { BuyCommand, CashOutCommand } from '@strike-desk/shared/protocol';
+import type { CommandOutcome, SessionStore } from './modules/connection/ports';
+import type { SavedIntent } from './modules/connection/journal';
 
 /**
  * Run once per page load, at module scope rather than inside an effect, so
@@ -48,24 +52,42 @@ export const devControls = new URLSearchParams(window.location.search).has('dev'
 
 export const store = createGameStore();
 export const stressMeasurements = createStressMeasurements({ now, schedule });
+export const sessionKey = requestedBoard === null ? SESSION_KEY : `${SESSION_KEY}.b${String(requestedBoard)}`;
+function safeStorage(): SessionStore | null {
+  try { return window.sessionStorage; } catch { return null; }
+}
+const storage = safeStorage();
+const journal = createJournal(storage, `${sessionKey}.journal`);
+export const restoredIntent = journal.read();
+let recoveryValue: { intent: SavedIntent; outcome: CommandOutcome | null } | null = restoredIntent === null ? null : { intent: restoredIntent, outcome: null };
+const recoveryListeners = new Set<() => void>();
+export const recovery = {
+  get: () => recoveryValue,
+  subscribe(listener: () => void) { recoveryListeners.add(listener); return () => { recoveryListeners.delete(listener); }; },
+};
+function publishRecovery(intent: SavedIntent, outcome: CommandOutcome | null): void {
+  recoveryValue = { intent, outcome };
+  for (const listener of recoveryListeners) listener();
+}
 
 export const connection = createConnection({
   seam: {
     url: socketUrl(),
     createSocket: (url) => new WebSocket(url),
-    storage: window.sessionStorage,
+    storage,
     schedule,
     random: Math.random,
     now,
   },
   // A stress game is kept under its own key, so a normal tab and a stress tab
   // never resume each other's game.
-  sessionKey: requestedBoard === null ? SESSION_KEY : `${SESSION_KEY}.b${String(requestedBoard)}`,
+  sessionKey,
+  ...(requestedBoard === null ? {} : { staleAfterMs: 3_000 }),
   ...(requestedBoard === null ? {} : { board: requestedBoard }),
   resendOnResume: resendWhileFresh({ maxAgeMs: RESEND_WITHIN_MS, now }),
 });
 
-connection.subscribe((event) => {
+const unsubscribe = connection.subscribe((event) => {
   if (event.type === 'message') {
     const result = store.ingest(event.message);
     stressMeasurements.observe(event.message, result, event.receivedAt);
@@ -75,6 +97,43 @@ connection.subscribe((event) => {
 });
 
 /** Every command carries an id made here, so a resend is the same command and never a second one. */
-export const newCommandId = (): string => crypto.randomUUID();
+export const newCommandId = (): string => {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
+};
+
+function track(intent: SavedIntent, result: Promise<CommandOutcome>): Promise<CommandOutcome> {
+  void result.then((outcome) => { if (!disposing) { journal.clear(); publishRecovery(intent, outcome); } });
+  return result;
+}
+/** Persistence records the same intent before the existing transport sends it. */
+export function submitTrade(command: BuyCommand | CashOutCommand): Promise<CommandOutcome> {
+  if (recoveryValue !== null && recoveryValue.outcome === null) return Promise.resolve({ outcome: 'lost' });
+  const frame = store.frame.get();
+  if (frame === null) return Promise.resolve({ outcome: 'lost' });
+  const intent: SavedIntent = { version: 1, session: frame.session, day: frame.clock.day, submittedAt: Date.now(), command };
+  if (!intentEligible(intent, frame)) return Promise.resolve({ outcome: 'lost' });
+  journal.write(intent);
+  publishRecovery(intent, null);
+  return track(intent, connection.submit(command, intent));
+}
+
+export const restoredOutcome = restoredIntent === null ? null : track(restoredIntent,
+  connection.restore(restoredIntent, Date.now() - restoredIntent.submittedAt));
+
+export function playAgain(): void {
+  connection.close();
+  journal.clear();
+  try { storage?.removeItem(sessionKey); } catch { /* optional storage */ }
+  window.location.reload();
+}
+
+let disposing = false;
+if (import.meta.hot) import.meta.hot.dispose(() => {
+  disposing = true;
+  unsubscribe();
+  connection.close();
+  stressMeasurements.setActive(false);
+});
 
 connection.connect();

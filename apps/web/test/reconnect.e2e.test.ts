@@ -1,4 +1,5 @@
 /// <reference types="node" />
+import { pathToFileURL } from 'node:url';
 import { spawn } from 'node:child_process';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -42,7 +43,7 @@ interface Service {
 }
 
 async function startService(): Promise<Service> {
-  const child: ChildProcessWithoutNullStreams = spawn('pnpm', ['--filter', '@strike-desk/server', 'exec', 'tsx', 'test/news-app.ts'], { stdio: 'pipe' });
+  const child: ChildProcessWithoutNullStreams = spawn(process.execPath, ['--import', pathToFileURL(createRequire(path.resolve('apps/server/package.json')).resolve('tsx')).href, 'apps/server/test/news-app.ts'], { stdio: 'pipe' });
   const lines = createInterface({ input: child.stdout });
   let errors = '';
   child.stderr.on('data', (chunk: Buffer) => { errors += chunk.toString(); });

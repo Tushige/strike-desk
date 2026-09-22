@@ -1,8 +1,11 @@
+import { useState } from 'react';
+import { DayReview } from './ticket/DayReview';
 import type { Frame } from '@strike-desk/shared/protocol';
-import { connection } from '../boot';
+import { playAgain } from '../boot';
 import { money, signedMoney } from './format';
 import { cx, Label, PrimaryButton } from './ui';
 import { DAYS, finalWords, rankFor } from './words';
+import { useScreenFrame } from '../store/hooks';
 
 /**
  * The last screen: the rank the final cash earned, the cash itself, one bar
@@ -11,7 +14,7 @@ import { DAYS, finalWords, rankFor } from './words';
 
 const BAR = 84; // px, tallest bar
 
-function DayBars({ frame }: { frame: Frame }) {
+function DayBars({ frame, selected, onSelect }: { frame: Frame; selected: number; onSelect: (day: number) => void }) {
   const biggest = Math.max(1, ...frame.days.map((day) => Math.abs(day.changeCents)));
   return (
     <ol className="m-0 grid list-none grid-cols-5 gap-3 p-0">
@@ -23,7 +26,7 @@ function DayBars({ frame }: { frame: Frame }) {
         const change = result?.changeCents ?? 0;
         const size = result !== undefined && change !== 0 ? Math.max(4, Math.round((Math.abs(change) / biggest) * BAR)) : 0;
         return (
-          <li key={day} className="flex flex-col items-center gap-1.5">
+          <li key={day}><button type="button" aria-pressed={selected === day} aria-label={`Review day ${String(day)}, ${ticket === undefined ? "No trade" : `${company?.ticker ?? ""} ${ticket.side === "up" ? "UP" : "DOWN"}`}, ${signedMoney(change)}`} onClick={() => { onSelect(day); }} className={cx("flex w-full flex-col items-center gap-1.5 rounded-xl p-1", selected === day && "bg-raised ring-1 ring-sun")}>
             <span className={cx('text-[13px] font-bold tabular-nums', result === undefined || change === 0 ? 'text-muted' : change > 0 ? 'text-mint' : 'text-coral')}>
               {result === undefined ? '' : ticket === undefined ? '$0' : signedMoney(change)}
             </span>
@@ -38,21 +41,16 @@ function DayBars({ frame }: { frame: Frame }) {
             <span className="text-xs text-muted">
               {result === undefined ? finalWords.notPlayed : ticket === undefined || company === null ? finalWords.satOut : `${company.ticker} ${ticket.side === 'up' ? 'UP' : 'DOWN'}`}
             </span>
-          </li>
+          </button></li>
         );
       })}
     </ol>
   );
 }
 
-function playAgain(): void {
-  // The final frame made the connection forget its session, so a fresh
-  // socket gets a fresh game.
-  connection.close();
-  connection.connect();
-}
-
-export function FinalScreen({ frame }: { frame: Frame }) {
+export function FinalScreen() {
+  const frame = useScreenFrame('review');
+  const [selected, setSelected] = useState(1);
   const final = frame.final;
   const finalCents = final?.finalCents ?? frame.account.cashCents;
   const change = final?.changeCents ?? 0;
@@ -60,7 +58,7 @@ export function FinalScreen({ frame }: { frame: Frame }) {
 
   return (
     <main className="mx-auto flex w-full max-w-[1440px] grow flex-col gap-10 px-5 py-10 sm:px-12 lg:flex-row lg:items-center lg:gap-16 lg:px-24">
-      <div className="flex flex-col gap-7 motion-safe:animate-rise lg:w-[600px] lg:shrink-0">
+      <div className="flex flex-col gap-7 motion-safe:animate-rise lg:w-[440px] lg:shrink-0">
         <div className="flex flex-col gap-2.5">
           <p className="m-0 text-[15px] font-semibold text-sun">{finalWords.kicker}</p>
           <h1 className="m-0 font-display text-4xl leading-[1.1] font-extrabold sm:text-[44px]">{rank.title}</h1>
@@ -88,7 +86,8 @@ export function FinalScreen({ frame }: { frame: Frame }) {
       <div className="flex grow flex-col gap-5">
         <section className="flex flex-col gap-4 rounded-3xl border border-line bg-panel p-6">
           <h2 className="m-0 font-display text-base font-bold">{finalWords.daysHeading}</h2>
-          <DayBars frame={frame} />
+          <DayBars frame={frame} selected={selected} onSelect={setSelected} />
+          <DayReview frame={frame} day={selected} />
         </section>
         <section className="flex flex-col gap-3 rounded-3xl border border-line bg-panel p-6">
           <h2 className="m-0 font-display text-base font-bold">{finalWords.lessonsHeading}</h2>

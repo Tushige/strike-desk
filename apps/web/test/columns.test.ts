@@ -101,7 +101,7 @@ describe('the contract table columns', () => {
       'Target',
       'Price',
       'Break-even',
-      'Cost & most you can lose',
+      'Cost / max loss',
       'Real value',
       'Hope value',
     ]);
@@ -207,7 +207,7 @@ describe('the contract table columns', () => {
       'Target',
       'Price',
       'Break-even',
-      'Cost & most you can lose',
+      'Cost / max loss',
       'Real value',
       'Hope value',
     ]);

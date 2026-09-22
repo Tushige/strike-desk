@@ -29,7 +29,8 @@ export interface FreshOptions {
  */
 export function resendWhileFresh({ maxAgeMs, now }: FreshOptions): ResendOnResume {
   return (pending, frame) => {
-    if (now() - pending.sentAt > maxAgeMs) return false;
+    const age = now() - pending.sentAt;
+    if (age < 0 || age > maxAgeMs) return false;
     const { command } = pending;
     if ('day' in command && command.day !== frame.clock.day) return false;
     return true;

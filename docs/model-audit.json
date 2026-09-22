@@ -1,0 +1,47 @@
+{
+  "engine": "e4",
+  "content": "c3",
+  "seedSeries": "42424242 + sample × 104729",
+  "budgetPerDayDollars": 100000,
+  "samples": 1000,
+  "uniqueHeadlines": 162,
+  "rejectedCommands": 0,
+  "results": [
+    {
+      "strategy": "Solid source · close · hold",
+      "games": 1000,
+      "gainPercent": 70.8,
+      "lossPercent": 29.2,
+      "medianFinalDollars": 1176581,
+      "p10FinalDollars": 777278,
+      "p90FinalDollars": 1749249
+    },
+    {
+      "strategy": "Solid source · close · midpoint cash-out",
+      "games": 1000,
+      "gainPercent": 63.7,
+      "lossPercent": 36.3,
+      "medianFinalDollars": 1071907,
+      "p10FinalDollars": 822453,
+      "p90FinalDollars": 1412620
+    },
+    {
+      "strategy": "Wild rumour · moonshot · hold",
+      "games": 1000,
+      "gainPercent": 19.7,
+      "lossPercent": 80.3,
+      "medianFinalDollars": 500109,
+      "p10FinalDollars": 500040,
+      "p90FinalDollars": 1754660
+    },
+    {
+      "strategy": "Blind direction · close · hold",
+      "games": 1000,
+      "gainPercent": 37.8,
+      "lossPercent": 62.2,
+      "medianFinalDollars": 891874,
+      "p10FinalDollars": 516222,
+      "p90FinalDollars": 1439224
+    }
+  ]
+}

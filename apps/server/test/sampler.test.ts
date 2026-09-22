@@ -93,7 +93,8 @@ function expectThin(frame: Frame): void {
         expect(frame.news.map((news) => news.trust).sort()).toEqual([1, 2, 3]);
         for (const news of frame.news) {
             expect(news.day).toBe(frame.clock.day);
-            expect(news).not.toHaveProperty("wasTrue");
+            if (frame.clock.phase === 'debrief' || frame.clock.phase === 'final') expect(news.wasTrue).toBeTypeOf('boolean');
+            else expect(news).not.toHaveProperty('wasTrue');
             if (news.revealed)
                 expect(news.revealIndex).toBeLessThanOrEqual(
                     frame.clock.priceIndex,

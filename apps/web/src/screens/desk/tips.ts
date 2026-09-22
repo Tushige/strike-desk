@@ -50,7 +50,7 @@ export function tipFor(frame: Frame, companyId: number, openingCents: number | n
   if (phase === 'open') {
     if (twistShowing(frame, companyId)) return `Plot twist! Fresh news just hit ${name}. Watch the price.`;
     const ticket = ticketToday(frame);
-    if (ticket !== null && ticket.status === 'open') return 'Hope value melts as the closing bell gets closer. Waiting for more always has a price.';
+    if (ticket !== null && ticket.status === 'open') return 'Hope value expires at the bell. It can rise or fall before then.';
     if (news?.revealed === true) return `The news is out for ${name}. There is less left to hope for.`;
     return 'Watch which headlines come true. It helps you judge tomorrow’s news.';
   }

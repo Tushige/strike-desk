@@ -223,3 +223,88 @@
     --ag-value-change-value-highlight-background-color: transparent;
   }
 }
+
+.help-dialog { width: min(620px, calc(100% - 32px)); max-height: 85dvh; margin: auto; padding: 24px; border: 1px solid var(--color-line); border-radius: 20px; background: var(--color-panel); color: var(--color-cloud); }
+.help-dialog::backdrop { background: #000a; }
+.review-values { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0; }
+.review-values dt { color: var(--color-muted); }
+.review-values dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.mobile-sections { display: flex; position: sticky; top: 0; z-index: 5; justify-content: space-around; padding: 12px 0; border-bottom: 1px solid var(--color-line); background: var(--color-ink); }
+.mobile-sections a { padding: 6px 8px; font-size: 14px; }
+.desk-layout section { scroll-margin-top: 70px; }
+.comparison-region { min-height: 360px; }
+.desk-comparing .news-rail { display: none; }
+.company-list-shell { position: relative; min-height: 0; }
+.company-list-scroll {
+  --fade-top: 0px;
+  --fade-bottom: 0px;
+  max-height: 65svh;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-width: none;
+  mask-image: linear-gradient(to bottom, transparent, #000 var(--fade-top), #000 calc(100% - var(--fade-bottom)), transparent);
+}
+.company-list-scroll::-webkit-scrollbar { display: none; }
+.company-list-scroll[data-fade-top="true"] { --fade-top: 32px; }
+.company-list-scroll[data-fade-bottom="true"] { --fade-bottom: 32px; }
+.company-list-scroll:focus-visible { outline: 2px solid var(--color-sun); outline-offset: -2px; border-radius: 20px; }
+.ticket-region > div { min-height: auto; }
+.ticket-builder > * { flex-shrink: 0; }
+.ticket-builder > .action-dock { padding: 0; gap: 8px; }
+/* Lexend has proportional digits and no tnum feature. Keep Unbounded's
+   real tabular figures for display amounts; use fixed-width numeric text
+   for the body and grid, where requesting tnum alone has no effect. */
+.tabular-nums:not(.font-display), .sd-price, .sd-value, .sd-target {
+  font-family: var(--font-mono);
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.live-trade-action {
+  display: grid;
+  grid-template-columns: max-content 11ch;
+  align-items: center;
+  justify-content: center;
+  column-gap: 0.5rem;
+  padding-inline: 0.75rem;
+  white-space: nowrap;
+}
+.live-trade-action > :last-child { text-align: right; }
+/* These tracks belong to the header, not to the current text or its glyph
+   metrics. A changing worth/cash amount cannot move the timer column. */
+.topbar-metrics {
+  display: grid;
+  flex: 0 0 22.5rem;
+  inline-size: 22.5rem;
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  column-gap: 2rem;
+  align-items: start;
+}
+.ticket-region { container-type: inline-size; }
+.ticket-live-money { font-size: clamp(24px, 10cqi, 38px); white-space: nowrap; }
+.market-region { container-type: inline-size; }
+@container (max-width: 460px) {
+  .company-heading > span { width: 40px; height: 40px; flex-shrink: 0; }
+  .company-heading .company-price { font-size: 20px; }
+  .company-heading .company-change { font-size: 12px; }
+}
+@media (min-width: 1024px) {
+  .company-list-shell { flex: 1; }
+  .company-list-scroll { height: 100%; max-height: none; }
+  .mobile-sections { display: none; }
+  .desk-comparing .market-region { gap: 8px; padding: 16px; }
+  .desk-comparing .comparison-region { min-height: 180px; }
+  .desk-comparing .chart-compact { height: 224px; }
+  .ticket-region > div { min-height: 100%; }
+}
+@media (min-width: 1024px) and (max-height: 820px) {
+  .desk-comparing .chart-compact { height: 192px; }
+}
+@media (max-width: 639px) {
+  header { gap: 8px !important; }
+  .topbar-metrics {
+    flex-basis: calc(100% - 48px);
+    inline-size: calc(100% - 48px);
+    grid-template-columns: 4rem minmax(0, 1fr);
+    column-gap: 12px;
+  }
+  .topbar-worth { font-size: clamp(1rem, 5vw, 1.25rem); }
+}

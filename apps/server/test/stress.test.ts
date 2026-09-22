@@ -376,6 +376,8 @@ describe('what a switched-on session is sent', () => {
     for (let pass = 0; pass < 10; pass += 1) {
       running.clock.advance(SAMPLE_MS);
       running.sample();
+      // Let the socket drain between simulated ticks; synchronous bursts exercise backpressure instead.
+      await roundTrip(client);
     }
     await roundTrip(client);
 
@@ -418,6 +420,8 @@ describe('what a switched-on session is sent', () => {
           run.sample();
           run.clock.advance(SAMPLE_MS);
         }
+        await roundTrip(one.client);
+        await roundTrip(two.client);
       }
       await roundTrip(one.client);
       await roundTrip(two.client);
@@ -455,6 +459,8 @@ describe('what a switched-on session is sent', () => {
     for (let pass = 0; pass < 10; pass += 1) {
       running.clock.advance(SAMPLE_MS);
       running.sample();
+      // Let the socket drain between simulated ticks; synchronous bursts exercise backpressure instead.
+      await roundTrip(client);
     }
     await roundTrip(client);
 
@@ -472,6 +478,8 @@ describe('what a switched-on session is sent', () => {
     for (let pass = 0; pass < 10; pass += 1) {
       running.clock.advance(SAMPLE_MS);
       running.sample();
+      // Let the socket drain between simulated ticks; synchronous bursts exercise backpressure instead.
+      await roundTrip(client);
     }
     await roundTrip(client);
 
@@ -498,6 +506,8 @@ describe('what a switched-on session is sent', () => {
     for (let pass = 0; pass < 32; pass += 1) {
       running.clock.advance(everyMs);
       running.sample();
+      // Let the socket drain between simulated ticks; synchronous bursts exercise backpressure instead.
+      await roundTrip(client);
     }
     await roundTrip(client);
 
@@ -554,6 +564,8 @@ describe('what a batch is never allowed to carry on its own', () => {
     for (let pass = 0; pass < 40; pass += 1) {
       running.clock.advance(FAST_PASS_MS);
       running.sample();
+      // Let the socket drain between simulated ticks; synchronous bursts exercise backpressure instead.
+      await roundTrip(client);
     }
     await roundTrip(client);
 
@@ -578,6 +590,8 @@ describe('what a batch is never allowed to carry on its own', () => {
     for (const step of [295, 305, 306, 805]) {
       running.clock.advance(startedAtMs + step * SAMPLE_MS - running.clock.now());
       running.sample();
+      // Let the socket drain between simulated ticks; synchronous bursts exercise backpressure instead.
+      await roundTrip(client);
     }
     await roundTrip(client);
 

@@ -20,18 +20,11 @@ export function lessonFor(ticket: PositionView | null, openingCents: number | nu
     const wentTheOtherWay = known && (ticket.side === 'up' ? bellCents < openingCents : bellCents > openingCents);
     const wentYourWay = known && (ticket.side === 'up' ? bellCents > openingCents : bellCents < openingCents);
     if (got === 0 && wentTheOtherWay) return 'The price went the other way and your tickets ended at $0. A ticket that misses its target pays nothing, whatever the news said.';
-    if (got === 0 && wentYourWay) return 'Right direction, but the price never reached your target before the bell. Closer targets cost more for a reason.';
-    if (got === 0) return 'The price never reached your target before the bell, so the tickets ended at $0. Closer targets cost more for a reason.';
-    if (profit < 0) return 'The price passed your target, but not by enough to win back what you paid for the tickets.';
-    return 'You held your nerve to the bell. Every dollar the price finished past your target was yours.';
+    if (got === 0 && wentYourWay) return 'Right direction, but the price finished on the non-paying side of your target. Closer targets cost more for a reason.';
+    if (got === 0) return 'The price finished on the non-paying side of your target, so the tickets ended at $0. Closer targets cost more for a reason.';
+    if (profit < 0) return 'The price finished past your target, but not far enough to cover the premium you paid. A true headline or the right direction does not guarantee profit.';
+    return 'Your ticket paid at the bell. Profit is that payout minus the premium you paid.';
   }
 
-  const heldWouldPay = ticket.ifHeldCents ?? null;
-  const holdingPaidMore = heldWouldPay !== null && heldWouldPay > got;
-  if (profit >= 0 && holdingPaidMore) {
-    return `You locked in a sure win. Holding to the bell would have paid ${money(heldWouldPay)} instead, but nobody knew that at the time.`;
-  }
-  if (profit >= 0) return `Great exit. Holding to the bell would have paid ${heldWouldPay === null ? 'less' : money(heldWouldPay)}.`;
-  if (!holdingPaidMore) return `You cut your loss early. Holding to the bell would have paid ${heldWouldPay === null ? 'even less' : money(heldWouldPay)}. The pros do this all the time.`;
-  return 'You got out early and then the price turned your way. It happens to every trader.';
+  return `You cashed out for ${money(got)}. ${ticket.ifHeldCents === undefined ? 'The hold-to-bell comparison is not available yet.' : `Holding to the bell would have paid ${money(ticket.ifHeldCents)}.`} That later result was not knowable at your exit.`;
 }

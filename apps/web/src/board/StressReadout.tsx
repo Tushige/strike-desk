@@ -28,7 +28,7 @@ export function StressReadout({ measurements }: { measurements: StressMeasuremen
         {group.label}
       </button>
       {group.spread ? <span>p50 / p95</span> : null}
-      <span>{group.spread ? distribution(value[group.key] as Distribution) : group.key === 'longTasks' ? String(value.longTasks) : number(value[group.key] as number | Unavailable)}</span>
+      <span className="inline-block w-[17ch] text-right">{group.spread ? distribution(value[group.key] as Distribution) : group.key === 'longTasks' ? String(value.longTasks) : number(value[group.key] as number | Unavailable)}</span>
     </div>)}
     </div>
     {GROUPS.map((group) => <p key={group.key} id={`${id}-${group.key}`} role="tooltip" hidden={open !== group.key}

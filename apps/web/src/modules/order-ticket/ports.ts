@@ -248,6 +248,9 @@ export interface BuyTransaction {
   sent: boolean;
   retryAllowed: boolean;
   gameGone: boolean;
+  /** The accepted server clock was beyond the submitted day's bell when
+   * this answer arrived. Never inferred from elapsed browser time. */
+  afterBell?: boolean;
   outcome?: SubmitOutcome;
   purchase?: BuyPurchase;
 }

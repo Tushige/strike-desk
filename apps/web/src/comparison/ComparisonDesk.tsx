@@ -144,6 +144,7 @@ function DayComparison({ comparison, game, overview, companyFocus, onContractCom
     </div>
     <div className="min-h-0 overflow-y-auto">
       <OrderTicket mode="preview" day={overview.day} contract={contract} choices={choices} onPick={onPick}
+        staleNoticeId="comparison-freshness"
         quote={comparison.quote} account={comparison.account} line={line}
         onDraftChange={comparison.sendDraft} spendEditor={{ value: spendText, spendCents,
           error: spendText === '' || spendCents !== null ? null : 'Enter an amount in dollars and cents.', onChange: onSpendChange }} />

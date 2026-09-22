@@ -237,6 +237,8 @@ export interface OrderTicketProps {
 /** A controlled comparison form. It can request prices, but has no command path. */
 export interface TicketPreviewProps extends Pick<OrderTicketProps, 'day' | 'contract' | 'choices' | 'onPick' | 'quote' | 'account' | 'line' | 'onDraftChange'> {
   mode: 'preview';
+  /** Caller-owned freshness description; leaves line-driven dimming intact. */
+  staleNoticeId?: string;
   spendEditor: {
     /** Raw editing text, preserved even while incomplete or invalid. */
     value: string;

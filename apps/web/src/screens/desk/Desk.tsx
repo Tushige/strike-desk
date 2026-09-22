@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import type { Frame, Side } from '@strike-desk/shared/protocol';
-import { usePrice, useSeries } from '../../store/hooks';
+import { lineStateOf } from '../../modules/connection/index';
+import { useConnectionState, usePrice, useSeries } from '../../store/hooks';
 import { clock, percentChange, price, secondsFor } from '../format';
 import { TicketPanel } from '../ticket/TicketPanel';
-import { Bulb, CompanyTile, cx, Label } from '../ui';
+import { Bulb, CompanyTile, cx, GhostButton, Label } from '../ui';
+import { CompareOptions } from './CompareOptions';
 import { NewsCard, QuietCompany } from './NewsCard';
 import { companyOf, contractFor, contractIdFor, NO_PICK, pickFromTable } from './pick';
 import type { Pick } from './pick';
@@ -21,6 +23,12 @@ import { headlineFor, ticketToday, tipFor, twistShowing } from './tips';
  */
 
 const PHASE_LABEL = { preBell: 'Market opens in', open: 'Closing bell in', debrief: 'Next day in', lobby: '', final: '' } as const;
+
+/** What the tip box says while the numbers cannot be trusted. */
+const LINE_TIPS = {
+  stale: 'No new prices for a moment. These numbers may be old, so buying and cashing out wait until fresh ones arrive.',
+  offline: 'The connection dropped. Reconnecting… your ticket and your cash are safe on the desk.',
+} as const;
 
 /**
  * The lines the chart draws: the ticket the player holds today when it is on
@@ -47,15 +55,15 @@ function CompanyHeader({ frame, companyId }: { frame: Frame; companyId: number }
   const change = now !== null && opening !== null ? percentChange(opening, now) : null;
   const down = change !== null && change.startsWith('−');
   return (
-    <div className="flex min-w-0 items-center gap-3.5">
+    <div className="flex min-w-0 items-center gap-3">
       <CompanyTile companyId={companyId} size="lg" />
       <div className="flex min-w-0 flex-col gap-0.5">
-        <div className="truncate text-[15px] text-muted">
+        <div className="truncate text-[14px] text-muted">
           {company?.name} ({company?.ticker}) makes {company?.product ?? 'things'}
         </div>
-        <div className="flex items-baseline gap-3">
-          <span className="font-display text-2xl leading-tight font-extrabold tabular-nums sm:text-[30px]">{now === null ? '—' : price(now)}</span>
-          <span className={cx('font-bold tabular-nums', picking ? 'text-muted' : down ? 'text-coral' : 'text-mint')}>
+        <div className="flex min-w-0 items-baseline gap-2.5 overflow-hidden whitespace-nowrap">
+          <span className="font-display text-2xl leading-tight font-extrabold tabular-nums sm:text-[28px]">{now === null ? '—' : price(now)}</span>
+          <span className={cx('text-[15px] font-bold tabular-nums', picking ? 'text-muted' : down ? 'text-coral' : 'text-mint')}>
             {picking ? 'opens here' : change === null ? '' : `${change} today`}
           </span>
         </div>
@@ -100,6 +108,13 @@ export function Desk({ frame }: { frame: Frame }) {
   const draftContractId = contractIdFor(frame, selected, pick);
   const contract = contractFor(frame, draftContractId);
 
+  // "Compare options" swaps the chart for the whole contract board; the
+  // ticket on the right stays put and a picked row lands on it.
+  const [comparing, setComparing] = useState(false);
+  const line = lineStateOf(useConnectionState().phase);
+  const canCompare = frame.board !== null && frame.clock.phase !== 'debrief';
+  const showBoard = comparing && canCompare;
+
   const secondsLeft = secondsFor(frame.clock.stepsLeft, frame.clock.pace);
   const hurry = (frame.clock.phase === 'open' && secondsLeft < 15) || (picking && secondsLeft < 10);
   const twist = twistShowing(frame, selected);
@@ -108,7 +123,7 @@ export function Desk({ frame }: { frame: Frame }) {
 
   return (
     <main className="mx-auto flex w-full max-w-[1440px] flex-col gap-4 p-4 lg:min-h-0 lg:grow lg:flex-row">
-      <section className="flex flex-col gap-3 lg:min-h-0 lg:w-80 lg:shrink-0 lg:overflow-y-auto" aria-label="Today's news">
+      <section className={cx('flex flex-col gap-3 transition-opacity lg:min-h-0 lg:w-80 lg:shrink-0 lg:overflow-y-auto', line !== 'live' && 'opacity-60')} aria-label="Today's news">
         <div className="flex h-[26px] items-center justify-between">
           <h2 className="m-0 font-display text-base font-bold">Today's news</h2>
           <span className="text-[13px] text-muted">Tap to view</span>
@@ -152,8 +167,8 @@ export function Desk({ frame }: { frame: Frame }) {
         )}
       </section>
 
-      <section className="flex min-w-0 flex-col gap-4 rounded-3xl border border-line bg-panel p-4 sm:p-5 lg:grow">
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+      <section className={cx('flex min-w-0 flex-col gap-4 rounded-3xl border border-line bg-panel p-4 transition-opacity sm:p-5 lg:grow', line !== 'live' && 'opacity-60')}>
+        <div className="flex items-center justify-between gap-x-3">
           <CompanyHeader frame={frame} companyId={selected} />
           <div className="flex shrink-0 flex-col items-end gap-0.5 rounded-2xl bg-raised px-4 py-2.5" role="timer">
             <Label>{PHASE_LABEL[frame.clock.phase]}</Label>
@@ -161,11 +176,22 @@ export function Desk({ frame }: { frame: Frame }) {
           </div>
         </div>
 
-        <PriceChart frame={frame} companyId={selected} target={targetFor(frame, selected, draftContractId)} ticket={ticket} twist={twist} />
+        {showBoard ? (
+          <CompareOptions frame={frame} companyId={selected} selectedContractId={draftContractId} onPick={pickContract} stale={line !== 'live'} />
+        ) : (
+          <PriceChart frame={frame} companyId={selected} target={targetFor(frame, selected, draftContractId)} ticket={ticket} twist={twist} />
+        )}
 
         <div className="flex min-h-16 items-center gap-3.5 rounded-2xl bg-raised px-[18px] py-3">
           <Bulb className="size-[26px] shrink-0 text-sun" />
-          <p className="m-0 text-[15px] leading-[1.45]">{tipFor(frame, selected, opening)}</p>
+          <p className="m-0 grow text-[15px] leading-[1.45]">
+            {showBoard ? 'Every ticket on the board, repricing live. Click a column header to sort; pick a row to put it on your ticket.' : line === 'live' ? tipFor(frame, selected, opening) : LINE_TIPS[line]}
+          </p>
+          {canCompare && (
+            <GhostButton tone={showBoard ? 'line' : 'sun'} className="h-10 shrink-0 px-3.5 text-[13px]" aria-pressed={showBoard} onClick={() => { setComparing(!showBoard); }}>
+              {showBoard ? 'Back to the chart' : 'Compare options'}
+            </GhostButton>
+          )}
         </div>
       </section>
 

@@ -43,6 +43,9 @@ const schedule = (run: () => void, ms: number): (() => void) => {
 /** The stress board size, if the address asks for one. Nothing on screen says so; the service decides whether to grant it. */
 export const requestedBoard = boardFromSearch(window.location.search);
 
+/** `?dev` on the address shows the developer controls (drop the line). Never on for a player. */
+export const devControls = new URLSearchParams(window.location.search).has('dev');
+
 export const store = createGameStore();
 export const stressMeasurements = createStressMeasurements({ now, schedule });
 

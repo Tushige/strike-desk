@@ -18,12 +18,12 @@ Screenshots for each step are taken with headless Chromium against the built ser
 |---|---|---|
 | 1 | Tokens and shell: v1 tokens and fonts, TopBar, StartScreen, FinalScreen; old screens, lab and old feed deleted | done |
 | 2 | The desk: RoundScreen, NewsCard, PriceChart on the store | done |
-| 3 | The ticket: TicketBuilder and LiveTicket on the order-ticket machine; cash-out opened at the door | next |
-| 4 | The bell and the days: ResultPanel, day pips, final screen wiring, play again | pending |
-| 5 | Compare options: the kept grid opened from the desk | pending |
-| 6 | Reconnect and honesty: status, stale, buy disabled, dev disconnect, end-to-end test | pending |
-| 7 | What-if slider and stress readout | pending |
-| 8 | README, final pass at 1366×768, full game, deliverable | pending |
+| 3 | The ticket: TicketBuilder and LiveTicket on the order-ticket machine; cash-out opened at the door | done |
+| 4 | The bell and the days: ResultPanel, day pips, final screen wiring, play again | done |
+| 5 | Compare options: the kept grid opened from the desk | done |
+| 6 | Reconnect and honesty: status, stale, buy disabled, dev disconnect, end-to-end test | done |
+| 7 | What-if slider and stress readout | done |
+| 8 | README, final pass at 1366×768, full game, deliverable | next |
 
 ## Notes
 

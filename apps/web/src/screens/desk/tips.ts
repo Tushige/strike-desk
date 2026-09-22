@@ -37,6 +37,7 @@ const TRUST_TIPS = {
 } as const;
 
 export function tipFor(frame: Frame, companyId: number, openingCents: number | null): string {
+  if (frame.stress) return `Stress setting: ${frame.quotes.length.toLocaleString('en-US')} tickets repricing live. Buying is off while it runs.`;
   const company = frame.companies[companyId];
   const name = company?.name ?? 'This company';
   const news = headlineFor(frame, companyId);

@@ -156,10 +156,16 @@ const MARKS: readonly { tile: string; glyph: ReactNode }[] = [
   },
 ];
 
-export function CompanyTile({ companyId, size = 'md' }: { companyId: number; size?: 'sm' | 'md' | 'lg' }) {
+const TILE_SIZES = {
+  xs: { box: 'size-5 rounded-md', icon: 'size-3.5' },
+  sm: { box: 'size-8 rounded-[10px]', icon: 'size-5' },
+  md: { box: 'size-11 rounded-[14px]', icon: 'size-[26px]' },
+  lg: { box: 'size-14 rounded-[18px]', icon: 'size-8' },
+} as const;
+
+export function CompanyTile({ companyId, size = 'md' }: { companyId: number; size?: keyof typeof TILE_SIZES }) {
   const mark = MARKS[companyId] ?? MARKS[0];
-  const box = size === 'lg' ? 'size-14 rounded-[18px]' : size === 'sm' ? 'size-8 rounded-[10px]' : 'size-11 rounded-[14px]';
-  const icon = size === 'lg' ? 'size-8' : size === 'sm' ? 'size-5' : 'size-[26px]';
+  const { box, icon } = TILE_SIZES[size];
   return (
     <span className={cx('flex shrink-0 items-center justify-center text-ink', box, mark?.tile)}>
       <svg viewBox="0 0 24 24" className={icon} strokeWidth="2" {...stroke} aria-hidden="true">

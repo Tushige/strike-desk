@@ -114,6 +114,7 @@ export function PriceChart({
   const entry = ticket !== null && ticket.companyId === companyId ? ticket : null;
   const entryPoint = entry === null ? null : points.find(([k]) => k === entry.entryPriceIndex) ?? null;
   const exitPoint = entry?.exit === undefined || entry.exit.kind !== 'cashOut' ? null : points.find(([k]) => k === entry.exit?.priceIndex) ?? null;
+  const labelSide = dotX < (openX + w) / 2 ? { right: 12 } : { left: openX + 8 };
   const reveal = frame.news.find((item) => item.companyId === companyId && item.day === frame.clock.day && item.revealed);
   const revealX = reveal?.revealIndex === undefined ? null : x(reveal.revealIndex);
 
@@ -163,16 +164,16 @@ export function PriceChart({
 
           {target !== null && (
             <>
-              {/* Both labels sit just past the opening bell, at the start of the day, clear of the price bubble that rides the newest point. */}
+              {/* Both labels sit on the half of the day away from the price bubble that rides the newest point. */}
               <span
                 className={cx('absolute rounded-[10px] px-2.5 py-1 text-[13px] font-bold text-ink', target.side === 'up' ? 'bg-mint' : 'bg-coral')}
-                style={{ left: openX + 8, top: target.side === 'up' ? targetY + 6 : targetY - 32 }}
+                style={{ ...labelSide, top: target.side === 'up' ? targetY + 6 : targetY - 32 }}
               >
                 Target {price(target.targetCents)}
               </span>
               <span
                 className={cx('absolute text-[12px] font-semibold', target.side === 'up' ? 'text-mint/80' : 'text-coral/80')}
-                style={{ left: openX + 8, top: target.side === 'up' ? breakEvenY - 22 : breakEvenY + 6 }}
+                style={{ ...labelSide, top: target.side === 'up' ? breakEvenY - 22 : breakEvenY + 6 }}
               >
                 Break-even {price(target.breakEvenCents)}
               </span>

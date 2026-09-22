@@ -1,9 +1,10 @@
 import type { Frame } from '@strike-desk/shared/protocol';
 import { GAME_STEPS } from '@strike-desk/shared/time';
+import { connection, devControls } from '../boot';
 import { lineStateOf } from '../modules/connection/index';
 import { useConnectionState, useFrame } from '../store/hooks';
 import { clock, money, secondsFor } from './format';
-import { cx, Label, LogoMark } from './ui';
+import { cx, GhostButton, Label, LogoMark } from './ui';
 import { DAYS, LINE_WORDS, topBarWords } from './words';
 
 /**
@@ -70,6 +71,11 @@ export function TopBar() {
             <span className={cx('size-2 rounded-full', line === 'stale' ? 'bg-sun' : 'bg-coral')} aria-hidden="true" />
             {LINE_WORDS[line]}
           </span>
+        )}
+        {devControls && line === 'live' && (
+          <GhostButton className="ml-2 h-8 px-3 text-xs" onClick={() => { connection.simulateDrop(); }} title="Developer control: cut the connection to see the page reconnect">
+            Drop the line
+          </GhostButton>
         )}
       </div>
 

@@ -1,10 +1,11 @@
+import { useId, useState } from 'react';
 import type { Frame, Side } from '@strike-desk/shared/protocol';
-import { BLOCKER_WORDS, buyBlocker, quoteEchoes } from '../../modules/order-ticket/index';
-import type { BuyBlocker } from '../../modules/order-ticket/index';
+import { BLOCKER_WORDS, breakEvenStopIndex, buyBlocker, quoteEchoes, stopAt } from '../../modules/order-ticket/index';
+import type { BuyBlocker, TicketQuote } from '../../modules/order-ticket/index';
 import { CHOICES, CHOICE_NOTES, choicesFor } from '../desk/pick';
 import type { Pick } from '../desk/pick';
 import { OpeningBellButton, SkipToBellButton } from '../desk/PhaseActions';
-import { count, money, price } from '../format';
+import { count, money, price, signedMoney } from '../format';
 import { ActionDock, ArrowDown, ArrowUp, ChoiceButton, cx, PrimaryButton } from '../ui';
 import { Notice } from './Notice';
 import { SPEND_CHIPS } from './useTicketMachine';
@@ -57,8 +58,44 @@ function summaryOf(machine: TicketMachine, pick: Pick): string {
   if (quote.quantity < 1) return 'That is not enough for even one ticket. Spend more or pick a cheaper target.';
   const { contract } = snapshot;
   const side = contract.side === 'up' ? 'UP' : 'DOWN';
-  const where = contract.side === 'up' ? 'above' : 'below';
-  return `You get ${count(quote.quantity)} ${side} tickets for ${money(quote.costCents)}. They pay out if ${contract.ticker} closes ${where} ${price(contract.targetCents)}.`;
+  return `You get ${count(quote.quantity)} ${side} tickets for ${money(quote.costCents)}.`;
+}
+
+/**
+ * "What if, at the closing bell, the price reaches…": a slider over the stops
+ * the server quoted, each with the profit or loss the ticket would make if the
+ * share price finished exactly there. The page looks a stop up; it multiplies
+ * nothing.
+ */
+function WhatIf({ quote, ticker }: { quote: TicketQuote; ticker: string }) {
+  const id = useId();
+  const [chosen, setChosen] = useState<{ contractId: number; index: number } | null>(null);
+  const last = quote.whatIf.length - 1;
+  const index = chosen !== null && chosen.contractId === quote.contractId ? Math.min(chosen.index, last) : breakEvenStopIndex(quote);
+  const stop = stopAt(quote, index);
+  if (stop === null) return null;
+  const ahead = stop.profitCents >= 0;
+  return (
+    <div className="flex flex-col gap-1">
+      <label htmlFor={id} className="text-[12px] text-muted">
+        What if, at the closing bell, {ticker} is at <span className="font-semibold text-cloud tabular-nums">{price(stop.atCents)}</span>?
+      </label>
+      <div className="flex items-center gap-3">
+        <input
+          id={id}
+          type="range"
+          min={0}
+          max={last}
+          step={1}
+          value={index}
+          className="h-2 grow accent-sun"
+          aria-valuetext={`${price(stop.atCents)}: ${signedMoney(stop.profitCents)}`}
+          onChange={(event) => { setChosen({ contractId: quote.contractId, index: Number(event.currentTarget.value) }); }}
+        />
+        <span className={cx('w-24 shrink-0 text-right text-[15px] font-bold tabular-nums', ahead ? 'text-mint' : 'text-coral')}>{signedMoney(stop.profitCents)}</span>
+      </div>
+    </div>
+  );
 }
 
 export function TicketBuilder({
@@ -124,6 +161,18 @@ export function TicketBuilder({
             </ChoiceButton>
           );
         })}
+        {pick.contractId !== null && pick.choice === null && snapshot.contract !== null && (
+          <div className="flex h-[58px] items-center justify-between rounded-2xl border-2 border-sun bg-raised px-4 text-left text-cloud short:h-[46px]">
+            <span className="flex flex-col gap-px">
+              <span className="text-[15px] font-bold">From the table</span>
+              <span className="text-xs text-muted">Your own target.</span>
+            </span>
+            <span className="flex flex-col items-end gap-px tabular-nums">
+              <span className="text-[15px] font-bold">{price(snapshot.contract.targetCents)}</span>
+              <span className="text-xs text-muted">{frame.quotes[snapshot.contract.contractId] === undefined ? '' : `${money(frame.quotes[snapshot.contract.contractId] ?? 0)} per ticket`}</span>
+            </span>
+          </div>
+        )}
         {targets.length === 0 && CHOICES.map((choice) => (
           <div key={choice} className="flex h-[58px] items-center rounded-2xl border-2 border-line px-4 text-sm text-muted short:h-[46px]">
             {CHOICE_WORDS[choice]}
@@ -158,9 +207,12 @@ export function TicketBuilder({
       </div>
 
       <ActionDock>
-        <p className="m-0 min-h-[60px] rounded-[14px] bg-raised px-3.5 py-3 text-sm leading-snug short:min-h-[52px] short:py-2.5 short:text-[13px]" aria-live="polite">
-          {summaryOf(machine, pick)}
-        </p>
+        <div className="flex min-h-[60px] flex-col gap-1.5 rounded-[14px] bg-raised px-3.5 py-3 text-sm leading-snug short:min-h-[52px] short:py-2.5 short:text-[13px]" aria-live="polite">
+          <p className="m-0">{summaryOf(machine, pick)}</p>
+          {quote !== null && quote.quantity > 0 && quote.whatIf.length > 0 && snapshot.contract !== null && (
+            <WhatIf quote={quote} ticker={snapshot.contract.ticker} />
+          )}
+        </div>
         <PrimaryButton className="h-[60px] short:h-[50px]" disabled={blocker !== null} onClick={() => { handlers.onPress('buy'); }}>
           {quote !== null && quote.quantity > 0 ? `Buy for ${money(quote.costCents)}` : 'Buy ticket'}
         </PrimaryButton>

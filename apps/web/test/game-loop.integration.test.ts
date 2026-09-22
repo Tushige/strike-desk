@@ -17,6 +17,12 @@ import type { SocketLike, WsFeedOptions } from '../src/feed/wsFeed';
 const Socket = createRequire(path.resolve('apps/server/package.json'))('ws') as
   new (url: string, options: { origin: string }) => SocketLike;
 
+const ABSENT_LEGACY_THEME_PROPERTIES = new Set([
+  '--ag-grid-size', '--ag-active-color', '--ag-alpine-active-color', '--ag-balham-active-color',
+  '--ag-material-primary-color', '--ag-header-foreground-color', '--ag-control-panel-background-color',
+  '--ag-cell-horizontal-border', '--ag-header-column-separator-color',
+]);
+
 afterEach(() => {
   cleanup();
   vi.doUnmock('../src/feed/wsFeed');
@@ -28,6 +34,17 @@ it.each([
   [3, 'Start fast (3x)', 2500],
 ] as const)('waits for an explicit start at pace %s and opens the server bell (%s, board %s)', async (pace, label, board) => {
   vi.resetModules();
+  // These legacy aliases are absent from the browser's theme. Avoid jsdom's
+  // recursive inherited-variable lookup; every other computed style stays real.
+  const computedStyle = globalThis.getComputedStyle;
+  const styleLookup = board === null ? undefined : vi.spyOn(globalThis, 'getComputedStyle').mockImplementation((element, pseudo) => {
+    const style = computedStyle(element, pseudo);
+    return new Proxy(style, { get(target, key): unknown {
+      if (key === 'getPropertyValue') return (name: string) => ABSENT_LEGACY_THEME_PROPERTIES.has(name) ? '' : target.getPropertyValue(name);
+      const value: unknown = Reflect.get(target, key, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    } });
+  });
   window.history.replaceState(null, '', board === null ? '/' : '/?board=2500');
   const child = spawn('pnpm', ['--filter', '@strike-desk/server', 'exec', 'tsx', 'test/news-app.ts'], { stdio: 'pipe' });
   const lines = createInterface({ input: child.stdout });
@@ -207,6 +224,7 @@ it.each([
     expect(fresh.session).not.toBe(oldSession);
     expect(window.sessionStorage.getItem('unrelated')).toBe('keep');
   } finally {
+    styleLookup?.mockRestore();
     vi.unstubAllGlobals();
     cleanup(); feed?.close(); child.stdin.end('close\n');
     await new Promise<void>((resolve) => {

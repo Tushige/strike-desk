@@ -39,13 +39,11 @@ export const ContractBoard = memo(function ContractBoard({ selectedId, onSelect,
   const stress = useSyncExternalStore(stressMeasurements.subscribe, stressMeasurements.isEnabled);
   const table = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!stress || table.current === null) return;
-    return watchTable(table.current, stressMeasurements);
+    const gridElement = table.current?.lastElementChild;
+    if (!stress || !(gridElement instanceof HTMLElement)) return;
+    return watchTable(gridElement, stressMeasurements);
   }, [stress]);
-  return (
-    <div className="flex h-full min-h-0 flex-col">
-    {stress ? <StressReadout measurements={stressMeasurements} /> : null}
-    <div ref={table} className="min-h-0 flex-1">
+  const grid = (
     <LiveGrid<ContractRow>
       source={boardRowSource}
       columns={COLUMNS}
@@ -59,7 +57,9 @@ export const ContractBoard = memo(function ContractBoard({ selectedId, onSelect,
       stale={stale}
       staleNoticeId={staleNoticeId}
     />
-    </div>
-    </div>
   );
+  return stress ? <div ref={table} className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]">
+    <StressReadout measurements={stressMeasurements} />
+    {grid}
+  </div> : grid;
 });

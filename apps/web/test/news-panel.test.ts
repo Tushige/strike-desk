@@ -18,18 +18,25 @@ vi.mock('../src/boot', async () => {
   const { createComparisonStore } = await import('../src/comparison/comparisonStore');
   const { createGameLoop } = await import('../src/gameplay/gameLoop');
   const { createChartStore } = await import('../src/gameplay/chartStore');
+  const { createDeskFreshness } = await import('../src/comparison/freshness');
+  const { createStressMeasurements } = await import('../src/board/stressMeasurements');
   const { createWsFeed } = await import('../src/feed/wsFeed');
   const { createFakeSocket } = await import('./fakeSocket');
   const socket = createFakeSocket();
   const feed = createWsFeed({ url: 'ws://example.test/ws', createSocket: () => socket });
   const gameLoop = createGameLoop(feed, () => 'render-control');
   const chartStore = createChartStore();
+  const clock = { now: () => performance.now(), schedule: (run: () => void, ms: number) => {
+    const timer = setTimeout(run, ms); return () => { clearTimeout(timer); };
+  } };
+  const deskFreshness = createDeskFreshness(clock);
+  const stressMeasurements = createStressMeasurements(clock);
   feed.subscribe((event) => { if (event.type === 'message') chartStore.ingest(event.message); });
   feed.connect();
   socket.fireOpen();
   bootFixture.receive = (frame) => { socket.fireMessage(JSON.stringify(frame)); };
-  bootFixture.close = () => { gameLoop.dispose(); feed.close(); };
-  return { store: createGameStore(), newsStore: createNewsStore(), comparisonStore: createComparisonStore(() => true), gameLoop, chartStore };
+  bootFixture.close = () => { deskFreshness.dispose(); stressMeasurements.setActive(false); gameLoop.dispose(); feed.close(); };
+  return { store: createGameStore(), newsStore: createNewsStore(), comparisonStore: createComparisonStore(() => true), gameLoop, chartStore, deskFreshness, stressMeasurements };
 });
 
 afterEach(cleanup);

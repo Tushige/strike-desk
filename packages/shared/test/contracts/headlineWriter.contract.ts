@@ -65,7 +65,10 @@ export const referenceWriter: WriteHeadlines = (slots, cast, rng) =>
     return { source: `source-${slot.trust}`, title, body: `${title} (${draw}).` };
   });
 
-/** The fifteen slots of a game, read off the public half of its market's headlines. */
+/**
+ * Projects only public keys by construction: this cannot prove what the market
+ * actually passes to its writer. The real handover spy in news.test.ts does that.
+ */
 export function slotsOfGame(seed: number): HeadlineSlot[] {
   const market = buildMarket({ seed, engine: ENGINE_VERSION, content: CONTENT_VERSION });
   return market.days.flatMap((day) =>
@@ -139,6 +142,19 @@ export function describeHeadlineWriterContract(name: string, write: WriteHeadlin
     it('gives the same words for the same slots, cast and stream', () => {
       for (const game of written()) {
         expect(write(game.slots, CAST, wordingStream(game.seed)), `game ${game.seed}`).toEqual(game.words);
+      }
+    });
+
+    it('keeps earlier days identical when later-day directions change', () => {
+      for (const game of written().slice(0, 200)) {
+        for (let day = 1; day < 5; day += 1) {
+          const laterChanged = game.slots.map((slot) => slot.day <= day ? slot : {
+            ...slot, direction: slot.direction === 'up' ? 'down' as const : 'up' as const,
+          });
+          const prefix = game.slots.filter((slot) => slot.day <= day).length;
+          expect(write(laterChanged, CAST, wordingStream(game.seed)).slice(0, prefix), `game ${game.seed}, through day ${day}`)
+            .toEqual(game.words.slice(0, prefix));
+        }
       }
     });
 

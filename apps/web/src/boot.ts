@@ -7,6 +7,7 @@ import { createChartStore } from './gameplay/chartStore';
 import { createNewsStore } from './news/newsStore';
 import { createComparisonStore } from './comparison/comparisonStore';
 import { createDeskFreshness } from './comparison/freshness';
+import { createStressMeasurements } from './board/stressMeasurements';
 
 /**
  * Run once per page load, at module scope rather than inside an effect, so
@@ -26,6 +27,10 @@ function socketUrl(): string {
 export const store = createGameStore();
 export const newsStore = createNewsStore();
 export const chartStore = createChartStore();
+export const stressMeasurements = createStressMeasurements({
+  now: () => performance.now(),
+  schedule: (run, ms) => { const timer = setTimeout(run, ms); return () => { clearTimeout(timer); }; },
+});
 export const deskFreshness = createDeskFreshness({
   now: () => performance.now(),
   schedule: (run, ms) => { const timer = setTimeout(run, ms); return () => { clearTimeout(timer); }; },
@@ -49,6 +54,7 @@ feed.subscribe((event) => {
     newsStore.ingest(event.message);
     chartStore.ingest(event.message);
     deskFreshness.ingest(result, event.receivedAt);
+    stressMeasurements.observe(event.message, result, event.receivedAt);
   }
   else {
     store.setStatus(event.status);

@@ -1,9 +1,9 @@
 import { useCallback, useMemo, useState, useSyncExternalStore } from 'react';
 import { contractId, decodeContractId, draftMessageSchema } from '@strike-desk/shared/protocol';
 import { ContractBoard } from '../board/ContractBoard';
-import { OrderTicket } from '../modules/order-ticket/index';
+import { OrderTicket, tradeContextWords } from '../modules/order-ticket/index';
 import type { ReadSlice, SimpleChoice, TicketContract } from '../modules/order-ticket/index';
-import type { BuyAvailability, BuyFlow } from '../gameplay/buyFlow';
+import type { BuyAvailability, BuyFlow, BuyPurchase, BuyTransaction } from '../gameplay/buyFlow';
 import type { GameStore } from '../store/gameStore';
 import type { ContractRow } from '../store/contractRows';
 import type { ComparisonOverview, ComparisonStore } from './comparisonStore';
@@ -37,6 +37,8 @@ function spendFromText(text: string): number | null {
 const CHOICES = ['close', 'far', 'moonshot'] as const;
 const SELECT = 'min-w-0 rounded-sm border border-border bg-card px-2 py-1 text-sm text-foreground focus-visible:outline-2 focus-visible:outline-ring';
 const NO_BUY: ReadSlice<BuyAvailability | null> = { get: () => null, subscribe: () => () => {} };
+const NO_PURCHASE: ReadSlice<BuyPurchase | null> = { get: () => null, subscribe: () => () => {} };
+const NO_TRANSACTION: ReadSlice<BuyTransaction | null> = { get: () => null, subscribe: () => () => {} };
 const newCommandId = (): string => crypto.randomUUID();
 
 function FreshnessNotice({ freshness }: { freshness: DeskFreshness }) {
@@ -53,12 +55,21 @@ function DayComparison({ comparison, game, overview, companyFocus, onContractCom
   const line = useSyncExternalStore(freshness.subscribe, readLine);
   const availabilitySlice = buy?.availability ?? NO_BUY;
   const availability = useSyncExternalStore(availabilitySlice.subscribe, availabilitySlice.get);
-  const buyActions = useMemo(() => buy === undefined ? null : { submit: buy.submit.bind(buy), retry: buy.retry.bind(buy) }, [buy]);
+  const purchaseSlice = buy?.purchase ?? NO_PURCHASE;
+  const purchaseSnapshot = useSyncExternalStore(purchaseSlice.subscribe, purchaseSlice.get);
+  const purchase = purchaseSnapshot?.session === overview.session && purchaseSnapshot.position.day === overview.day ? purchaseSnapshot : null;
+  const transactionSlice = buy?.transaction ?? NO_TRANSACTION;
+  const transaction = useSyncExternalStore(transactionSlice.subscribe, transactionSlice.get);
+  const pendingBuy = transaction?.session === overview.session && transaction.originalDay === overview.day &&
+    transaction.outcome === undefined && transaction.command.t === 'buy' ? transaction.command : null;
+  const buyActions = useMemo(() => buy === undefined ? null : { submit: buy.submit.bind(buy), retry: buy.retry.bind(buy),
+    cashOut: { position: buy.cashOutPosition, submit: buy.submitCashOut.bind(buy) } }, [buy]);
   const subscribeRows = useCallback((listener: () => void) => game.boardRows.subscribe(listener), [game]);
   const readRows = useCallback(() => game.boardRows.get(), [game]);
   const rows = useSyncExternalStore(subscribeRows, readRows);
   const byId = useMemo(() => new Map(rows.map((row) => [row.contractId, row])), [rows]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const chosenId = purchase?.position.contractId ?? pendingBuy?.contractId ?? selectedId;
   const [spendText, setSpendText] = useState('');
   const [companyFilter, setCompanyFilter] = useState('');
   const [heldFocus, setHeldFocus] = useState(companyFocus);
@@ -86,7 +97,7 @@ function DayComparison({ comparison, game, overview, companyFocus, onContractCom
   }, [companyFilter, sideFilter, affordable, overview.board, overview.phase, cashCents, capCents, minTicketCents]);
   const spendCents = spendFromText(spendText);
   const contract = useMemo<TicketContract | null>(() => {
-    const row = selectedId === null ? undefined : byId.get(selectedId);
+    const row = chosenId === null ? undefined : byId.get(chosenId);
     const board = overview.board;
     if (row === undefined || board === null) return null;
     const ref = decodeContractId(board.targetsPerCompany, row.contractId);
@@ -94,7 +105,7 @@ function DayComparison({ comparison, game, overview, companyFocus, onContractCom
     if (company === undefined) return null;
     return { contractId: row.contractId, companyName: row.company, ticker: row.ticker, side: row.side, targetCents: row.targetCents,
       offered: ref.side === 'up' ? ref.targetIndex >= company.lowestUpIndex : ref.targetIndex <= company.highestDownIndex };
-  }, [selectedId, byId, overview.board]);
+  }, [chosenId, byId, overview.board]);
   const choices = useMemo<readonly SimpleChoice[]>(() => {
     const board = overview.board;
     if (board === null || (viewedCompanyId === undefined && selectedId === null)) return [];
@@ -119,10 +130,12 @@ function DayComparison({ comparison, game, overview, companyFocus, onContractCom
   }, [choices, contract?.side]);
   const onPick = useCallback((id: number) => {
     if (!byId.has(id)) return;
-    comparison.setRequestedDraft({ contractId: id, spendCents });
-    setSelectedId(id);
+    if (purchase === null && pendingBuy === null) {
+      comparison.setRequestedDraft({ contractId: id, spendCents });
+      setSelectedId(id);
+    }
     onContractCompany?.(byId.get(id)!.companyId);
-  }, [byId, comparison, spendCents, onContractCompany]);
+  }, [byId, comparison, spendCents, onContractCompany, purchase, pendingBuy]);
   const onSelect = useCallback((id: string) => { onPick(Number(id)); }, [onPick]);
   const onSpendChange = (text: string): void => {
     comparison.setRequestedDraft({ contractId: selectedId, spendCents: spendFromText(text) });
@@ -141,7 +154,10 @@ function DayComparison({ comparison, game, overview, companyFocus, onContractCom
     <div id={comparisonId} hidden={!comparisonExpanded} className={comparisonExpanded ? 'flex min-h-0 min-w-0 flex-col gap-2' : 'hidden'}>
       <div className="flex flex-wrap items-end gap-2">
         <label className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">Company
-          <select name="company" className={SELECT} value={companyFilter} onChange={(event) => { setCompanyFilter(event.target.value); }}>
+          <select name="company" className={SELECT} value={companyFilter} onChange={(event) => {
+            setCompanyFilter(event.target.value);
+            if (event.target.value !== '') onContractCompany?.(Number(event.target.value));
+          }}>
             <option value="">All companies</option>
             {overview.companies.map((company, id) => <option key={company.ticker} value={String(id)}>{company.name}</option>)}
           </select>
@@ -156,12 +172,22 @@ function DayComparison({ comparison, game, overview, companyFocus, onContractCom
             className="accent-primary focus-visible:outline-2 focus-visible:outline-ring" />Affordable for me
         </label>
       </div>
-      <div className="board min-h-0 flex-1"><ContractBoard selectedId={selectedId === null ? null : String(selectedId)} onSelect={onSelect} filter={filter} isHighlighted={isHighlighted}
+      <div className="board min-h-0 flex-1"><ContractBoard selectedId={chosenId === null ? null : String(chosenId)} onSelect={onSelect} filter={filter} isHighlighted={isHighlighted}
         stale={line !== 'live'} staleNoticeId="comparison-freshness" /></div>
     </div>
     <div className="min-h-0 overflow-y-auto sm:col-start-2">
+      {purchase === null && contract !== null && viewedCompanyId !== undefined && overview.companies[viewedCompanyId] !== undefined &&
+        byId.get(contract.contractId)?.companyId !== viewedCompanyId ? <p className="text-sm text-muted-foreground">
+          {tradeContextWords.draft(overview.companies[viewedCompanyId].name, contract.companyName)}
+        </p> : null}
+      {purchase !== null && viewedCompanyId !== undefined && purchase.position.companyId !== viewedCompanyId && onContractCompany !== undefined
+        ? <button type="button" onClick={() => { onContractCompany(purchase.position.companyId); }}
+          className="rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground focus-visible:outline-2 focus-visible:outline-ring">
+          {tradeContextWords.back(purchase.companyName)}
+        </button> : null}
       {buy === undefined ? <OrderTicket mode="preview" {...ticketProps} />
         : <OrderTicket mode="buy" {...ticketProps} submit={buyActions!.submit} newCommandId={newCommandId}
+          cashOut={buyActions!.cashOut}
           transaction={buy.transaction} purchase={buy.purchase} retryOffered={availability?.retryAllowed ?? false} onRetry={buyActions!.retry} />}
     </div>
     </div>

@@ -436,7 +436,7 @@ describe('every batch of changed quotes this service emits', () => {
   });
 });
 
-describe('the trading commands this service does not take', () => {
+describe('cash-out refusals on the ordinary wire', () => {
   let harness: Harness | null = null;
 
   afterEach(async () => {
@@ -447,13 +447,12 @@ describe('the trading commands this service does not take', () => {
   /**
    * Each one is typed as the contract's own command, so a command that the
    * schema would refuse on its own could not be written here: what is being
-   * proved is that the door refuses a command that is otherwise perfectly
-   * well formed.
+   * proved is that a well-formed command reaches the game and gets a receipt.
    */
   const cashOut: CashOutCommand = { t: 'cashOut', commandId: 'refused-cashOut', positionId: 'd1' };
   const REFUSED = [cashOut];
 
-  it.each(REFUSED)('$t is refused by name, and the revision and the cash are untouched', async (command) => {
+  it.each(REFUSED)('$t records an unknown-position refusal without changing cash', async (command) => {
     harness = await startHarness();
     const client = harness.connect();
     await client.opened();
@@ -471,15 +470,23 @@ describe('the trading commands this service does not take', () => {
     expect(before.clock.phase).toBe('open');
 
     client.send(command);
-    expect(await client.nextError()).toEqual({ t: 'error', code: 'badMessage', commandId: command.commandId });
+    const refused = await client.nextReply();
+    expect(refused.receipt).toMatchObject({ kind: 'cashOut', commandId: command.commandId,
+      outcome: 'rejected', reason: 'unknownPosition' });
+    expect(frameSchema.parse(refused.frame)).toEqual(refused.frame);
 
     harness.clock.advance(STEP_MS);
     harness.sample();
     const after = await client.nextFrame();
-    expect(after.rev).toBe(before.rev);
+    expect(after.rev).toBe(before.rev + 1);
     expect(after.account.cashCents).toBe(before.account.cashCents);
     expect(after.positions).toEqual([]);
-    expect(after.receipts).toEqual(before.receipts);
+    expect(after.receipts).toEqual([...before.receipts, refused.receipt]);
+    client.send({ ...command, positionId: 'other-position' });
+    const repeated = await client.nextReply();
+    expect(repeated.receipt).toEqual(refused.receipt);
+    expect(repeated.frame.rev).toBe(after.rev);
+    expect(repeated.frame.account).toEqual(after.account);
   });
 });
 

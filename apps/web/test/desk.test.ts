@@ -662,7 +662,7 @@ it.each([false, true])('selects mounted desk instructions from accepted purchase
     const view = render(createElement(GameDesk, { loop: boot.gameLoop, game: boot.store, comparison: boot.comparisonStore, news: boot.newsStore }));
     expect(view.getAllByText(stress ? 'Buying is switched off while the stress test runs.'
       : 'Five trading days. Read the news, buy tickets, and see how you finish.').length).toBeGreaterThan(0);
-    if (!stress) expect(view.getByText('Tickets settle at the closing bell. Cashing out is not available yet.')).toBeTruthy();
+    if (!stress) expect(view.queryByText('Tickets settle at the closing bell. Cashing out is not available yet.')).toBeNull();
     const preBell = testFrame({ rev: 1, stress, clock: { phase: 'preBell', day: 1, priceIndex: 0, stepsLeft: 300, pace: 1 } });
     receive(preBell);
     expect(view.getAllByText(stress ? 'Buying is switched off while the stress test runs.'
@@ -672,14 +672,14 @@ it.each([false, true])('selects mounted desk instructions from accepted purchase
       status: 'open', valueCents: 2000, profitCents: 0, realCents: 0, hopeCents: 1000 };
     receive({ ...preBell, rev: 2, positions: [position] });
     expect(view.getAllByText(stress ? 'Buying is switched off while the stress test runs.'
-      : 'Your ticket is bought. Follow prices until the closing bell.').length).toBeGreaterThan(0);
+      : 'Cash out before the closing bell, or hold to settle at the bell.').length).toBeGreaterThan(0);
     expect(view.queryByText('Read the news and build a ticket. Prices stand still until the opening bell.')).toBeNull();
     receive({ ...preBell, rev: 3, positions: [position], clock: { ...preBell.clock, phase: 'open' } });
     expect(view.queryByText('Prices are moving. You can buy one ticket today, until the closing bell.')).toBeNull();
     receive({ ...preBell, rev: 4, positions: [position], clock: { ...preBell.clock, day: 2, phase: 'open' } });
     expect(view.getAllByText(stress ? 'Buying is switched off while the stress test runs.'
       : 'Prices are moving. You can buy one ticket today, until the closing bell.').length).toBeGreaterThan(0);
-    expect(view.queryByText('Your ticket is bought. Follow prices until the closing bell.')).toBeNull();
+    expect(view.queryByText('Cash out before the closing bell, or hold to settle at the bell.')).toBeNull();
     expect(sent.filter((message) => message.t === 'buy')).toEqual([]);
     if (stress) expect(view.queryByText('Tickets settle at the closing bell. Cashing out is not available yet.')).toBeNull();
   } finally {

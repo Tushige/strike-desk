@@ -1,4 +1,4 @@
-import type { BuyCommand, CashOutCommand, PositionView, Receipt, Side } from '@strike-desk/shared/protocol';
+import type { BuyCommand, CashOutCommand, Frame, PositionView, Receipt, Side } from '@strike-desk/shared/protocol';
 
 /**
  * The order ticket: the one form that buys today's ticket and cashes it out.
@@ -239,11 +239,14 @@ export interface BuyPurchase {
   companyName: string;
   ticker: string;
   position: PositionView;
+  comparisonAtBell?: boolean;
 }
 
 export interface BuyTransaction {
   session: string;
-  command: Readonly<BuyCommand>;
+  command: Readonly<BuyCommand | CashOutCommand>;
+  /** Local association, never part of a cash-out wire command. Older buy-only callers may use command.day. */
+  originalDay?: number;
   interrupted: boolean;
   sent: boolean;
   retryAllowed: boolean;
@@ -255,7 +258,17 @@ export interface BuyTransaction {
   purchase?: BuyPurchase;
 }
 
-/** A controlled buy form; an accepted purchase never becomes a cash-out action. */
+/** Shared presentation for an unanswered or recently answered trade, including when the daily form is absent. */
+export interface TradeNoticeProps {
+  transaction: ReadSlice<BuyTransaction | null>;
+  day: number;
+  phase: Frame['clock']['phase'];
+  line: LineState;
+  retryOffered: boolean;
+  onRetry: () => void;
+}
+
+/** A controlled buy form, optionally able to cash out its authoritative open position. */
 export interface BuyTicketProps extends Omit<TradingTicketProps, 'mode' | 'spendChoices' | 'position' | 'submit'> {
   mode: 'buy';
   spendEditor: TicketPreviewProps['spendEditor'];
@@ -264,6 +277,10 @@ export interface BuyTicketProps extends Omit<TradingTicketProps, 'mode' | 'spend
    * second buy, but never locks today's choices or changes its retry payload. */
   transaction: ReadSlice<BuyTransaction | null>;
   purchase?: ReadSlice<BuyPurchase | null>;
+  cashOut?: {
+    position: ReadSlice<OpenTicket | null>;
+    submit: (command: CashOutCommand) => Promise<SubmitOutcome>;
+  };
   staleNoticeId?: string;
 }
 

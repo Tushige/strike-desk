@@ -351,6 +351,12 @@ it('pins a DOWN draft and slider through UP filtering while real server quotes s
     const slider = view.getByRole('slider') as HTMLInputElement;
     fireEvent.change(slider, { target: { value: '0' } });
     const side = view.getByRole('combobox', { name: 'Ticket' }) as HTMLSelectElement;
+    const companyFilter = view.getByRole('combobox', { name: 'Company' }) as HTMLSelectElement;
+    fireEvent.change(companyFilter, { target: { value: '1' } });
+    expect(view.getByRole('img', { name: beforeFilter.companies[1]!.name })).toBeTruthy();
+    expect(comparisonStore.requested.get().contractId).toBe(selectedId);
+    fireEvent.change(companyFilter, { target: { value: '' } });
+    expect(view.getByRole('img', { name: beforeFilter.companies[1]!.name })).toBeTruthy();
     fireEvent.change(side, { target: { value: 'up' } });
     await waitFor(() => expect(grid.querySelector(`.ag-row[row-id="${String(selectedId)}"]`)).toBeNull());
     const afterFilter = await sample(200);

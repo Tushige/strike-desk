@@ -1,4 +1,4 @@
-import type { BuyCommand, ClockCommand, DraftRequest, Hello, ServerMessage, StartCommand } from '@strike-desk/shared/engine';
+import type { BuyCommand, CashOutCommand, ClockCommand, DraftRequest, Hello, ServerMessage, StartCommand } from '@strike-desk/shared/engine';
 import { FIRST_PLAYER_ID, PROTOCOL_VERSION, parseClientMessage } from '@strike-desk/shared/engine';
 import { liveNewsFrameFor, previewFrame } from './liveNewsFrame';
 import { handle } from './modules/command-path/index';
@@ -121,7 +121,7 @@ function hello(options: DoorOptions, connection: Connection, message: Hello): vo
 }
 
 /** Enabled commands share the authoritative command path. */
-function enabledCommand(options: DoorOptions, connection: Connection, command: StartCommand | ClockCommand | BuyCommand): void {
+function enabledCommand(options: DoorOptions, connection: Connection, command: StartCommand | ClockCommand | BuyCommand | CashOutCommand): void {
   const entry = connection.sessionId === null ? undefined : options.registry.get(connection.sessionId);
   const playerId = connection.playerId;
   if (entry === undefined || playerId === null) {
@@ -174,10 +174,8 @@ export function handleInbound(options: DoorOptions, connection: Connection, text
     case 'skipToBell':
     case 'nextDay':
     case 'buy':
-      enabledCommand(options, connection, message);
-      return;
     case 'cashOut':
-      answer(connection, { t: 'error', code: 'badMessage', commandId: message.commandId });
+      enabledCommand(options, connection, message);
       return;
     case 'draft':
       draft(options, connection, message);

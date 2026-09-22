@@ -3,6 +3,7 @@ import {
   BUY_TOLERANCE_BPS,
   BUY_TOLERANCE_FLOOR_CENTS,
   applyCommand,
+  frameFor,
   isOffered,
   playerOf,
   replySchema,
@@ -343,6 +344,70 @@ describe('what a reply gives away', () => {
 });
 
 describe('a cash-out that arrives after the bell', () => {
+  it.each([799, 800, 801])('persists exact command and settlement revisions for receipt step %i', (step) => {
+    const { session: base } = sessionAt('open');
+    const market = structuredClone(base.market);
+    market.days[0]!.news = [];
+    market.days[0]!.paths[0] = Array<number>(501).fill(100);
+    market.days[0]!.paths[0][498] = 110;
+    market.days[0]!.paths[0][499] = 112;
+    market.days[0]!.paths[0][500] = 120;
+    const bought = send({ ...base, market }, { t: 'buy', commandId: 'buy-boundary', day: 1, contractId: 20, spendCents: 200000, seenPriceCents: 100000 }, msAtStep(798));
+    expect(bought.reply.receipt.outcome).toBe('accepted');
+    expect(bought.reply.frame.rev).toBe(2);
+    let session = bought.session;
+    if (step >= 800) {
+      const projected = frameFor(session, PLAYER, msAtStep(step), { history: true });
+      session = projected.session;
+      // Settlement adds one revision, without any command or receipt.
+      expect(projected.frame.rev).toBe(3);
+      expect(playerOf(session.game, PLAYER).log).toHaveLength(2);
+      expect(projected.frame.receipts).toHaveLength(2);
+      const repeatedRead = frameFor(session, PLAYER, msAtStep(step), { history: true });
+      expect(repeatedRead.session).toBe(session);
+      expect(repeatedRead.frame.account.cashCents).toBe(100200000);
+    }
+    const command: Command = { t: 'cashOut', commandId: 'sale-boundary', positionId: 'd1' };
+    const sale = send(session, command, msAtStep(step)); session = sale.session;
+    expect(sale.reply.receipt).toMatchObject({ outcome: 'accepted', step });
+    // $2,000 cost; $2,400 early proceeds or $4,000 at the bell.
+    expect(sale.reply.frame.account.cashCents).toBe(step === 799 ? 100040000 : 100200000);
+    expect(sale.reply.frame.positions[0]?.exit?.proceedsCents).toBe(step === 799 ? 240000 : 400000);
+    expect(sale.reply.frame.rev).toBe(step === 799 ? 3 : 4);
+    for (const altered of [command, { ...command, positionId: 'unknown' }, { t: 'start' as const, commandId: command.commandId, pace: 1 as const }]) {
+      const duplicate = send(session, altered, msAtStep(step));
+      expect(duplicate.repeat).toBe(true);
+      expect(duplicate.reply.receipt).toEqual(sale.reply.receipt);
+      expect(duplicate.reply.frame.rev).toBe(sale.reply.frame.rev);
+      expect(playerOf(duplicate.session.game, PLAYER).log).toHaveLength(3);
+      session = duplicate.session;
+    }
+    for (const commandId of ['distinct-second', 'distinct-third']) {
+      const before = playerOf(session.game, PLAYER);
+      const again = send(session, { ...command, commandId }, msAtStep(step)); session = again.session;
+      expect(again.reply.receipt).toMatchObject(step === 799 ? { outcome: 'rejected', reason: 'alreadyClosed' } : { outcome: 'accepted' });
+      expect(again.reply.frame.account).toEqual(sale.reply.frame.account);
+      expect(again.reply.frame.rev).toBe(before.rev + 1);
+      expect(playerOf(session.game, PLAYER).log).toHaveLength(before.log.length + 1);
+      expect(playerOf(session.game, PLAYER).receipts).toHaveLength(before.receipts.length + 1);
+    }
+  });
+
+  it('may settle during a duplicate reply projection without admitting another command', () => {
+    const { afterBuy, command } = boughtTicketTheBellPays();
+    const before = playerOf(afterBuy.session.game, PLAYER);
+    const duplicate = send(afterBuy.session, command, msAtStep(800));
+    expect(duplicate.repeat).toBe(true);
+    expect(duplicate.reply.receipt).toEqual(afterBuy.reply.receipt);
+    const after = playerOf(duplicate.session.game, PLAYER);
+    expect(after.rev).toBe(before.rev + 1);
+    expect(after.log).toEqual(before.log);
+    expect(after.receipts).toEqual(before.receipts);
+    expect(after.positions[0]?.exit?.kind).toBe('bell');
+    const nextRead = frameFor(duplicate.session, PLAYER, msAtStep(800), { history: true });
+    expect(nextRead.session).toBe(duplicate.session);
+    expect(nextRead.frame.account).toEqual(duplicate.reply.frame.account);
+  });
   it('sent three times with three new ids, leaves the cash exactly where the bell put it', () => {
     const { afterBuy: bought } = boughtTicketTheBellPays();
 

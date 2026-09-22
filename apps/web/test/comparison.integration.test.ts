@@ -221,8 +221,10 @@ it.each([null, 2500])('selects and previews a live contract through boot and the
     fireEvent.change(sideSelect, { target: { value: '' } });
     await waitFor(() => expect(grid.querySelector('.ag-row[row-id="0"]')?.getAttribute('aria-selected')).toBe('true'));
     expect(view.queryByText('Sorting and filters paused')).toBeNull();
-    const highlightIds = new Set(quoted.board!.companies[0]!.simpleUp.map((targetIndex) =>
-      contractId(quoted.board!.targetsPerCompany, { companyId: 0, side: 'up', targetIndex })));
+    // All companies leaves the explicit company-filter browsing context alone.
+    expect(view.getByRole('img', { name: quoted.companies[1]!.name })).toBeTruthy();
+    const highlightIds = new Set(quoted.board!.companies[1]!.simpleUp.map((targetIndex) =>
+      contractId(quoted.board!.targetsPerCompany, { companyId: 1, side: 'up', targetIndex })));
     for (const { element, row: current } of visibleRows()) expect(element.classList.contains('bg-accent/40')).toBe(highlightIds.has(current.contractId));
 
     for (const [column, field] of [
@@ -366,11 +368,17 @@ it.each([null, 2500])('selects and previews a live contract through boot and the
         expect(within(currentPanel).getByText('Bought for').nextElementSibling?.textContent).toBe(formatCents(position.costCents));
         expect(within(currentPanel).queryByRole('textbox')).toBeNull();
         expect(view.queryByRole('button', { name: 'Buy ticket' })).toBeNull();
-        expect(view.queryByRole('button', { name: 'Cash out' })).toBeNull();
+        expect((view.getByRole('button', { name: 'Cash out' }) as HTMLButtonElement).disabled).toBe(false);
         fireEvent.click(view.getByRole('button', { name: 'Compare options' }));
         expect(await view.findByRole('grid', { name: 'Contracts' })).toBeTruthy();
         fireEvent.click(within(view.getByRole('list', { name: 'Companies' })).getAllByRole('button')[1]!);
         expect(view.getByRole('img', { name: result.frame.companies[1]!.name })).toBeTruthy();
+        expect(view.getByRole('region', { name: 'Your ticket' })).toBe(currentPanel);
+        fireEvent.click(view.getByRole('button', { name: `Back to ${result.frame.companies[position.companyId]!.name}` }));
+        expect(view.getByRole('img', { name: result.frame.companies[position.companyId]!.name })).toBeTruthy();
+        expect((view.getByRole('combobox', { name: 'Company' }) as HTMLSelectElement).value).toBe('1');
+        const stillBought = await sample(200);
+        expect(stillBought?.positions.find((item) => item.day === day)?.id).toBe(position.id);
         expect(view.getByRole('region', { name: 'Your ticket' })).toBe(currentPanel);
         fireEvent.click(view.getByRole('button', { name: 'Compare options' }));
         if (day === 2) {

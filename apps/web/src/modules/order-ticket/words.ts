@@ -14,6 +14,10 @@ import type { SimpleChoice } from './ports';
 export const PANEL_TITLE = 'Your ticket';
 export const OPEN_TICKET_TITLE = "Today's ticket";
 export const NOTHING_PICKED = 'Pick a company, then pick a ticket.';
+export const tradeContextWords = {
+  draft: (company: string, ticketCompany: string): string => `Viewing ${company}. Your draft is for ${ticketCompany}.`,
+  back: (ticketCompany: string): string => `Back to ${ticketCompany}`,
+};
 
 /** The game's word for each side, and the grown-up word for the same thing. */
 export const SIDE_WORDS: Record<Side, { game: string; real: string }> = {
@@ -83,6 +87,27 @@ export const LATE_ACCEPTED_WORDS = (day: number): string => `Your Day ${String(d
 export const LATE_REJECTED_WORDS = (day: number): string => `Your Day ${String(day)} buy was rejected.`;
 export const BOUGHT_FOR_LABEL = 'Bought for';
 export const BELL_PAID_LABEL = 'Paid at the bell';
+export const CASHED_OUT_WORDS = 'You cashed out';
+export const CASHED_OUT_PAID_LABEL = 'Money back in your pocket';
+export const PAID_COST_LABEL = 'You paid';
+export const SETTLED_WORDS = 'Your ticket settled at the closing bell.';
+export const HELD_NOW_TITLE = 'If you had held on';
+export const HELD_NOW_WORDS = 'This is what your ticket would be worth right now. Keep watching. It can still go either way.';
+export const HELD_BELL_TITLE = 'If you had held to the bell';
+export const HELD_BELL_WORDS = 'This is what your ticket would have paid at the closing bell.';
+export const LATE_CASHED_OUT_WORDS = (day: number): string => `Day ${String(day)}: cashed out.`;
+export const LATE_SETTLED_WORDS = (day: number): string => `Day ${String(day)}: settled at the bell.`;
+export const LATE_CASH_OUT_REJECTED_WORDS = (day: number): string => `Day ${String(day)}: cash-out rejected.`;
+export const CASH_OUT_GAME_GONE_WORDS = 'The previous game is no longer available. That cash-out cannot be checked.';
+export const CASH_OUT_LINE_WORDS = {
+  stale: 'Cashing out is off until prices are up to date.',
+  offline: 'Not connected. Cashing out is off until fresh prices arrive.',
+};
+
+export const HELD_LIVE_HEADING = 'If you had held on';
+export const HELD_LIVE_EXPLANATION = 'This is what your ticket would be worth right now. Keep watching. It can still go either way.';
+export const HELD_BELL_HEADING = 'If you had held to the bell';
+export const HELD_BELL_EXPLANATION = 'This is what your ticket would have paid at the closing bell.';
 
 /** A plain reason for every way the server can say no. */
 export const REJECT_WORDS: Record<RejectReason, string> = {

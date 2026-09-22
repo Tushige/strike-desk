@@ -154,7 +154,8 @@ it.each([null, 2500])('uses a persistent simple panel over one connection with s
     expect(messages.at(-1)).toMatchObject({ t: 'reply', receipt: { outcome: 'accepted' }, frame: { clock: { phase: 'open', day: 2 } } });
     expect(outbound.filter((message) => message.t === 'buy')).toHaveLength(2);
     expect(sockets).toBe(1);
-    expect(view.queryByRole('button', { name: 'Cash out' })).toBeNull();
+    expect((view.getByRole('button', { name: 'Cash out' }) as HTMLButtonElement).disabled).toBe(false);
+    expect(outbound.filter((message) => message.t === 'cashOut')).toEqual([]);
   } finally {
     cleanup(); feed?.close(); disposeStores(); child.stdin.end('close\n');
     await new Promise<void>((resolve) => {

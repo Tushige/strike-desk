@@ -56,7 +56,7 @@ describe('the five-day socket game', () => {
     } finally { await harness.close(); }
   });
 
-  it('keeps malformed messages and disabled cash-out attempts outside the game log', () => {
+  it('keeps malformed messages and cash-out payloads outside the game log', () => {
     const registry = createRegistry({ drawSeed: () => FIXED_SEEDS[0]!, drawId: () => 'preview-game', limits: LIMITS });
     const sent: string[] = [];
     const connection: Connection = {
@@ -76,11 +76,10 @@ describe('the five-day socket game', () => {
     const before = entry.session;
     for (const command of [
       { t: 'buy', commandId: 'malformed-buy', day: 1, contractId: 0, spendCents: -1, seenPriceCents: 100 },
-      { t: 'cashOut', commandId: 'preview-cash-out', positionId: 'd1' },
+      { t: 'cashOut', commandId: 'malformed-cash-out', positionId: 1 },
     ]) {
       inbound(command);
-      expect(JSON.parse(sent.at(-1)!)).toEqual({ t: 'error', code: 'badMessage',
-        ...(command.t === 'cashOut' ? { commandId: command.commandId } : {}) });
+      expect(JSON.parse(sent.at(-1)!)).toEqual({ t: 'error', code: 'badMessage' });
       expect(entry.session).toBe(before);
     }
     handleInbound(options, connection, '{');

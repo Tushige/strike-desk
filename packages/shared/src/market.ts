@@ -21,7 +21,7 @@ import { createStream } from './rng';
  */
 
 /** Bump when the model changes: the same seed then means a different market. */
-export const ENGINE_VERSION = 'e3';
+export const ENGINE_VERSION = 'e4';
 /**
  * Bump when the cast or the headline content changes: the same seed then
  * means a different market, so a market number only names one market for as
@@ -88,6 +88,8 @@ export interface MarketDay {
   day: number;
   /** By company id: OPEN_STEPS + 1 share prices in dollars. Index 0 is the opening price, the last is the bell. */
   paths: number[][];
+  /** By company: forty earlier prices, oldest first, excluding this day's open. */
+  leadIn: number[][];
   news: MarketNews[];
 }
 
@@ -101,6 +103,7 @@ export interface Market {
 }
 
 const STEP_SCALE = 1 / Math.sqrt(OPEN_STEPS);
+const LEAD_IN_POINTS = 40;
 const TRUST_ORDER: readonly Trust[] = [3, 2, 1];
 
 /** One headline as the market decides it, before a word is written: the half a writer may see, and the half nobody may. */
@@ -159,6 +162,26 @@ function checkIdentity(identity: MarketIdentity): void {
   );
 }
 
+/** Invert the quiet forward update from the unchanged opening price. */
+function drawLeadIn(cast: readonly Company[], seed: number): number[][] {
+  const marketRng = createStream(seed, 'leadInMarketWide', 1);
+  const marketShocks = Array.from({ length: LEAD_IN_POINTS }, () => marketRng.nextNormal());
+  return cast.map((company) => {
+    const rng = createStream(seed, 'leadInPrices', 1, company.id);
+    const marketSd = company.beta * MARKET_WOBBLE * STEP_SCALE;
+    const ownSd = company.ownWobble * STEP_SCALE;
+    const drift = -0.5 * (marketSd * marketSd + ownSd * ownSd);
+    let price = company.startPrice;
+    const backwards: number[] = [];
+    for (const marketShock of marketShocks) {
+      const shock = marketSd * marketShock + ownSd * rng.nextNormal();
+      price /= exactExp(drift + shock);
+      backwards.push(price);
+    }
+    return backwards.reverse();
+  });
+}
+
 function checkCast(cast: readonly Company[]): void {
   if (cast.length < TRUST_ORDER.length) throw new Error(`a cast needs at least ${TRUST_ORDER.length} companies: one per headline`);
   cast.forEach((company, index) => {
@@ -194,6 +217,8 @@ export function buildMarket(identity: MarketIdentity, settings: MarketSettings =
   const days: MarketDay[] = drawn.map(({ day, paths, news }) => ({
     day,
     paths,
+    leadIn: day === 1 ? drawLeadIn(cast, identity.seed)
+      : (drawn[day - 2]?.paths ?? []).map((path) => path.slice(OPEN_STEPS - LEAD_IN_POINTS, OPEN_STEPS)),
     news: news.map(({ slot, hidden }) => {
       const said = words[slots.indexOf(slot)];
       if (said === undefined) throw new Error(`the news writer left headline ${slot.id} without words`);

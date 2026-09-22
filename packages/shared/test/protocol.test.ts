@@ -141,6 +141,15 @@ describe('server messages', () => {
     expect(frameSchema.parse(filled)).toEqual(filled);
   });
 
+  it('accepts optional earlier integer-cent matrices and rejects malformed samples', () => {
+    expect(frameSchema.parse(frame)).toEqual(frame);
+    const earlier = { ...frame, history: [[10000]], leadIn: [[9800, 9900]] };
+    expect(frameSchema.parse(earlier)).toEqual(earlier);
+    for (const leadIn of [[[9900.5]], [['9900']], [[Infinity]], [[NaN]], [9900], 'history']) {
+      expect(frameSchema.safeParse({ ...frame, leadIn }).success).toBe(false);
+    }
+  });
+
   it('refuses a company without a name or a ticker, and ticket money that is not whole cents', () => {
     expect(frameSchema.safeParse({ ...frame, companies: [{ ticker: 'RPUP' }] }).success).toBe(false);
     expect(frameSchema.safeParse({ ...frame, companies: [{ name: 'RoboPup' }] }).success).toBe(false);

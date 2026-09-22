@@ -2,7 +2,8 @@ import { WS_PATH } from '@strike-desk/shared/paths';
 import { boardFromSearch } from './boardSize';
 import { createWsFeed } from './feed/wsFeed';
 import { createGameStore } from './store/gameStore';
-import { autoStart } from './autoStart';
+import { createGameLoop } from './gameplay/gameLoop';
+import { createChartStore } from './gameplay/chartStore';
 import { createNewsStore } from './news/newsStore';
 import { createComparisonStore } from './comparison/comparisonStore';
 
@@ -23,6 +24,7 @@ function socketUrl(): string {
 
 export const store = createGameStore();
 export const newsStore = createNewsStore();
+export const chartStore = createChartStore();
 
 const feed = createWsFeed({
   url: socketUrl(),
@@ -40,6 +42,7 @@ feed.subscribe((event) => {
     comparisonStore.ingest(event.message);
     store.ingest(event.message);
     newsStore.ingest(event.message);
+    chartStore.ingest(event.message);
   }
   else {
     store.setStatus(event.status);
@@ -47,9 +50,6 @@ feed.subscribe((event) => {
   }
 });
 
-// Saying hello leaves the clock stopped, so the page starts the game
-// itself. The pace is this one number: 1 makes day 1 stand still for a
-// minute before the opening bell, 7.5 finishes the whole game in two.
-autoStart(feed, { pace: 3, makeId: () => crypto.randomUUID() });
+export const gameLoop = createGameLoop(feed, () => crypto.randomUUID());
 
 feed.connect();

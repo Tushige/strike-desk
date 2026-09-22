@@ -8,10 +8,14 @@ export function withDraft(frame: Frame, request: DraftRequest | undefined): Fram
   return draft === null ? frame : { ...frame, draft };
 }
 
-/** Public news beside the live board, without enabling account or trade sections. */
-export function liveNewsFrameFor(session: Session, playerId: string, nowMs: number): { session: Session; frame: Frame } {
-  const projected = frameFor(session, playerId, nowMs, { history: false, sections: 'full' });
-  const source = projected.frame;
+/** Public news beside the live board and game results, with trading disabled. */
+export function liveNewsFrameFor(session: Session, playerId: string, nowMs: number, history = false): { session: Session; frame: Frame } {
+  const projected = frameFor(session, playerId, nowMs, { history, sections: 'full' });
+  return { session: projected.session, frame: previewFrame(projected.frame) };
+}
+
+/** Explicit public preview fields, shared by command answers and samples. */
+export function previewFrame(source: Frame): Frame {
   const frame: Frame = {
     t: 'frame',
     session: source.session,
@@ -43,14 +47,20 @@ export function liveNewsFrameFor(session: Session, playerId: string, nowMs: numb
     }),
     account: {
       cashCents: source.account.cashCents,
-      worthCents: source.account.cashCents,
+      worthCents: source.account.worthCents,
       capCents: source.account.capCents,
       canBuy: false,
     },
     positions: [],
-    receipts: [],
-    days: [],
+    receipts: source.receipts,
+    days: source.days,
     stress: source.stress,
   };
-  return { session: projected.session, frame };
+  if (source.clock.phase === 'final' && source.final !== undefined) frame.final = source.final;
+  if (source.draft !== undefined) frame.draft = source.draft;
+  if (source.history !== undefined) {
+    frame.history = source.history;
+    if (source.leadIn !== undefined) frame.leadIn = source.leadIn;
+  }
+  return frame;
 }

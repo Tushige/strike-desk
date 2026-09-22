@@ -7,7 +7,13 @@ import type { GameStore } from '../store/gameStore';
 import type { ContractRow } from '../store/contractRows';
 import type { ComparisonOverview, ComparisonStore } from './comparisonStore';
 
-interface DeskProps { comparison: ComparisonStore; game: GameStore }
+interface DeskProps {
+  comparison: ComparisonStore;
+  game: GameStore;
+  /** A new request filters the table without replacing the pinned ticket. */
+  companyFocus?: { readonly companyId: number } | null;
+  onContractCompany?: (companyId: number) => void;
+}
 
 /** Representation conversion only. All ticket amounts remain the server's. */
 function spendFromText(text: string): number | null {
@@ -23,7 +29,7 @@ function spendFromText(text: string): number | null {
 const CHOICES = ['close', 'far', 'moonshot'] as const;
 const SELECT = 'min-w-0 rounded-sm border border-border bg-card px-2 py-1 text-sm text-foreground focus-visible:outline-2 focus-visible:outline-ring';
 
-function DayComparison({ comparison, game, overview }: DeskProps & { overview: ComparisonOverview }) {
+function DayComparison({ comparison, game, overview, companyFocus, onContractCompany }: DeskProps & { overview: ComparisonOverview }) {
   const subscribeRows = useCallback((listener: () => void) => game.boardRows.subscribe(listener), [game]);
   const readRows = useCallback(() => game.boardRows.get(), [game]);
   const rows = useSyncExternalStore(subscribeRows, readRows);
@@ -31,6 +37,11 @@ function DayComparison({ comparison, game, overview }: DeskProps & { overview: C
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [spendText, setSpendText] = useState('');
   const [companyFilter, setCompanyFilter] = useState('');
+  const [heldFocus, setHeldFocus] = useState(companyFocus);
+  if (heldFocus !== companyFocus) {
+    setHeldFocus(companyFocus);
+    if (companyFocus != null) setCompanyFilter(String(companyFocus.companyId));
+  }
   const [sideFilter, setSideFilter] = useState('');
   const [affordable, setAffordable] = useState(false);
   const { cashCents, capCents, minTicketCents } = useSyncExternalStore(comparison.account.subscribe, comparison.account.get);
@@ -86,7 +97,8 @@ function DayComparison({ comparison, game, overview }: DeskProps & { overview: C
     if (!byId.has(id)) return;
     comparison.setRequestedDraft({ contractId: id, spendCents });
     setSelectedId(id);
-  }, [byId, comparison, spendCents]);
+    onContractCompany?.(byId.get(id)!.companyId);
+  }, [byId, comparison, spendCents, onContractCompany]);
   const onSelect = useCallback((id: string) => { onPick(Number(id)); }, [onPick]);
   const onSpendChange = (text: string): void => {
     comparison.setRequestedDraft({ contractId: selectedId, spendCents: spendFromText(text) });
@@ -123,7 +135,8 @@ function DayComparison({ comparison, game, overview }: DeskProps & { overview: C
   </div>;
 }
 
-export function ComparisonDesk({ comparison, game }: DeskProps) {
+export function ComparisonDesk({ comparison, game, companyFocus, onContractCompany }: DeskProps) {
   const overview = useSyncExternalStore(comparison.overview.subscribe, comparison.overview.get);
-  return <DayComparison key={`${overview.session ?? ''}:${String(overview.day)}`} comparison={comparison} game={game} overview={overview} />;
+  return <DayComparison key={`${overview.session ?? ''}:${String(overview.day)}`} comparison={comparison} game={game} overview={overview}
+    companyFocus={companyFocus} onContractCompany={onContractCompany} />;
 }

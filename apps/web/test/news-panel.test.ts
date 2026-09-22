@@ -2,7 +2,7 @@
 
 import { createElement, Profiler } from 'react';
 import { act, cleanup, fireEvent, render, within } from '@testing-library/react';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, expect, it, vi } from 'vitest';
 import type { Frame } from '@strike-desk/shared/protocol';
 import { Strip } from '../src/board/Strip';
 import { newsStore as pageNews, store as gameStore } from '../src/boot';
@@ -10,14 +10,30 @@ import App from '../src/App';
 import { NewsPanel } from '../src/news/NewsPanel';
 import { createNewsStore } from '../src/news/newsStore';
 
+const bootFixture = vi.hoisted((): { receive?: (frame: Frame) => void; close?: () => void } => ({}));
+
 vi.mock('../src/boot', async () => {
   const { createGameStore } = await import('../src/store/gameStore');
   const { createNewsStore } = await import('../src/news/newsStore');
   const { createComparisonStore } = await import('../src/comparison/comparisonStore');
-  return { store: createGameStore(), newsStore: createNewsStore(), comparisonStore: createComparisonStore(() => true) };
+  const { createGameLoop } = await import('../src/gameplay/gameLoop');
+  const { createChartStore } = await import('../src/gameplay/chartStore');
+  const { createWsFeed } = await import('../src/feed/wsFeed');
+  const { createFakeSocket } = await import('./fakeSocket');
+  const socket = createFakeSocket();
+  const feed = createWsFeed({ url: 'ws://example.test/ws', createSocket: () => socket });
+  const gameLoop = createGameLoop(feed, () => 'render-control');
+  const chartStore = createChartStore();
+  feed.subscribe((event) => { if (event.type === 'message') chartStore.ingest(event.message); });
+  feed.connect();
+  socket.fireOpen();
+  bootFixture.receive = (frame) => { socket.fireMessage(JSON.stringify(frame)); };
+  bootFixture.close = () => { gameLoop.dispose(); feed.close(); };
+  return { store: createGameStore(), newsStore: createNewsStore(), comparisonStore: createComparisonStore(() => true), gameLoop, chartStore };
 });
 
 afterEach(cleanup);
+afterAll(() => { bootFixture.close?.(); });
 
 it('keeps the neutral reveal in its original live region without redrawing on prices', () => {
   const store = createNewsStore();
@@ -149,6 +165,20 @@ it('selects the focused headline on a keyboard-generated click and resets on day
   expect(view.getAllByRole('button').map((button) => button.getAttribute('aria-pressed'))).toEqual(['false', 'false', 'false']);
 });
 
+it('uses controlled company focus while reporting a headline choice without exposing its outcome', () => {
+  const store = createNewsStore();
+  store.ingest(frame());
+  const select = vi.fn();
+  const view = render(createElement(NewsPanel, { store, companyId: 2, onCompanySelect: select }));
+  expect(view.getByRole('button', { name: 'Second headline' }).getAttribute('aria-pressed')).toBe('true');
+  fireEvent.click(view.getByRole('button', { name: 'Third headline' }));
+  expect(select).toHaveBeenCalledWith(4);
+  view.rerender(createElement(NewsPanel, { store, companyId: 4, onCompanySelect: select }));
+  expect(view.getByRole('button', { name: 'Third headline' }).getAttribute('aria-pressed')).toBe('true');
+  expect(view.getByRole('button', { name: 'Second headline' }).getAttribute('aria-pressed')).toBe('false');
+  expect(view.container.textContent).not.toMatch(/turned out true|did not come true/i);
+});
+
 it.each([true, false])('escapes supplied text and never forwards an injected outcome (%s)', (wasTrue) => {
   const store = createNewsStore();
   const current = frame();
@@ -187,6 +217,7 @@ it('does not redraw the news panel or the application root while the price slice
   const current = { ...frame(), session: 'render-session' };
   gameStore.ingest(current);
   pageNews.ingest(current);
+  bootFixture.receive!(current);
   const root = vi.fn(App);
   const panelRendered = vi.fn();
   const view = render(createElement(root));
@@ -198,8 +229,9 @@ it('does not redraw the news panel or the application root while the price slice
     const moving: Frame = { ...current, step: 310, prices: [10100, 20000, 30000, 40000, 50000, 60000], clock: { ...current.clock, priceIndex: 10, stepsLeft: 490 } };
     gameStore.ingest(moving);
     pageNews.ingest(moving);
+    bootFixture.receive!(moving);
   });
-  expect(view.container.querySelector('.strip-price')?.textContent).toBe('$101'); // 10,100 cents / 100.
+  expect(within(view.getByRole('list', { name: 'Companies' })).getByText('$101')).toBeTruthy(); // 10,100 cents / 100.
   expect(pageNews.getSnapshot()).toBe(snapshot);
   expect(root.mock.calls.length).toBe(beforeRoot);
   expect(panelRendered.mock.calls.length).toBe(beforePanel);

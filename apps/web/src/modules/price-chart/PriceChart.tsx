@@ -112,6 +112,7 @@ export const PriceChart = memo(function PriceChart(props: PriceChartProps): Reac
   const { source, xMin, xMax, yMinCents, yMaxCents, lines, markers, stale, label } = props;
   const [measure, size] = useMeasuredSize();
   const clipId = useId();
+  const descriptionId = useId();
 
   // The source's notifications reach React through the coalescer: many points
   // in, one draw per animation frame out.
@@ -173,6 +174,7 @@ export const PriceChart = memo(function PriceChart(props: PriceChartProps): Reac
         <svg
           role="img"
           aria-label={label}
+          aria-describedby={descriptionId}
           width={size.width}
           height={size.height}
           viewBox={`0 0 ${String(size.width)} ${String(size.height)}`}
@@ -258,7 +260,7 @@ export const PriceChart = memo(function PriceChart(props: PriceChartProps): Reac
         What the image holds, in words, for someone who cannot see it: the
         lines and the moments. The prices themselves are never read out.
       */}
-      <ul className="sr-only">
+      <ul id={descriptionId} className="sr-only">
         {lines.map((one) => (
           <li key={`line-${one.id}`}>{one.label}</li>
         ))}

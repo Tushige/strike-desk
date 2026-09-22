@@ -1,4 +1,5 @@
 export { OrderTicket } from './OrderTicket';
+export { REJECT_WORDS } from './words';
 export type {
   LineState,
   OpenTicket,

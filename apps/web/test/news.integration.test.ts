@@ -7,7 +7,7 @@ import { createInterface } from 'node:readline';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { createElement } from 'react';
-import { act, cleanup, render, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { Frame, ServerMessage } from '@strike-desk/shared/protocol';
 import { createNewsStore } from '../src/news/newsStore';
@@ -54,7 +54,7 @@ it.each([null, 2500])('boot delivers three actual headlines beside the mounted l
   let skipped: Frame | undefined;
   try {
     const serviceUrl = await ready;
-    // Replace only connection configuration. Boot, autostart, Feed, both
+    // Replace only connection configuration. Boot, explicit start, Feed, both
     // stores, the desk cards and the contract table are the production code.
     const makeFeed = vi.fn((options: WsFeedOptions) => {
       feed = createWsFeed({ ...options, url: serviceUrl, createSocket: (url) => {
@@ -83,6 +83,7 @@ it.each([null, 2500])('boot delivers three actual headlines beside the mounted l
     const { store, newsStore } = await import('../src/boot');
     const { default: App } = await import('../src/App');
     const view = render(createElement(App));
+    fireEvent.click(await view.findByRole('button', { name: 'Start fast (3x)' }));
     await waitFor(() => expect(messages[1]?.t).toBe('reply'), { timeout: 5000 });
     const lobby = messages[0];
     if (lobby?.t !== 'frame') throw new Error('missing lobby');
@@ -109,6 +110,7 @@ it.each([null, 2500])('boot delivers three actual headlines beside the mounted l
       expect(card.getByText(news.direction === 'up' ? 'This news says UP' : 'This news says DOWN')).toBeTruthy();
       expect(article.querySelector('header svg')).not.toBeNull();
     }
+    fireEvent.click(view.getByRole('button', { name: 'Compare options' }));
     const grid = await view.findByRole('grid', { name: 'Contracts' });
     const before = store.price(0).get();
     const quotesBefore = store.currentRows();

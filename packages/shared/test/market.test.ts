@@ -12,6 +12,34 @@ const identity = { seed: 777, engine: ENGINE_VERSION, content: CONTENT_VERSION }
 const market = buildMarket(identity);
 
 describe('buildMarket', () => {
+  it('supplies forty earlier observations without moving any opening junction', () => {
+    for (const day of market.days) {
+      expect(day).toHaveProperty('leadIn');
+      const earlier = day.leadIn;
+      expect(earlier).toHaveLength(6);
+      earlier.forEach((path, companyId) => {
+        expect(path).toHaveLength(40);
+        expect(path.every((price) => Number.isFinite(price) && price > 0)).toBe(true);
+        if (day.day > 1) {
+          expect(path).toEqual(market.days[day.day - 2]?.paths[companyId]?.slice(460, 500));
+          expect(day.paths[companyId]?.[0]).toBe(market.days[day.day - 2]?.paths[companyId]?.[500]);
+        }
+      });
+    }
+  });
+
+  it('uses quiet backwards moves with shared market shocks and independent company shocks', () => {
+    const flatCast = CAST.map((company) => ({ ...company, startPrice: 100, beta: 0, ownWobble: 0 }));
+    const flat = buildMarket(identity, { cast: flatCast });
+    // With both quiet shocks zero the inverse step is one; news never enters the earlier path.
+    expect(flat.days[0]?.leadIn).toEqual(Array.from({ length: 6 }, () => Array<number>(40).fill(100)));
+    const correlated = buildMarket(identity, { cast: flatCast.map((company) => ({ ...company, beta: 1 })) });
+    expect(correlated.days[0]?.leadIn[0]).toEqual(correlated.days[0]?.leadIn[1]);
+    expect(correlated.days[0]?.leadIn[0]).not.toEqual(flat.days[0]?.leadIn[0]);
+    const independent = buildMarket(identity, { cast: flatCast.map((company) => ({ ...company, ownWobble: 0.035 })) });
+    expect(independent.days[0]?.leadIn[0]).not.toEqual(independent.days[0]?.leadIn[1]);
+    expect(buildMarket({ ...identity, seed: 778 }).days[0]?.leadIn).not.toEqual(market.days[0]?.leadIn);
+  });
   it('builds the identical market from the same identity, and another from another seed', () => {
     expect(buildMarket(identity)).toEqual(market);
     expect(buildMarket({ ...identity, seed: 778 }).days[0]?.paths).not.toEqual(market.days[0]?.paths);
@@ -299,8 +327,8 @@ describe('a move is the whole market\'s times the company\'s sensitivity, plus t
 });
 
 describe('the engine version', () => {
-  it('is e3', () => {
-    expect(ENGINE_VERSION).toBe('e3');
+  it('is e4', () => {
+    expect(ENGINE_VERSION).toBe('e4');
   });
 });
 

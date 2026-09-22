@@ -1,6 +1,7 @@
-import type { DraftRequest, Hello, ServerMessage, StartCommand } from '@strike-desk/shared/engine';
-import { FIRST_PLAYER_ID, PROTOCOL_VERSION, handleCommand, parseClientMessage } from '@strike-desk/shared/engine';
-import { liveNewsFrameFor, withDraft } from './liveNewsFrame';
+import type { ClockCommand, DraftRequest, Hello, ServerMessage, StartCommand } from '@strike-desk/shared/engine';
+import { FIRST_PLAYER_ID, PROTOCOL_VERSION, parseClientMessage } from '@strike-desk/shared/engine';
+import { liveNewsFrameFor, previewFrame } from './liveNewsFrame';
+import { handle } from './modules/command-path/index';
 import { targetsForBoardSize } from './boardSizes';
 import type { TokenBucket, WindowCounter } from './limits';
 import type { FrameSocket } from './sampler';
@@ -8,9 +9,9 @@ import type { SessionRegistry } from './sessions';
 
 /**
  * The door: every inbound message is parsed here and routed from here.
- * `hello` makes or resumes a session; `start` starts its clock. A `draft`
+ * `hello` makes or resumes a session; clock commands move the game. A `draft`
  * only replaces this connection's preview request for the next whole frame.
- * Other commands are refused by name and never reach the game rules.
+ * Trading commands are refused by name and never reach the game rules.
  */
 
 export interface Connection {
@@ -41,9 +42,13 @@ export interface DoorOptions {
 }
 
 /** An answer to a message is always sent, even to a socket the sampler would skip. */
-function answer(connection: Connection, message: ServerMessage): void {
+function answer(connection: Connection, message: ServerMessage, registry?: SessionRegistry): void {
   if (connection.socket.readyState !== connection.socket.OPEN) return;
   connection.socket.send(JSON.stringify(message));
+  const frame = message.t === 'frame' ? message : message.t === 'reply' ? message.frame : null;
+  if (frame !== null) registry?.get(frame.session)?.deliveries.set(connection.socket, {
+    day: frame.clock.day, phase: frame.clock.phase, priceIndex: frame.clock.priceIndex, repair: frame.history === undefined,
+  });
 }
 
 /**
@@ -110,13 +115,13 @@ function hello(options: DoorOptions, connection: Connection, message: Hello): vo
   connection.sessionId = entry.session.id;
   connection.playerId = playerId;
 
-  const { session, frame } = liveNewsFrameFor(entry.session, playerId, options.now());
+  const { session, frame } = liveNewsFrameFor(entry.session, playerId, options.now(), true);
   options.registry.replace(session.id, session);
-  answer(connection, frame);
+  answer(connection, frame, options.registry);
 }
 
-/** The one command taken. Its type is the fence: no other command can be handed to the game rules from here. */
-function start(options: DoorOptions, connection: Connection, command: StartCommand): void {
+/** Only clock controls reach the command path; previews never place trades. */
+function clockCommand(options: DoorOptions, connection: Connection, command: StartCommand | ClockCommand): void {
   const entry = connection.sessionId === null ? undefined : options.registry.get(connection.sessionId);
   const playerId = connection.playerId;
   if (entry === undefined || playerId === null) {
@@ -124,10 +129,9 @@ function start(options: DoorOptions, connection: Connection, command: StartComma
     return;
   }
   const nowMs = options.now();
-  const handled = handleCommand(entry.session, playerId, command, nowMs);
-  const { session, frame } = liveNewsFrameFor(handled.session, playerId, nowMs);
-  options.registry.replace(session.id, session);
-  answer(connection, { t: 'reply', receipt: handled.receipt, frame: withDraft(frame, entry.drafts.get(connection.socket)) });
+  const handled = handle({ session: entry.session, playerId, command, nowMs, draft: entry.drafts.get(connection.socket) ?? null });
+  options.registry.replace(handled.session.id, handled.session);
+  answer(connection, { t: 'reply', receipt: handled.reply.receipt, frame: previewFrame(handled.reply.frame) }, options.registry);
 }
 
 function draft(options: DoorOptions, connection: Connection, request: DraftRequest): void {
@@ -166,13 +170,13 @@ export function handleInbound(options: DoorOptions, connection: Connection, text
       hello(options, connection, message);
       return;
     case 'start':
-      start(options, connection, message);
-      return;
-    case 'buy':
-    case 'cashOut':
     case 'openBell':
     case 'skipToBell':
     case 'nextDay':
+      clockCommand(options, connection, message);
+      return;
+    case 'buy':
+    case 'cashOut':
       answer(connection, { t: 'error', code: 'badMessage', commandId: message.commandId });
       return;
     case 'draft':

@@ -18,7 +18,7 @@ import { exactLn } from './exact';
  */
 export const SEED_LIMIT = 281474976710656;
 
-export type StreamName = 'prices' | 'marketWide' | 'newsPick' | 'newsWording' | 'newsOutcome' | 'cosmetics';
+export type StreamName = 'prices' | 'marketWide' | 'newsPick' | 'newsWording' | 'newsOutcome' | 'cosmetics' | 'leadInMarketWide' | 'leadInPrices';
 
 export interface Rng {
   /** Uniform integer in [0, 2^32). */

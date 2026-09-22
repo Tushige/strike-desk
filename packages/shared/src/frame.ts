@@ -252,6 +252,7 @@ export function projectFrame(market: Market, game: GameState, playerId: string, 
   if (draft !== null) frame.draft = draft;
   if (options.history) {
     frame.history = data.paths.map((path) => path.slice(0, moment.priceIndex + 1).map(sharePriceCents));
+    frame.leadIn = data.leadIn.map((path) => path.map(sharePriceCents));
   }
   if (step >= GAME_STEPS && moment.day === DAYS) {
     frame.final = {

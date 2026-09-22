@@ -70,7 +70,13 @@ it.each([null, 2500])('selects and previews a live contract through boot and the
     const { store, comparisonStore } = await import('../src/boot');
     const { default: App } = await import('../src/App');
     const view = render(createElement(App));
+    fireEvent.click(await view.findByRole('button', { name: 'Start fast (3x)' }));
     await waitFor(() => expect(store.currentRows()).toHaveLength(board === null ? 252 : 2508), { timeout: 5000 });
+    const disclosure = view.queryByRole('button', { name: 'Compare options' });
+    expect(disclosure).not.toBeNull();
+    expect(disclosure?.getAttribute('aria-expanded')).toBe('false');
+    expect(view.queryByRole('grid', { name: 'Contracts' })).toBeNull();
+    fireEvent.click(disclosure!);
     expect(view.queryByRole('textbox', { name: 'How much to spend' })).not.toBeNull();
     expect(view.queryByRole('combobox', { name: 'Company' })).not.toBeNull();
     expect(view.queryByRole('combobox', { name: 'Ticket' })).not.toBeNull();
@@ -117,6 +123,25 @@ it.each([null, 2500])('selects and previews a live contract through boot and the
     expect(first?.draft).toMatchObject({ contractId: 0, spendCents: 100050 });
     await waitFor(() => expect(grid.querySelector('.ag-row[row-id="0"] [col-id="costCents"]')?.textContent).toBe(formatCents(first?.draft?.costs?.[0] ?? -1)));
     expect((input as HTMLInputElement).value).toBe('1000.50');
+    const companies = view.getByRole('list', { name: 'Companies' });
+    const secondCompany = within(companies).getAllByRole('button')[1]!;
+    fireEvent.click(secondCompany);
+    expect(view.getByRole('img', { name: first!.companies[1]!.name })).toBeTruthy();
+    expect((view.getByRole('combobox', { name: 'Company' }) as HTMLSelectElement).value).toBe('1');
+    expect(comparisonStore.requested.get()).toEqual({ contractId: 0, spendCents: 100050 });
+    fireEvent.click(disclosure!);
+    expect(view.queryByRole('textbox', { name: 'How much to spend' })).toBeNull();
+    expect(input.isConnected).toBe(true);
+    fireEvent.click(disclosure!);
+    expect(view.getByRole('textbox', { name: 'How much to spend' })).toBe(input);
+    expect((input as HTMLInputElement).value).toBe('1000.50');
+    fireEvent.change(view.getByRole('combobox', { name: 'Company' }), { target: { value: '' } });
+    const story = first!.news.find((item) => item.companyId !== 0)!;
+    fireEvent.click(view.getByRole('button', { name: story.title }));
+    expect(view.getByRole('img', { name: first!.companies[story.companyId]!.name })).toBeTruthy();
+    expect(view.getByRole('button', { name: story.title }).getAttribute('aria-pressed')).toBe('true');
+    expect(comparisonStore.requested.get()).toEqual({ contractId: 0, spendCents: 100050 });
+    fireEvent.change(view.getByRole('combobox', { name: 'Company' }), { target: { value: '' } });
     for (const [text, cents] of [['1.', 100], ['.50', 50], ['1000000000', 100000000000], ['', null]] as const) {
       fireEvent.change(input, { target: { value: text } });
       expect((input as HTMLInputElement).value).toBe(text);
@@ -167,6 +192,10 @@ it.each([null, 2500])('selects and previews a live contract through boot and the
     expect((input as HTMLInputElement).value).toBe('50000');
     expect(comparisonStore.requested.get()).toEqual({ contractId: 0, spendCents: 5000000 });
     expect((view.getByRole('slider') as HTMLInputElement).value).toBe(String(zero));
+    fireEvent.click(disclosure!);
+    fireEvent.click(disclosure!);
+    expect((view.getByRole('slider') as HTMLInputElement).value).toBe(String(zero));
+    expect((companySelect as HTMLSelectElement).value).toBe('1');
     fireEvent.change(sideSelect, { target: { value: 'up' } });
     fireEvent.click(affordable);
     await waitFor(() => {
@@ -211,6 +240,10 @@ it.each([null, 2500])('selects and previews a live contract through boot and the
       }
     }
 
+    fireEvent.click(disclosure!);
+    fireEvent.click(disclosure!);
+    expect(grid.querySelector('.ag-header-cell[col-id="hopeCents"]')?.getAttribute('aria-sort')).toBe('ascending');
+    expect(view.getByRole('grid', { name: 'Contracts' })).toBe(grid);
     fireEvent.change(slider, { target: { value: '0' } });
     const openFrame = await sample(23000); // The price path moves into the open market at pace three.
     expect((input as HTMLInputElement).value).toBe('50000');
@@ -255,6 +288,7 @@ it.each([null, 2500])('selects and previews a live contract through boot and the
 
     const downChoices = view.getByRole('group', { name: 'DOWN ticket. Pays if the price ends below the target' });
     fireEvent.click(within(downChoices).getByRole('button', { name: /^Close/ }));
+    expect(view.getByRole('img', { name: quoted.companies[0]!.name })).toBeTruthy();
     const downId = comparisonStore.requested.get().contractId;
     expect(downId).not.toBeNull();
     expect((input as HTMLInputElement).value).toBe('50000');
@@ -278,6 +312,7 @@ it.each([null, 2500])('selects and previews a live contract through boot and the
     expect(tomorrow?.clock.day).toBe(2);
     expect(comparisonStore.requested.get()).toEqual({ contractId: null, spendCents: null });
     expect(comparisonStore.quote.get()).toBeNull();
+    fireEvent.click(view.getByRole('button', { name: 'Compare options' }));
     expect((view.getByRole('textbox') as HTMLInputElement).value).toBe('');
     expect(view.queryByRole('slider')).toBeNull();
     const nextGrid = await view.findByRole('grid', { name: 'Contracts' });

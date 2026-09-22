@@ -29,6 +29,7 @@ function scrambleFuture(source: Market, step: number): Market {
   copy.days.forEach((marketDay) => {
     if (marketDay.day < day) return;
     const today = marketDay.day === day;
+    if (!today) marketDay.leadIn = marketDay.leadIn.map((path) => path.map((price) => price * 1.2 + 7));
     const from = today ? priceIndex + 1 : 0;
     marketDay.paths = marketDay.paths.map((path) => path.map((price, index) => (index < from ? price : price * 1.37 + 11 + index)));
     marketDay.news.forEach((item) => {
@@ -104,12 +105,28 @@ const FORMS = ['full', 'live'] as const;
 const STEPS_IN_BOTH_FORMS = FORMS.flatMap((form) => STEPS.map(([name, step]): [(typeof FORMS)[number], string, number] => [form, name, step]));
 
 describe('projectFrame keeps the future secret', () => {
+  it('projects earlier observations as integer cents only beside requested full history', () => {
+    const source = structuredClone(market);
+    // $98.12 and $99.34 precede an unchanged $100 open: 9812, 9934, 10000 cents.
+    source.days[0]!.leadIn[0] = [98.12, 99.34];
+    source.days[0]!.paths[0]![0] = 100;
+    const game = startedGame(source);
+    const frame = project(source, game, 0);
+    expect(frame).toHaveProperty('leadIn.0', [9812, 9934]);
+    expect(frame.history?.[0]).toEqual([10000]);
+    expect(project(source, game, 0, false)).not.toHaveProperty('leadIn');
+    expect(projectLive(source, game, 0, true)).not.toHaveProperty('leadIn');
+    expect(project(source, newGame(), 0)).not.toHaveProperty('leadIn');
+  });
   it.each(STEPS_IN_BOTH_FORMS)('%s form, %s: scrambling everything still to come gives the identical frame', (form, _name, step) => {
     const game = gameAt(step);
     const scrambled = scrambleFuture(market, step);
     // After the last bell nothing is left to scramble.
     if (step < bellStep(5)) expect(scrambled).not.toEqual(market);
-    expect(project(scrambled, game, step, true, form)).toEqual(project(market, game, step, true, form));
+    const original = project(market, game, step, true, form);
+    const changed = project(scrambled, game, step, true, form);
+    expect(changed).toEqual(original);
+    expect(JSON.stringify(changed)).toBe(JSON.stringify(original));
   });
 
   it('one of the moments really has reveals on both sides of it', () => {

@@ -12,11 +12,12 @@ import {
   buildMarket,
   frameSchema,
   handleCommand,
+  momentAt,
   parseServerMessage,
   playerOf,
   seedToMarketCode,
 } from '@strike-desk/shared/engine';
-import type { BuyCommand, CashOutCommand, ClockCommand, Frame, Market, QuotesMessage } from '@strike-desk/shared/engine';
+import type { BuyCommand, CashOutCommand, Frame, Market, QuotesMessage } from '@strike-desk/shared/engine';
 import { LIMITS, createTokenBucket, createWindowCounter } from '../src/limits';
 import { handleInbound } from '../src/door';
 import type { Connection, DoorOptions } from '../src/door';
@@ -34,10 +35,8 @@ import { FIXED_SEEDS, startHarness } from './harness';
  * side of both bells, across a day boundary, and past the last step of the
  * last day. Two things are asserted about every frame collected: that the
  * only sections filled in are the ones this service owns (the clock, the
- * share prices, the names, the board, ticket prices and public news; never
- * positions, receipts, days, history, the final result or a quote of a
- * ticket being built), and that the market's identity is nowhere in the
- * text of it.
+ * share prices, names, board, public news, receipts and day results). Trades
+ * stay unavailable and the market identity appears only at final.
  *
  * The fake clock is jumped straight to each moment. It may jump forward as
  * far as it likes and must never go back.
@@ -117,7 +116,7 @@ function allowList(sampled: Sampled): Record<string, unknown> {
     companyKeys: frame.companies.map((company) => Object.keys(company).sort().join(',')),
     newsCount: frame.news.length,
     positions: frame.positions,
-    receipts: frame.receipts,
+    receipts: frame.receipts.map(({ kind, step, outcome }) => ({ kind, step, outcome })),
     days: frame.days,
     canBuy: frame.account.canBuy,
     stress: frame.stress,
@@ -132,6 +131,11 @@ function allowList(sampled: Sampled): Record<string, unknown> {
 /** The lobby has no board and no ticket price. Every other moment has the whole board and one price, with its two parts and its break-even, per contract. */
 function thinAt(where: string): Record<string, unknown> {
   const started = where !== LOBBY;
+  const finishedDays: Record<string, number[]> = {
+    'the closing bell of day 1': [1], 'the last step of day 1': [1], 'the first step of day 2': [1],
+    "day 5's debrief": [1, 2, 3, 4, 5], 'the last step of the game': [1, 2, 3, 4, 5],
+    'one step past the end of the game': [1, 2, 3, 4, 5],
+  };
   return {
     where,
     boardSize: started ? { targetsPerCompany: TARGETS_PER_COMPANY, targetsOfEachCompany: Array.from({ length: COMPANIES }, () => TARGETS_PER_COMPANY) } : null,
@@ -144,12 +148,13 @@ function thinAt(where: string): Record<string, unknown> {
     companyKeys: Array.from({ length: COMPANIES }, () => 'name,ticker'),
     newsCount: started ? 3 : 0,
     positions: [],
-    receipts: [],
-    days: [],
+    receipts: started ? [{ kind: 'start', step: 0, outcome: 'accepted' }] : [],
+    days: (finishedDays[where] ?? []).map((day) => ({ day, startCents: 100000000, endCents: 100000000, changeCents: 0 })),
     canBuy: false,
     stress: false,
-    hasHistory: false,
-    hasFinal: false,
+    hasHistory: ['the first open step', 'the middle of day 1', 'the closing bell of day 1',
+      'the first step of day 2', "day 5's debrief", 'one step past the end of the game', 'draft sample'].includes(where),
+    hasFinal: where === 'one step past the end of the game',
     hasDraft: false,
     priceCount: 6,
     everyPriceIsWholeCents: true,
@@ -157,11 +162,56 @@ function thinAt(where: string): Record<string, unknown> {
 }
 
 describe('every frame this service emits', () => {
+  it.each([undefined, 209])('keeps serialized history secret at every reveal and day boundary (targets %s)', (targets) => {
+    const original = buildMarket({ seed: SEED, engine: ENGINE_VERSION, content: CONTENT_VERSION });
+    const firstReveal = Math.min(...original.days[0]!.news.map((item) => item.hidden.revealIndex));
+    function emitted(market: Market, step: number): string {
+      const registry = createRegistry({ drawSeed: () => SEED, drawId: () => 'serialized-history', limits: LIMITS });
+      const entry = registry.create(0, targets)!;
+      registry.replace(entry.session.id, { ...handleCommand(entry.session, FIRST_PLAYER_ID, { t: 'start', commandId: 'history-secrecy', pace: 1 }, 0).session, market });
+      const sent: string[] = [];
+      const socket: FrameSocket = { OPEN: 1, readyState: 1, bufferedAmount: 0, send: (text) => { sent.push(text); } };
+      registry.attach(entry.session.id, FIRST_PLAYER_ID, socket);
+      sampleSessions(registry, step * 200, { sent: 0, skipped: 0 }, 1500);
+      return sent[0]!;
+    }
+    for (const step of [0, 300 + firstReveal - 1, 300 + firstReveal, 800, 900, 4500]) {
+      const changed = structuredClone(original);
+      const moment = momentAt(step);
+      for (const day of changed.days) {
+        if (day.day < moment.day) continue;
+        const today = day.day === moment.day;
+        day.paths = day.paths.map((path) => path.map((price, index) => today && index <= moment.priceIndex ? price : price * 1.37 + 11 + index));
+        if (!today) day.leadIn = day.leadIn.map((path) => path.map((price) => price + 17));
+        for (const item of day.news) {
+          if (today && item.hidden.revealIndex <= moment.priceIndex) continue;
+          const next = today ? moment.priceIndex + 1 : 1;
+          item.hidden.revealIndex = item.hidden.revealIndex === next ? next + 1 : next;
+          item.hidden.wasTrue = !item.hidden.wasTrue;
+          item.hidden.move = -item.hidden.move + 0.01;
+          if (!today) item.headline.body = 'Changed future body';
+        }
+      }
+      const raw = emitted(original, step);
+      expect(emitted(changed, step)).toBe(raw);
+      const parsed = frameSchema.parse(JSON.parse(raw));
+      expect(parsed.leadIn?.[0]).toHaveLength(40);
+      expect(parsed.history?.[0]).toHaveLength(moment.priceIndex + 1);
+      expect(JSON.parse(raw)).toEqual(parsed);
+      if (step < 4500) {
+        expect(raw).not.toContain('marketCode');
+        expect(raw).not.toContain(String(SEED));
+      }
+      const present = structuredClone(original);
+      present.days[moment.day - 1]!.leadIn[0]![0] = 1;
+      expect(emitted(present, step)).not.toBe(raw);
+    }
+  });
   it('was collected at every moment of the game', () => {
     expect(collected.map(({ where }) => where)).toEqual([LOBBY, ...MOMENTS.map(([where]) => where)]);
   });
 
-  it('fills only the live board, clock, public news and starting account', () => {
+  it('fills the public preview and ordered game results while trading remains unavailable', () => {
     for (const sampled of collected) {
       expect(allowList(sampled)).toEqual(thinAt(sampled.where));
       expect({ where: sampled.where, account: sampled.frame.account }).toEqual({
@@ -199,6 +249,14 @@ describe('every frame this service emits', () => {
   it('round-trips the shared schema unchanged', () => {
     for (const { where, frame } of collected) {
       expect({ where, frame: frameSchema.parse(frame) }).toEqual({ where, frame });
+      expect(frame.leadIn !== undefined).toBe(frame.history !== undefined);
+      if (frame.leadIn !== undefined) {
+        expect(frame.leadIn).toHaveLength(6);
+        for (const path of frame.leadIn) {
+          expect(path).toHaveLength(40);
+          expect(wholeCentsFromZero(path)).toBe(true);
+        }
+      }
     }
   });
 
@@ -212,6 +270,10 @@ describe('every frame this service emits', () => {
     expect(codeWithoutDashes).toHaveLength(10);
 
     for (const { where, frame } of collected) {
+      if (frame.clock.phase === 'final') {
+        expect(frame.final).toMatchObject({ marketCode: code, finalCents: 100000000, changeCents: 0 });
+        continue;
+      }
       const text = JSON.stringify(frame);
       expect({
         where,
@@ -373,7 +435,7 @@ describe('every batch of changed quotes this service emits', () => {
   });
 });
 
-describe('the five commands this service does not take', () => {
+describe('the trading commands this service does not take', () => {
   let harness: Harness | null = null;
 
   afterEach(async () => {
@@ -389,10 +451,7 @@ describe('the five commands this service does not take', () => {
    */
   const buy: BuyCommand = { t: 'buy', commandId: 'refused-buy', day: 1, contractId: 3, spendCents: 1_000_000, seenPriceCents: 5_000 };
   const cashOut: CashOutCommand = { t: 'cashOut', commandId: 'refused-cashOut', positionId: 'd1' };
-  const openBell: ClockCommand = { t: 'openBell', commandId: 'refused-openBell', day: 1 };
-  const skipToBell: ClockCommand = { t: 'skipToBell', commandId: 'refused-skipToBell', day: 1 };
-  const nextDay: ClockCommand = { t: 'nextDay', commandId: 'refused-nextDay', day: 1 };
-  const REFUSED = [buy, cashOut, openBell, skipToBell, nextDay];
+  const REFUSED = [buy, cashOut];
 
   it.each(REFUSED)('$t is refused by name, and the revision and the cash are untouched', async (command) => {
     harness = await startHarness();
@@ -420,7 +479,7 @@ describe('the five commands this service does not take', () => {
     expect(after.rev).toBe(before.rev);
     expect(after.account.cashCents).toBe(before.account.cashCents);
     expect(after.positions).toEqual([]);
-    expect(after.receipts).toEqual([]);
+    expect(after.receipts).toEqual(before.receipts);
   });
 });
 
@@ -444,8 +503,20 @@ function expectDraftAtFrame(frame: Frame, contractId: number, spendCents: number
   });
   expect(frame.draft?.ticket?.quantity).toBeGreaterThan(0);
   expect(frame.draft?.ticket?.whatIf).toContainEqual({ atCents: frame.quoteBreakEvens[contractId], profitCents: 0 });
-  expect(frame).toMatchObject({ positions: [], receipts: [], days: [], account: { cashCents: STARTING_CASH_CENTS, canBuy: false } });
-  expect(frame).not.toHaveProperty('history');
+  expect(frame).toMatchObject({ positions: [], days: [], account: { cashCents: STARTING_CASH_CENTS, canBuy: false } });
+  expect(frame.receipts).toHaveLength(1);
+  expect(frame.receipts[0]).toMatchObject({ kind: 'start', step: 0, outcome: 'accepted' });
+  if (frame.history !== undefined) {
+    expect(frame.leadIn).toHaveLength(6);
+    frame.leadIn?.forEach((path) => expect(path).toHaveLength(40));
+    expect(frame.history).toHaveLength(6);
+    frame.history.forEach((path, companyId) => {
+      expect(path).toHaveLength(frame.clock.priceIndex + 1);
+      expect(path.at(-1)).toBe(frame.prices[companyId]);
+      expect(wholeCentsFromZero(path)).toBe(true);
+    });
+  }
+  else expect(frame).not.toHaveProperty('leadIn');
   expect(frame).not.toHaveProperty('final');
   for (const news of frame.news) expect(news).not.toHaveProperty('wasTrue');
   expect(JSON.stringify(frame)).not.toContain(seedToMarketCode(SEED));

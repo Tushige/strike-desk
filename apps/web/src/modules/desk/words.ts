@@ -87,21 +87,20 @@ const START_WORDS: Record<Pace, string> = {
 
 export const lobbyWords = {
   heading: 'Ready for the opening bell?',
-  body: (days: number): string =>
-    `${String(days)} trading days. Each day you read the news, pick an UP or DOWN ticket, and decide when to cash out.`,
+  body: (days: number): string => `${days === 5 ? 'Five' : String(days)} trading days. Read the news, follow prices, and explore tickets.`,
   paceHint: 'Pick a speed to start. The rules are the same at every speed.',
   start: (pace: Pace): string => START_WORDS[pace],
 } as const;
 
 export const preBellWords = {
   heading: (day: number): string => `Day ${String(day)}: before the bell`,
-  body: 'Read the news and pick your ticket. Prices stand still until the opening bell.',
+  body: 'Read the news and explore tickets. Prices stand still until the opening bell.',
   action: 'Ring the opening bell',
 } as const;
 
 export const openWords = {
   heading: (day: number): string => `Day ${String(day)}: the market is open`,
-  body: 'Prices are moving. No ticket yet? You can still buy one. Holding one? Cash out any time before the closing bell.',
+  body: 'Prices are moving. Compare tickets and explore what they could pay.',
   action: 'Skip to the closing bell',
 } as const;
 
@@ -137,4 +136,11 @@ export const finalWords = {
 export const stripWords = {
   /** The list's accessible name, for the page that lays the strip out. */
   label: 'Companies',
+} as const;
+
+export const controlWords = {
+  preview: 'Ticket preview only. Buying and cashing out are not available.',
+  checking: 'Checking...',
+  retry: 'Retry safely',
+  retryHint: 'Send the same request again. It will not happen twice.',
 } as const;

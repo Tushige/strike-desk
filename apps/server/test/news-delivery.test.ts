@@ -10,7 +10,7 @@ function started(): Session {
 }
 
 function publicFrame(session: Session, step: number): Frame {
-  return liveNewsFrameFor(session, FIRST_PLAYER_ID, step * 200).frame;
+  return liveNewsFrameFor(session, FIRST_PLAYER_ID, step * 200, true).frame;
 }
 
 /** Change only data still in the future, preserving every landed reveal. */
@@ -39,10 +39,15 @@ function scrambleFuture(session: Session, step: number): Session {
 
 function expectPublicOnly(frame: Frame): void {
   expect(frame.positions).toEqual([]);
-  expect(frame.receipts).toEqual([]);
-  expect(frame.days).toEqual([]);
-  expect(frame).not.toHaveProperty('history');
-  expect(frame).not.toHaveProperty('final');
+  expect(frame.receipts).toEqual([{ commandId: 'start-news', kind: 'start', step: 0, outcome: 'accepted' }]);
+  for (const day of frame.days) expect(day).toMatchObject({ startCents: 100000000, endCents: 100000000, changeCents: 0 });
+  expect(frame.history).toHaveLength(6);
+  frame.history?.forEach((path, companyId) => {
+    expect(path).toHaveLength(frame.clock.priceIndex + 1);
+    expect(path.at(-1)).toBe(frame.prices[companyId]);
+  });
+  if (frame.clock.phase === 'final') expect(frame.final).toMatchObject({ finalCents: 100000000, changeCents: 0 });
+  else expect(frame).not.toHaveProperty('final');
   expect(frame).not.toHaveProperty('draft');
   expect(frame.account).toEqual({ cashCents: 100000000, worthCents: 100000000, capCents: 50000000, canBuy: false });
   for (const news of frame.news) {

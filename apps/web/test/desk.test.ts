@@ -481,6 +481,9 @@ describe('the phase screens', () => {
   const disabledOf = (markup: string): number => buttonsOf(markup).filter((button) => button.includes('disabled=""')).length;
 
   it('offers one start button for each pace in the lobby', () => {
+    expect(textOf(lobby(true))).toContain('Five trading days. Read the news, follow prices, and explore tickets.');
+    expect(textOf(preBell(true))).toContain('Read the news and explore tickets. Prices stand still until the opening bell.');
+    expect(textOf(open(true))).toContain('Prices are moving. Compare tickets and explore what they could pay.');
     const markup = lobby(true);
     const text = textOf(markup);
 
@@ -493,6 +496,16 @@ describe('the phase screens', () => {
 
   it('disables all three start buttons while a game cannot be started', () => {
     expect(disabledOf(lobby(false))).toBe(3);
+  });
+
+  it('identifies the scrollable lobby and final panels without moving game actions inside the content', () => {
+    for (const markup of [lobby(true), final()]) {
+      expect(markup).toMatch(/<div data-region="content"[^>]*overflow-y-auto/);
+      expect(markup).not.toMatch(/<section[^>]*overflow-y-auto/);
+    }
+    for (const markup of [preBell(true), open(true), debrief(dayOne)]) {
+      expect(markup).toMatch(/data-region="content"[^>]*><p>the desk of the day<\/p><\/div><footer/);
+    }
   });
 
   it('shows before the bell its heading for the day, its one button and the desk inside its content region', () => {

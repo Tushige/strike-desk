@@ -433,6 +433,8 @@ export const frameSchema = z.object({
    * apart.
    */
   history: z.array(z.array(cents)).optional(),
+  /** Company-indexed earlier share prices in cents, oldest first, excluding today's index-zero opening point. Sent only beside full history. */
+  leadIn: z.array(z.array(cents)).optional(),
   final: finalViewSchema.optional(),
   /**
    * The quote of the ticket being built. Only in the full form of a started

@@ -8,6 +8,7 @@ export interface BuyPurchase {
   companyName: string;
   ticker: string;
   position: PositionView;
+  comparisonAtBell?: boolean;
 }
 type TradeIntent = {
   session: string;
@@ -60,6 +61,7 @@ export function createBuyFlow(feed: Feed, freshness: ReadSlice<{ line: LineState
   let recovered = false;
   let awaitingRecoveryData = false;
   let disposed = false;
+  let cancelDisplay: (() => void) | null = null;
   const retired = new Set<string>();
   let pending: { promise: Promise<SubmitOutcome>; resolve: (outcome: SubmitOutcome) => void } | null = null;
 
@@ -99,16 +101,44 @@ export function createBuyFlow(feed: Feed, freshness: ReadSlice<{ line: LineState
   }
   function bought(frame: Frame, position: PositionView): BuyPurchase {
     const company = frame.companies[position.companyId]!;
-    return { session: frame.session, companyName: company.name, ticker: company.ticker, position };
+    return { session: frame.session, companyName: company.name, ticker: company.ticker, position,
+      comparisonAtBell: frame.clock.day > position.day || (frame.clock.day === position.day &&
+        (frame.clock.phase === 'debrief' || frame.clock.phase === 'final')) };
   }
-  function samePurchase(a: BuyPurchase | null, b: BuyPurchase | null): boolean {
+  function samePurchase(a: BuyPurchase | null, b: BuyPurchase | null, ignoreComparison = false): boolean {
     if (a === null || b === null) return a === b;
     const displayed = (item: BuyPurchase) => ({ session: item.session, companyName: item.companyName, ticker: item.ticker,
       id: item.position.id, day: item.position.day, side: item.position.side, target: item.position.targetCents,
       entry: item.position.entryPriceCents, quantity: item.position.quantity, cost: item.position.costCents,
-      status: item.position.status, exit: item.position.exit,
+      status: item.position.status, exit: item.position.exit, ifHeldCents: ignoreComparison ? null : item.position.ifHeldCents, comparisonAtBell: item.comparisonAtBell,
       profit: item.position.status === 'open' ? null : item.position.profitCents });
     return JSON.stringify(displayed(a)) === JSON.stringify(displayed(b));
+  }
+  function displayPurchases(): void {
+    cancelDisplay?.(); cancelDisplay = null;
+    if (disposed || current === null) return;
+    const day = current.clock.day;
+    const position = current.positions.find((item) => item.day === day);
+    const next = position === undefined ? null : bought(current, position);
+    if (!samePurchase(purchase.get(), next)) purchase.set(next);
+    const record = transaction.get();
+    if (record?.session !== current.session || record?.outcome?.outcome !== 'accepted') return;
+    const positionId = record.outcome.receipt.positionId;
+    const original = current.positions.find((item) => item.day === record.originalDay && item.id === positionId);
+    if (original !== undefined) {
+      const retained = bought(current, original);
+      if (!samePurchase(record.purchase ?? null, retained)) transaction.set({ ...record, purchase: retained });
+    }
+  }
+  function paceDisplay(): void {
+    if (cancelDisplay !== null) return;
+    if (typeof requestAnimationFrame === 'function') {
+      const handle = requestAnimationFrame(displayPurchases);
+      cancelDisplay = () => { cancelAnimationFrame(handle); };
+    } else {
+      const handle = setTimeout(displayPurchases, 16);
+      cancelDisplay = () => { clearTimeout(handle); };
+    }
   }
   const unsubscribe = feed.subscribe((event) => {
     if (disposed) return;
@@ -146,6 +176,8 @@ export function createBuyFlow(feed: Feed, freshness: ReadSlice<{ line: LineState
       retired.add(held.session);
       finish({ outcome: 'lost' });
     }
+    const phaseChanged = current?.session !== frame.session || current.clock.day !== frame.clock.day || current.clock.phase !== frame.clock.phase;
+    const unanswered = transaction.get()?.outcome === undefined;
     held = { session: frame.session, rev: frame.rev, step: frame.step };
     current = frame;
     if (message.t === 'reply') answer([message.receipt], frame.session);
@@ -158,16 +190,14 @@ export function createBuyFlow(feed: Feed, freshness: ReadSlice<{ line: LineState
       hopeCents: position.hopeCents, breakEvenCents: position.breakEvenCents,
     } : null);
     const nextPurchase = position === undefined ? null : bought(frame, position);
-    if (!samePurchase(purchase.get(), nextPurchase)) purchase.set(nextPurchase);
     const record = transaction.get();
-    if (record?.session === frame.session && record.outcome?.outcome === 'accepted') {
-      const positionId = record.outcome.receipt.positionId;
-      const original = frame.positions.find((item) => item.day === record.originalDay && item.id === positionId);
-      if (original !== undefined) {
-        const retained = bought(frame, original);
-        if (!samePurchase(record.purchase ?? null, retained)) transaction.set({ ...record, purchase: retained });
-      }
-    }
+    const positionId = record?.outcome?.outcome === 'accepted' ? record.outcome.receipt.positionId : undefined;
+    const original = record?.outcome?.outcome === 'accepted'
+      ? frame.positions.find((item) => item.day === record.originalDay && item.id === positionId) : undefined;
+    const retained = original === undefined ? record?.purchase ?? null : bought(frame, original);
+    if (phaseChanged || message.t === 'reply' || (unanswered && record?.outcome !== undefined) ||
+      !samePurchase(purchase.get(), nextPurchase, true) || !samePurchase(record?.purchase ?? null, retained, true)) displayPurchases();
+    else if (!samePurchase(purchase.get(), nextPurchase) || !samePurchase(record?.purchase ?? null, retained)) paceDisplay();
     if (recovered) awaitingRecoveryData = false;
     recovered = true;
     publish();
@@ -203,6 +233,6 @@ export function createBuyFlow(feed: Feed, freshness: ReadSlice<{ line: LineState
       transaction.set({ ...record, interrupted: false, retryAllowed: false });
       publish(); send();
     },
-    dispose() { if (disposed) return; disposed = true; unsubscribe(); unsubscribeFreshness(); finish({ outcome: 'lost' }); publish(); },
+    dispose() { if (disposed) return; disposed = true; cancelDisplay?.(); cancelDisplay = null; unsubscribe(); unsubscribeFreshness(); finish({ outcome: 'lost' }); publish(); },
   };
 }

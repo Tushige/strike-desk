@@ -239,6 +239,7 @@ export interface BuyPurchase {
   companyName: string;
   ticker: string;
   position: PositionView;
+  comparisonAtBell?: boolean;
 }
 
 export interface BuyTransaction {

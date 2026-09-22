@@ -13,6 +13,10 @@ import {
   BELL_PAID_LABEL,
   CASHED_OUT_WORDS,
   CASHED_OUT_PAID_LABEL,
+  HELD_LIVE_HEADING,
+  HELD_LIVE_EXPLANATION,
+  HELD_BELL_HEADING,
+  HELD_BELL_EXPLANATION,
   PAID_COST_LABEL,
   SETTLED_WORDS,
   CASH_OUT_LINE_WORDS,
@@ -381,10 +385,20 @@ function RealizedNumbers({ purchase, includeCost = false }: { purchase: BuyPurch
   if (position.exit === undefined) return null;
   const profit = profitText(position.profitCents);
   return <dl className="m-0 grid grid-cols-2 gap-2 text-sm">
-    <Figure label={position.exit.kind === 'cashOut' ? CASHED_OUT_PAID_LABEL : BELL_PAID_LABEL}>{formatCents(position.exit.proceedsCents)}</Figure>
+    <Figure label={position.exit.kind === 'cashOut' ? CASHED_OUT_PAID_LABEL : BELL_PAID_LABEL} className="text-2xl font-medium text-gold">{formatCents(position.exit.proceedsCents)}</Figure>
     {includeCost ? <Figure label={PAID_COST_LABEL}>{formatCents(position.costCents)}</Figure> : null}
     <Figure label={WHAT_IF_RESULT_LABEL} className={profit.className}>{profit.text}</Figure>
   </dl>;
+}
+
+function HeldComparison({ purchase }: { purchase: BuyPurchase }): ReactElement | null {
+  if (purchase.position.exit?.kind !== 'cashOut' || purchase.position.ifHeldCents === undefined) return null;
+  return <div className="grid gap-1 border-t border-border pt-2">
+    <dl className="m-0 text-sm"><Figure label={purchase.comparisonAtBell ? HELD_BELL_HEADING : HELD_LIVE_HEADING}>
+      {formatCents(purchase.position.ifHeldCents)}
+    </Figure></dl>
+    <p className="m-0 text-xs text-muted-foreground">{purchase.comparisonAtBell ? HELD_BELL_EXPLANATION : HELD_LIVE_EXPLANATION}</p>
+  </div>;
 }
 
 function PurchaseNumbers({ purchase, cashOutEnabled }: { purchase: BuyPurchase; cashOutEnabled: boolean }): ReactElement {
@@ -394,9 +408,10 @@ function PurchaseNumbers({ purchase, cashOutEnabled }: { purchase: BuyPurchase; 
     <dl className="m-0 grid grid-cols-2 gap-2 text-sm">
       <Figure label={PRICE_LABEL}>{formatCents(position.entryPriceCents)}</Figure>
       <Figure label={QUANTITY_LABEL}>{position.quantity.toLocaleString('en-US')}</Figure>
-      <Figure label={cashOutEnabled && position.exit !== undefined ? PAID_COST_LABEL : BOUGHT_FOR_LABEL} className="text-2xl font-medium text-gold">{formatCents(position.costCents)}</Figure>
+      <Figure label={cashOutEnabled && position.exit !== undefined ? PAID_COST_LABEL : BOUGHT_FOR_LABEL} className={cashOutEnabled && position.exit !== undefined ? '' : 'text-2xl font-medium text-gold'}>{formatCents(position.costCents)}</Figure>
     </dl>
     {cashOutEnabled ? <RealizedNumbers purchase={purchase} /> : <SettlementNumbers purchase={purchase} />}
+    {cashOutEnabled ? <HeldComparison purchase={purchase} /> : null}
   </>;
 }
 
@@ -406,7 +421,7 @@ function NoticePresentation({ status, retry, onRetry, hint = BUY_RETRY_HINT, pur
   const hintId = useId();
   return <>
     <p role="status" aria-live="polite" className="m-0 min-h-5 text-sm">{status}</p>
-    {purchase === null ? null : <RealizedNumbers purchase={purchase} includeCost />}
+    {purchase === null ? null : <><RealizedNumbers purchase={purchase} includeCost /><HeldComparison purchase={purchase} /></>}
     {retry ? <div className="grid gap-1">
       <button type="button" className={`rounded-md border border-ring px-3 py-2 text-sm ${FOCUS} hover:bg-accent`} aria-describedby={hintId} onClick={onRetry}>{RETRY_LABEL}</button>
       <p id={hintId} className="m-0 text-xs text-muted-foreground">{hint}</p>

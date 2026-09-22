@@ -100,6 +100,11 @@ export const CASH_OUT_LINE_WORDS = {
   offline: 'Not connected. Cashing out is off until fresh prices arrive.',
 };
 
+export const HELD_LIVE_HEADING = 'If you had held on';
+export const HELD_LIVE_EXPLANATION = 'This is what your ticket would be worth right now. Keep watching. It can still go either way.';
+export const HELD_BELL_HEADING = 'If you had held to the bell';
+export const HELD_BELL_EXPLANATION = 'This is what your ticket would have paid at the closing bell.';
+
 /** A plain reason for every way the server can say no. */
 export const REJECT_WORDS: Record<RejectReason, string> = {
   notEnoughCash: 'Not enough cash for that. Pick a smaller amount.',

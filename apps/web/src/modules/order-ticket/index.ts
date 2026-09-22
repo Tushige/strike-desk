@@ -1,5 +1,5 @@
 export { OrderTicket, TradeNotice } from './OrderTicket';
-export { REJECT_WORDS } from './words';
+export { REJECT_WORDS, tradeContextWords } from './words';
 export type {
   LineState,
   OpenTicket,

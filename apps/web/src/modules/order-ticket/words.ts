@@ -14,6 +14,10 @@ import type { SimpleChoice } from './ports';
 export const PANEL_TITLE = 'Your ticket';
 export const OPEN_TICKET_TITLE = "Today's ticket";
 export const NOTHING_PICKED = 'Pick a company, then pick a ticket.';
+export const tradeContextWords = {
+  draft: (company: string, ticketCompany: string): string => `Viewing ${company}. Your draft is for ${ticketCompany}.`,
+  back: (ticketCompany: string): string => `Back to ${ticketCompany}`,
+};
 
 /** The game's word for each side, and the grown-up word for the same thing. */
 export const SIDE_WORDS: Record<Side, { game: string; real: string }> = {

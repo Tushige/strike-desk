@@ -98,6 +98,8 @@ function DayDesk({ loop, game, comparison, news }: GameDeskProps) {
   const [companyFocus, setCompanyFocus] = useState<{ companyId: number } | null>(null);
   const [expanded, setExpanded] = useState(false);
   const comparisonId = useId();
+  // Row choices and Back change context; explicit company browsing also filters.
+  const viewCompany = useCallback((id: number) => { setCompanyId(id); }, []);
   const selectCompany = useCallback((id: number) => {
     setCompanyId(id);
     setCompanyFocus({ companyId: id });
@@ -114,7 +116,7 @@ function DayDesk({ loop, game, comparison, news }: GameDeskProps) {
         Compare options
       </button>
       <div className="min-h-0 flex-1">
-        <ComparisonDesk comparison={comparison} game={game} companyFocus={companyFocus} onContractCompany={setCompanyId}
+        <ComparisonDesk comparison={comparison} game={game} companyFocus={companyFocus} onContractCompany={viewCompany}
           viewedCompanyId={companyId} comparisonExpanded={expanded} comparisonId={comparisonId} buy={buyFlow} />
       </div>
     </div>

@@ -1,4 +1,4 @@
-export { OrderTicket } from './OrderTicket';
+export { OrderTicket, TradeNotice } from './OrderTicket';
 export { REJECT_WORDS } from './words';
 export type {
   LineState,
@@ -13,5 +13,6 @@ export type {
   TicketFormState,
   TicketQuote,
   TicketPreviewProps,
+  TradeNoticeProps,
   WhatIfStop,
 } from './ports';

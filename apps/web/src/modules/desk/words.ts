@@ -140,7 +140,8 @@ export const stripWords = {
 
 export const controlWords = {
   preview: 'Tickets settle at the closing bell. Cashing out is not available yet.',
-  bought: 'Your ticket is bought. Follow prices until the closing bell.',
+  bought: 'Cash out before the closing bell, or hold to settle at the bell.',
+  cashedOut: 'This is what your ticket would be worth right now. Keep watching. It can still go either way.',
   checking: 'Checking...',
   retry: 'Retry safely',
   retryHint: 'Send the same request again. It will not happen twice.',

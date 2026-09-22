@@ -1,12 +1,11 @@
 import { memo, useCallback, useId, useMemo, useState, useSyncExternalStore } from 'react';
 import type { CompanyView } from '@strike-desk/shared/protocol';
-import { formatCents } from '@strike-desk/shared/money';
 import { OPEN_STEPS, PACES } from '@strike-desk/shared/time';
 import { PriceChart } from '../modules/price-chart/index';
 import type { ChartLine, ChartMarker } from '../modules/price-chart/index';
-import { buyFlow, chartStore } from '../boot';
+import { buyFlow, chartStore, deskFreshness } from '../boot';
 import { CompanyChip, CompanyStrip, PhaseScreen, TopBar, controlWords, stripWords } from '../modules/desk/index';
-import { REJECT_WORDS } from '../modules/order-ticket/index';
+import { REJECT_WORDS, TradeNotice } from '../modules/order-ticket/index';
 import { ComparisonDesk } from '../comparison/ComparisonDesk';
 import type { ComparisonStore } from '../comparison/comparisonStore';
 import { NewsPanel } from '../news/NewsPanel';
@@ -28,43 +27,21 @@ function GameTopBar({ loop }: { loop: GameLoop }) {
 
 function playAgain(): void { window.location.reload(); }
 
-const FINAL_BUY_WORDS = {
-  accepted: (day: number) => `Your Day ${String(day)} buy was accepted. That ticket has settled at the closing bell.`,
-  rejected: (day: number) => `Your Day ${String(day)} buy was rejected.`,
-  noReason: 'The game said no to that one. Check your ticket and press again.',
-  gameGone: 'The previous game is no longer available. That buy cannot be checked.',
-  lost: 'No answer came back for that one. Check your cash and your ticket, then press again if you still want it.',
-  paid: 'Paid at the bell',
-  profit: 'Profit or loss',
-};
+function finalTradeVisible(): boolean {
+  const transaction = buyFlow.transaction.get();
+  return transaction !== null && (transaction.outcome === undefined || transaction.afterBell === true || transaction.gameGone);
+}
+function tradeLine() { return deskFreshness.get().line; }
+function retryTrade(): void { buyFlow.retry(); }
 
-function FinalBuyOutcome() {
-  const transaction = useSyncExternalStore(buyFlow.transaction.subscribe, buyFlow.transaction.get);
-  const retryHintId = useId();
-  if (transaction === null || (transaction.outcome !== undefined && !transaction.afterBell && !transaction.gameGone)) return null;
-  const { outcome, command, purchase } = transaction;
-  if (command.t !== 'buy') return null;
-  let status: string = controlWords.checking;
-  if (outcome?.outcome === 'accepted') status = FINAL_BUY_WORDS.accepted(command.day);
-  else if (outcome?.outcome === 'rejected') {
-    status = `${FINAL_BUY_WORDS.rejected(command.day)} ${outcome.receipt.reason === undefined ? FINAL_BUY_WORDS.noReason : REJECT_WORDS[outcome.receipt.reason]}`;
-  } else if (outcome?.outcome === 'lost') status = transaction.gameGone ? FINAL_BUY_WORDS.gameGone : FINAL_BUY_WORDS.lost;
-  const position = outcome?.outcome === 'accepted' ? purchase?.position : undefined;
+function FinalTradeOutcome() {
+  const visible = useSyncExternalStore(buyFlow.transaction.subscribe, finalTradeVisible);
+  const availability = useSyncExternalStore(buyFlow.availability.subscribe, buyFlow.availability.get);
+  const line = useSyncExternalStore(deskFreshness.subscribe, tradeLine);
+  if (!visible) return null;
   return <div className="grid shrink-0 gap-2 rounded-md border border-border bg-card p-3 text-sm">
-    <p role="status" aria-live="polite" className="m-0">{status}</p>
-    {position?.status === 'settled' && position.exit?.kind === 'bell' ? <dl className="m-0 flex flex-wrap gap-x-6 gap-y-2">
-      <div><dt className="text-xs text-muted-foreground">{FINAL_BUY_WORDS.paid}</dt>
-        <dd className="m-0 tabular-nums">{formatCents(position.exit.proceedsCents)}</dd></div>
-      <div><dt className="text-xs text-muted-foreground">{FINAL_BUY_WORDS.profit}</dt>
-        <dd className="m-0 tabular-nums">{position.profitCents > 0 ? '+' : ''}{formatCents(position.profitCents)}</dd></div>
-    </dl> : null}
-    {transaction.retryAllowed ? <div className="flex flex-wrap items-center gap-2">
-      <button type="button" onClick={() => { buyFlow.retry(); }} aria-describedby={retryHintId}
-        className="rounded-md border border-border px-4 py-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
-        {controlWords.retry}
-      </button>
-      <p id={retryHintId} className="m-0 text-xs text-muted-foreground">{controlWords.retryHint}</p>
-    </div> : null}
+    <TradeNotice transaction={buyFlow.transaction} day={availability.day} phase={availability.phase}
+      line={line} retryOffered={availability.retryAllowed} onRetry={retryTrade} />
   </div>;
 }
 
@@ -148,10 +125,15 @@ export function GameDesk({ loop, game, comparison, news }: GameDeskProps) {
   const screen = useSyncExternalStore(loop.screen.subscribe, loop.screen.get);
   const controls = useSyncExternalStore(loop.controls.subscribe, loop.controls.get);
   const availability = useSyncExternalStore(buyFlow.availability.subscribe, buyFlow.availability.get);
-  const purchase = useSyncExternalStore(buyFlow.purchase.subscribe, buyFlow.purchase.get);
+  const readPurchaseInstruction = useCallback(() => {
+    const purchase = buyFlow.purchase.get();
+    if (purchase === null || purchase.session !== screen?.session || purchase.position.day !== screen.day) return undefined;
+    if (purchase.position.status === 'open') return controlWords.bought;
+    return purchase.position.exit?.kind === 'cashOut' ? controlWords.cashedOut : undefined;
+  }, [screen?.session, screen?.day]);
+  const purchaseInstruction = useSyncExternalStore(buyFlow.purchase.subscribe, readPurchaseInstruction);
   const stress = availability.session === screen?.session && availability.stress;
-  const bought = purchase !== null && purchase.session === screen?.session && purchase.position.day === screen.day;
-  const instruction = stress ? REJECT_WORDS.stressMode : bought ? controlWords.bought : undefined;
+  const instruction = stress ? REJECT_WORDS.stressMode : purchaseInstruction;
   const instructionProps = instruction === undefined ? {} : { instruction };
   const canAct = controls.ready && !controls.checking;
   const content = useMemo(() => (
@@ -170,8 +152,8 @@ export function GameDesk({ loop, game, comparison, news }: GameDeskProps) {
     <div className="flex h-full min-h-0 flex-1 flex-col gap-3">
       <GameTopBar loop={loop} />
       <div className="min-h-0 flex-1">{phase}</div>
-      {screen?.phase === 'final' ? <FinalBuyOutcome /> : null}
-      <p className="m-0 text-xs text-muted-foreground">{stress ? REJECT_WORDS.stressMode : controlWords.preview}</p>
+      {screen?.phase === 'final' ? <FinalTradeOutcome /> : null}
+      {stress ? <p className="m-0 text-xs text-muted-foreground">{REJECT_WORDS.stressMode}</p> : null}
       <div className="flex flex-wrap items-center justify-end gap-2">
         <div role="status" aria-live="polite" className="text-sm text-muted-foreground">
           {controls.checking ? controlWords.checking : controls.reason === null ? null : REJECT_WORDS[controls.reason]}

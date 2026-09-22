@@ -1,5 +1,6 @@
 import type { Company } from './cast';
-import { NAME_MARK, PRODUCT_MARK, SITUATIONS, SOURCES } from './newsPool';
+import { EVENTS, NAME_MARK, PRODUCT_MARK, SOURCES } from './newsPool';
+import type { NewsPool } from './newsPool';
 import type { Trust } from './pricing';
 import type { Side } from './protocol';
 import type { Rng } from './rng';
@@ -56,8 +57,8 @@ export type WriteHeadlines = (slots: readonly HeadlineSlot[], cast: readonly Com
 
 // The pool is listed through this file, so that a script on the server can
 // show every string of it beside the games it writes.
-export { NAME_MARK, PRODUCT_MARK, SITUATIONS, SOURCES } from './newsPool';
-export type { Situation } from './newsPool';
+export { EVENTS, NAME_MARK, PRODUCT_MARK, SITUATIONS, SOURCES } from './newsPool';
+export type { EventType, HeadlineText, NewsPool, Situation } from './newsPool';
 
 /** A text of the pool with the company's name and what it makes filled in. */
 function fillIn(text: string, company: Company): string {
@@ -84,33 +85,66 @@ function fillIn(text: string, company: Company): string {
  * It reads the slots, the cast and the stream, and nothing else: no clock, no
  * global, and nothing remembered from one call to the next.
  */
-export const writeHeadlines: WriteHeadlines = (slots, cast, rng) => {
-  const usedInGame = new Set<number>();
-  const usedByCompany = new Map<number, Set<number>>();
+export function createHeadlineWriter(pool: NewsPool): WriteHeadlines {
+  if (pool.events.length === 0) throw new Error('news pool needs events');
+  const ids = new Set<string>();
+  const sourcesSeen = new Set<string>();
+  for (const trust of [3, 2, 1] as const) {
+    if (pool.sources[trust].length === 0) throw new Error(`news pool needs sources for trust ${trust}`);
+    for (const source of pool.sources[trust]) {
+      if (!source.trim() || source !== source.trim() || sourcesSeen.has(source)) throw new Error(`invalid or duplicate source: ${source}`);
+      sourcesSeen.add(source);
+    }
+  }
+  for (const event of pool.events) {
+    if (!event.id.trim() || ids.has(event.id)) throw new Error(`invalid or duplicate event id: ${event.id}`);
+    ids.add(event.id);
+    if (event.direction !== 'up' && event.direction !== 'down') throw new Error(`invalid direction for event ${event.id}`);
+    if (event.kinds.length === 0 || new Set(event.kinds).size !== event.kinds.length) throw new Error(`invalid kinds for event ${event.id}`);
+    if (Object.keys(event.wordings).some((kind) => !event.kinds.some((declared) => declared === kind))) throw new Error(`orphan wording for event ${event.id}`);
+    for (const kind of event.kinds) {
+      const wordings = event.wordings[kind];
+      if (wordings === undefined || wordings.length === 0) throw new Error(`missing wordings for event ${event.id}/${kind}`);
+      for (const { title, body } of wordings) {
+        if (!title.trim() || !body.trim() || title !== title.trim() || body !== body.trim()) throw new Error(`empty or untrimmed wording for event ${event.id}/${kind}`);
+      }
+    }
+  }
+  return (slots, cast, rng) => {
+    const usedInGame = new Set<string>();
+    const usedByCompany = new Map<number, Set<string>>();
 
-  return slots.map((slot) => {
-    const company = cast[slot.companyId];
-    if (company === undefined) throw new Error(`headline ${slot.id} names company ${slot.companyId}, which is not in the cast`);
-    const hadAlready = usedByCompany.get(slot.companyId) ?? new Set<number>();
-    usedByCompany.set(slot.companyId, hadAlready);
+    return slots.map((slot) => {
+      const company = cast.find((entry) => entry.id === slot.companyId);
+      if (company === undefined) throw new Error(`headline ${slot.id} names company ${slot.companyId}, which is not in the cast`);
+      const hadAlready = usedByCompany.get(slot.companyId) ?? new Set<string>();
+      usedByCompany.set(slot.companyId, hadAlready);
 
-    const sources = SOURCES[slot.trust];
-    const source = sources[rng.nextInt(sources.length)] ?? '';
+      const sources = pool.sources[slot.trust];
+      const source = sources[rng.nextInt(sources.length)];
+      if (source === undefined) throw new Error(`missing source for trust ${slot.trust}`);
 
-    const ofDirection = SITUATIONS.flatMap((situation, index) => (situation.direction === slot.direction ? [index] : []));
-    const newToGame = ofDirection.filter((index) => !usedInGame.has(index));
-    const newToCompany = ofDirection.filter((index) => !hadAlready.has(index));
-    // Slots that break the market's rules can run a company out of situations. A repeat is kinder than a game that will not start.
-    const open = newToGame.length > 0 ? newToGame : newToCompany.length > 0 ? newToCompany : ofDirection;
-    const picked = open[rng.nextInt(open.length)] ?? 0;
-    usedInGame.add(picked);
-    hadAlready.add(picked);
+      const compatible = pool.events.filter((event) => event.direction === slot.direction && event.kinds.includes(company.kind));
+      const newToGame = compatible.filter((event) => !usedInGame.has(event.id));
+      const open = newToGame.length > 0 ? newToGame : compatible.filter((event) => !hadAlready.has(event.id));
+      if (open.length === 0) throw new Error(`no unused ${slot.direction} event for company ${company.id} (${company.kind})`);
+      const selection = rng.nextFloat() * open.length;
+      const index = Math.floor(selection);
+      const picked = open[index];
+      if (picked === undefined) throw new Error('event draw must be in [0, 1)');
+      usedInGame.add(picked.id);
+      hadAlready.add(picked.id);
 
-    const situation = SITUATIONS[picked];
-    return {
-      source,
-      title: fillIn(situation?.title ?? '', company),
-      body: fillIn(situation?.body ?? '', company),
-    };
-  });
-};
+      const variants = picked.wordings[company.kind];
+      const situation = variants?.[Math.floor((selection - index) * variants.length)];
+      if (situation === undefined) throw new Error(`missing wording for event ${picked.id}/${company.kind}`);
+      return {
+        source,
+        title: fillIn(situation.title, company),
+        body: fillIn(situation.body, company),
+      };
+    });
+  };
+}
+
+export const writeHeadlines: WriteHeadlines = createHeadlineWriter({ sources: SOURCES, events: EVENTS });

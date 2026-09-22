@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CAST } from '../src/cast';
 import { CONTENT_VERSION, ENGINE_VERSION, buildMarket } from '../src/market';
-import type { HeadlineSlot } from '../src/news';
-import { SITUATIONS, SOURCES, writeHeadlines } from '../src/news';
+import type { HeadlineSlot, NewsPool } from '../src/news';
+import { EVENTS, SOURCES, createHeadlineWriter, writeHeadlines } from '../src/news';
 import { scriptedRng, slotsOfGame, wordingStream } from './contracts/headlineWriter.contract';
 
 /**
@@ -39,219 +39,118 @@ function slot(fields: Partial<HeadlineSlot> & Pick<HeadlineSlot, 'trust' | 'dire
   return { id: 0, day: 1, companyId: 0, ...fields };
 }
 
-describe('the draws of the headline writer', () => {
-  it('makes exactly two draws a slot: 30 numbers write a whole game, 29 do not', () => {
-    const slots = slotsOfGame(7);
+const CANDIDATE: NewsPool = {
+  sources: { 3: ['Official A', 'Official B'], 2: ['Worker A'], 1: ['Online A'] },
+  events: [
+    { id: 'drink-only', direction: 'up', kinds: ['drinks'], wordings: { drinks: [{ title: '{name} drinks', body: 'More drinks.' }] } },
+    { id: 'order', direction: 'up', kinds: ['toys', 'drinks'], wordings: {
+      toys: [{ title: '{name} order', body: 'More {product} ordered.' }, { title: '{name} order', body: 'Extra {product} ordered.' }],
+      drinks: [{ title: '{name} bottles', body: 'More bottles ordered.' }],
+    } },
+    { id: 'delivery', direction: 'up', kinds: ['toys', 'drinks'], wordings: {
+      toys: [{ title: '{name} delivery', body: 'Delivery A.' }, { title: '{name} delivery', body: 'Delivery B.' }, { title: '{name} delivery', body: 'Delivery C.' }],
+      drinks: [{ title: '{name} cans', body: 'More cans delivered.' }],
+    } },
+    { id: 'delay', direction: 'down', kinds: ['toys'], wordings: { toys: [{ title: '{name} delay', body: 'Fewer toys delivered.' }] } },
+  ],
+};
 
+describe('a pool-bound headline writer', () => {
+  it('uses source then event and fractional variant draws for the supplied company kind', () => {
+    const write = createHeadlineWriter(CANDIDATE);
+    // Two fitting events: .375 * 2 = .75 selects the first event, then wording 2 of 2.
+    expect(write([slot({ trust: 3, direction: 'up' })], CAST, scriptedRng([0.99, 0.375]))).toEqual([
+      { source: 'Official B', title: 'RoboPup order', body: 'Extra robot pets ordered.' },
+    ]);
+    // .95 * 2 = 1.9 selects the second event, then wording 3 of 3.
+    expect(write([slot({ trust: 3, direction: 'up' })], CAST, scriptedRng([0, 0.95]))).toEqual([
+      { source: 'Official A', title: 'RoboPup delivery', body: 'Delivery C.' },
+    ]);
+  });
+
+  it('uses supplied ids, names and products rather than a fixed six-company position', () => {
+    const original = CAST[0];
+    if (original === undefined) throw new Error('missing test company');
+    const cast = [{ ...original, id: 42, name: 'Acme', product: 'test toys' }];
+    expect(createHeadlineWriter(CANDIDATE)([slot({ companyId: 42, trust: 2, direction: 'up' })], cast, scriptedRng([0, 0]))).toEqual([
+      { source: 'Worker A', title: 'Acme order', body: 'More test toys ordered.' },
+    ]);
+  });
+
+  it('prefers globally unused events, then unused event/company pairs regardless of source or variant', () => {
+    const write = createHeadlineWriter(CANDIDATE);
+    const slots = [0, 1, 1, 1].map((companyId, id) => slot({ companyId, id, trust: 3, direction: 'up' }));
+    // order used by toys; drinks choose drink-only, then delivery, then order (new to drinks).
+    expect(write(slots, CAST, scriptedRng([0, 0, 0, 0, 0, 0, 0.9, 0.9])).map((words) => words.title)).toEqual([
+      'RoboPup order', 'Fizzly drinks', 'Fizzly cans', 'Fizzly bottles',
+    ]);
+    const repeated = [0, 0, 0].map((companyId, id) => slot({ companyId, id, trust: 3, direction: 'up' }));
+    expect(() => write(repeated, CAST, scriptedRng([0, 0, 0.9, 0.9, 0, 0]))).toThrow('no unused up event');
+  });
+
+  it('refuses missing company or direction capacity instead of emitting blank or incompatible words', () => {
+    const write = createHeadlineWriter(CANDIDATE);
+    expect(() => write([slot({ companyId: 99, trust: 1, direction: 'up' })], CAST, scriptedRng([0, 0]))).toThrow('not in the cast');
+    expect(() => write([slot({ companyId: 1, trust: 1, direction: 'down' })], CAST, scriptedRng([0, 0]))).toThrow('no unused down event');
+  });
+
+  it('rejects empty and malformed pool data before writing', () => {
+    expect(() => createHeadlineWriter({ ...CANDIDATE, events: [] })).toThrow('needs events');
+    expect(() => createHeadlineWriter({ ...CANDIDATE, sources: { ...CANDIDATE.sources, 1: [] } })).toThrow('needs sources');
+    const event = CANDIDATE.events[0];
+    if (event === undefined) throw new Error('missing event');
+    expect(() => createHeadlineWriter({ ...CANDIDATE, events: [event, event] })).toThrow('duplicate event');
+    expect(() => createHeadlineWriter({ ...CANDIDATE, events: [{ ...event, wordings: {} }] })).toThrow('missing wordings');
+    expect(() => createHeadlineWriter({ ...CANDIDATE, events: [{ ...event, wordings: { drinks: [{ title: ' ', body: 'Text.' }] } }] })).toThrow('empty');
+  });
+
+  it('does not mutate caller data or retain selection history between calls', () => {
+    const pool = structuredClone(CANDIDATE);
+    const slots = [slot({ trust: 3, direction: 'up' })];
+    const cast = structuredClone(CAST);
+    const before = JSON.stringify({ pool, slots, cast });
+    const write = createHeadlineWriter(pool);
+    expect(write(slots, cast, scriptedRng([0, 0]))).toEqual(write(slots, cast, scriptedRng([0, 0])));
+    expect(JSON.stringify({ pool, slots, cast })).toBe(before);
+  });
+
+  it('makes exactly two draws per slot in a whole game', () => {
+    const slots = slotsOfGame(7);
     expect(slots).toHaveLength(15);
     expect(writeHeadlines(slots, CAST, scriptedRng(script(30)))).toHaveLength(15);
     expect(() => writeHeadlines(slots, CAST, scriptedRng(script(29)))).toThrow('the script ran out of numbers');
   });
-
-  it('writes the first slot of game 7 from the first phrase and the first situation when every draw is zero', () => {
-    const first = slotsOfGame(7)[0];
-
-    // Game 7 opens with Fizzly, solid news, claiming bad news.
-    expect(first).toEqual({ id: 0, day: 1, companyId: 1, trust: 3, direction: 'down' });
-    expect(CAST[1]?.name).toBe('Fizzly');
-    expect(CAST[1]?.product).toBe('fizzy drinks');
-
-    // 0 of any count is 0, floor 0: the first source phrase of solid news, then the first bad-news situation.
-    expect(writeHeadlines(slotsOfGame(7), CAST, scriptedRng(script(30)))[0]).toEqual({
-      source: 'The company itself says',
-      title: 'Fizzly runs low on supplies',
-      body: 'Something needed to make fizzy drinks is hard to get, so fewer can be made this month.',
-    });
-  });
-
-  it('spends the first draw on the source and the second on the situation', () => {
-    // 0.99 then 0. Three wild-rumor phrases: 0.99 of 3 is 2.97, floor 2, the third phrase.
-    // Six good-news situations: 0 of 6 is 0, floor 0, the first one. Were the draws the other way
-    // round, this would be the first phrase and the last situation.
-    const [words] = writeHeadlines([slot({ trust: 1, direction: 'up' })], CAST, scriptedRng([0.99, 0]));
-
-    expect(words).toEqual({
-      source: 'A friend of a friend says',
-      title: 'RoboPup sells out everywhere',
-      body: 'Shops cannot keep robot pets on the shelves. More are being made right now.',
-    });
-  });
-
-  it('picks the phrase and the situation the two draws point at', () => {
-    // Three could-be-true phrases: 0.5 of 3 is 1.5, floor 1, the second phrase.
-    // Six bad-news situations: 0.5 of 6 is 3, floor 3, the fourth one.
-    const [words] = writeHeadlines([slot({ trust: 2, direction: 'down', companyId: 5 })], CAST, scriptedRng([0.5, 0.5]));
-
-    expect(words).toEqual({
-      source: 'A worker at the company says',
-      title: 'Low scores pile up for ZapCharge',
-      body: 'People who tried its newest super batteries are giving them low scores.',
-    });
-  });
 });
 
-describe('the choice of a situation', () => {
-  it('uses no situation twice in a game while one of its direction is still unused', () => {
-    // Six good-news slots on six companies, every draw zero: each takes the first situation still unused.
-    const slots = [0, 1, 2, 3, 4, 5].map((companyId, id) => slot({ id, day: id < 3 ? 1 : 2, companyId, trust: 1, direction: 'up' }));
-
-    const titles = writeHeadlines(slots, CAST, scriptedRng(script(12))).map((words) => words.title);
-
-    expect(titles).toEqual([
-      'RoboPup sells out everywhere',
-      'Fizzly wins a big award',
-      'JetKicks video goes viral',
-      'Giant order lands at MoonMunch',
-      'PixelPals opens a huge new factory',
-      'A famous star loves ZapCharge',
-    ]);
-  });
-
-  it('falls back to a situation this company has not had, once the game has used them all', () => {
-    // Seven good-news slots and six good-news situations. The seventh slot is JetKicks again, which had
-    // the third situation; every draw is zero, so it takes the first one it has not had itself.
-    const companies = [0, 1, 2, 3, 4, 5, 2];
-    const slots = companies.map((companyId, id) => slot({ id, day: id < 3 ? 1 : id < 6 ? 2 : 3, companyId, trust: 1, direction: 'up' }));
-
-    const titles = writeHeadlines(slots, CAST, scriptedRng(script(14))).map((words) => words.title);
-
-    expect(titles[2]).toBe('JetKicks video goes viral');
-    expect(titles[6]).toBe('JetKicks sells out everywhere');
-    expect(new Set(titles).size).toBe(7);
-  });
-
-  it('refuses a slot whose company is not in the cast', () => {
-    expect(() => writeHeadlines([slot({ trust: 3, direction: 'up', companyId: 6 })], CAST, scriptedRng([0, 0]))).toThrow(
-      'headline 0 names company 6, which is not in the cast',
-    );
-  });
-});
-
-/** The twelve titles as written in the pool, good news first. Typed in, so a changed title is a changed test. */
-const TITLES = [
-  '{name} sells out everywhere',
-  '{name} wins a big award',
-  '{name} video goes viral',
-  'Giant order lands at {name}',
-  '{name} opens a huge new factory',
-  'A famous star loves {name}',
-  '{name} runs low on supplies',
-  '{name} calls back a batch',
-  'A new rival takes on {name}',
-  'Low scores pile up for {name}',
-  '{name} delays its big launch',
-  'Factory trouble at {name}',
-];
-
-/** Words that would tell a player how a claim ends. */
-const GIVE_AWAY_WORDS = ['true', 'false', 'confirmed', 'debunked', 'fake', 'hoax', 'turns out', 'proven'];
-
-/** Plain letters, digits, spaces and ordinary punctuation: so no emoji, and no marker left behind. */
-const PLAIN_TEXT = /^[A-Za-z0-9 .,'!?:;-]+$/;
-
-/**
- * Every situation written out for every company, through the writer itself:
- * one slot, and a second draw that points at the situation. Six situations a
- * direction, so the draw for place `i` is (i + 0.5) / 6: times 6 that is
- * i + 0.5, floor i.
- */
-function everyHeadlineWrittenOut(): { company: string; title: string; body: string }[] {
-  return CAST.flatMap((company) =>
-    (['up', 'down'] as const).flatMap((direction) =>
-      [0, 1, 2, 3, 4, 5].map((place) => {
-        const [words] = writeHeadlines([slot({ trust: 3, direction, companyId: company.id })], CAST, scriptedRng([0, (place + 0.5) / 6]));
-        return { company: company.name, title: words?.title ?? '', body: words?.body ?? '' };
-      }),
-    ),
-  );
-}
-
-describe('the starter pool', () => {
-  it('holds 12 situations, 6 that claim good news and 6 that claim bad, and 3 source phrases for each trust level', () => {
-    // The floor is 5 a direction: a company has at most one headline a day, so at most 5 in a game of
-    // five days, and a company must always be left a situation it has not had. 6 keeps one in hand.
-    expect(SITUATIONS).toHaveLength(12);
-    expect(SITUATIONS.filter((situation) => situation.direction === 'up')).toHaveLength(6);
-    expect(SITUATIONS.filter((situation) => situation.direction === 'down')).toHaveLength(6);
-    expect(SOURCES[3]).toHaveLength(3);
-    expect(SOURCES[2]).toHaveLength(3);
-    expect(SOURCES[1]).toHaveLength(3);
-  });
-
-  it('carries the twelve titles word for word, and every one has a place for the company', () => {
-    expect(SITUATIONS.map((situation) => situation.title)).toEqual(TITLES);
-    for (const title of TITLES) expect(title).toContain('{name}');
-  });
-
-  it('leaves no marked place unfilled, for any of the six companies', () => {
-    const written = everyHeadlineWrittenOut();
-
-    // 6 companies, 12 situations each.
-    expect(written).toHaveLength(72);
-    expect(new Set(written.map((one) => one.title)).size).toBe(72);
-    for (const one of written) {
-      expect(one.title).toContain(one.company);
-      expect(`${one.title} ${one.body}`).not.toMatch(/[{}]/);
-    }
-  });
-
-  it('shares no title between two situations and no source phrase between two trust levels', () => {
-    const phrases = [...SOURCES[3], ...SOURCES[2], ...SOURCES[1]];
-
-    expect(new Set(SITUATIONS.map((situation) => situation.title)).size).toBe(12);
-    expect(phrases).toHaveLength(9);
-    expect(new Set(phrases).size).toBe(9);
-  });
-
-  it('is plain text that fits its card: titles 60 characters, bodies 140, sources 40', () => {
-    for (const one of everyHeadlineWrittenOut()) {
-      expect(one.title, one.title).toMatch(PLAIN_TEXT);
-      expect(one.body, one.body).toMatch(PLAIN_TEXT);
-      expect(one.title.length, one.title).toBeLessThanOrEqual(60);
-      expect(one.body.length, one.body).toBeLessThanOrEqual(140);
-    }
-    for (const phrase of [...SOURCES[3], ...SOURCES[2], ...SOURCES[1]]) {
-      expect(phrase, phrase).toMatch(PLAIN_TEXT);
-      expect(phrase.length, phrase).toBeLessThanOrEqual(40);
-    }
-  });
-
-  it('never says how a claim ends, and never spells the word the recorded game refuses', () => {
-    const texts = [
-      ...SOURCES[3],
-      ...SOURCES[2],
-      ...SOURCES[1],
-      ...everyHeadlineWrittenOut().flatMap((one) => [one.title, one.body]),
-    ].map((text) => text.toLowerCase());
-
-    for (const text of texts) {
-      for (const word of GIVE_AWAY_WORDS) expect(text.includes(word), `"${text}" holds "${word}"`).toBe(false);
-      // The recorded game is searched for these four letters in a row, in any case, and these words land in it.
-      expect(text, text).not.toMatch(/seed/);
-    }
-  });
-
-  it('is varied enough: 200 games use at least 10 of the 12 situations and all 9 phrases, and games 0 and 1 read differently', () => {
-    const names = CAST.map((company) => company.name);
-    const situationsUsed = new Set<string>();
-    const phrasesUsed = new Set<string>();
-    const titlesOf: string[][] = [];
-
-    for (let game = 0; game < 200; game += 1) {
-      const words = writeHeadlines(slotsOfGame(game), CAST, wordingStream(game));
-      titlesOf.push(words.map((entry) => entry.title));
-      for (const entry of words) {
-        phrasesUsed.add(entry.source);
-        // Back to the title as the pool writes it: the company's name out, its place back in.
-        const name = names.find((candidate) => entry.title.includes(candidate)) ?? '';
-        situationsUsed.add(entry.title.split(name).join('{name}'));
+describe('committed wording constraints', () => {
+  it('renders every kind variant as short plain text without giveaway words or substitution markers', () => {
+    for (const company of CAST) {
+      for (const direction of ['up', 'down'] as const) {
+        const events = EVENTS.filter((event) => event.direction === direction && event.kinds.includes(company.kind));
+        expect(events.length).toBeGreaterThanOrEqual(5);
+        events.forEach((event, index) => {
+          const variants = event.wordings[company.kind] ?? [];
+          expect(variants.length).toBeGreaterThan(0);
+          variants.forEach((_, variant) => {
+            const [words] = writeHeadlines([slot({ companyId: company.id, direction, trust: 3 })], CAST,
+              scriptedRng([0, (index + (variant + 0.5) / variants.length) / events.length]));
+            expect(words?.title).toContain(company.name);
+            for (const [value, limit] of [[words?.title, 60], [words?.body, 140]] as const) {
+              expect(value).toMatch(/^[A-Za-z0-9 .,'!?:;-]+$/);
+              expect(value?.length).toBeLessThanOrEqual(limit);
+              expect(value).not.toMatch(/\b(true|false|confirmed|debunked|fake|hoax|turns out|proven)\b|seed/i);
+            }
+          });
+        });
       }
     }
-
-    for (const used of situationsUsed) expect(TITLES).toContain(used);
-    expect(situationsUsed.size).toBeGreaterThanOrEqual(10);
-    expect(phrasesUsed.size).toBe(9);
-    expect(titlesOf[0]).not.toEqual(titlesOf[1]);
+    const phrases = [...SOURCES[3], ...SOURCES[2], ...SOURCES[1]];
+    expect(new Set(phrases).size).toBe(phrases.length);
+    for (const phrase of phrases) {
+      expect(phrase).toMatch(/^[A-Za-z0-9 .,'!?:;-]+$/);
+      expect(phrase.length).toBeLessThanOrEqual(40);
+      expect(phrase).not.toMatch(/\b(true|false|confirmed|debunked|fake|hoax|turns out|proven)\b|seed/i);
+    }
   });
 });
 
@@ -320,7 +219,7 @@ describe('what the words cannot give away', () => {
     // Two good-news slots, every draw zero: the first situation, then the first one the game has not used.
     // A writer that remembered an earlier game would think those two were taken and give something else.
     const slots = [slot({ id: 0, companyId: 0, trust: 3, direction: 'up' }), slot({ id: 1, companyId: 1, trust: 2, direction: 'up' })];
-    const fresh = ['RoboPup sells out everywhere', 'Fizzly wins a big award'];
+    const fresh = writeHeadlines(slots, CAST, scriptedRng(script(4))).map((words) => words.title);
 
     // Whole games are written before and in between, so there is plenty to remember.
     writeHeadlines(slotsOfGame(3), CAST, wordingStream(3));
@@ -347,7 +246,6 @@ describe('what the words cannot give away', () => {
     writeHeadlines(slotsOfGame(4), CAST, wordingStream(4));
     const again = writeHeadlines(slots, CAST, scriptedRng(draws));
 
-    expect(first[6]?.title).toBe('Giant order lands at JetKicks');
-    expect(again[6]?.title).toBe('Giant order lands at JetKicks');
+    expect(first).toEqual(again);
   });
 });

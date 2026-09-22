@@ -1,14 +1,17 @@
+// @vitest-environment jsdom
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import NewsEngineDemo, { NewsSheetView, readSheet } from '../src/lab/modules/news-engine.demo';
 import type { NewsSheet } from '../src/lab/modules/news-engine.demo';
 
 /**
  * The lab's news page, rendered to static markup from a small sheet typed in
- * here: what the page says is the same as in a browser, and these tests run
- * under node beside every other test.
+ * here, plus DOM interaction tests for its native game buttons and list identity.
  */
+
+afterEach(cleanup);
 
 const SMALL_SHEET: NewsSheet = {
   pool: {
@@ -32,6 +35,10 @@ const SMALL_SHEET: NewsSheet = {
       label: 'Game B',
       headlines: [{ day: 1, company: 'Snackbox', trust: 3, direction: 'down', source: 'The head office says', title: 'Snackbox has a poor week', body: 'Nobody wants snacks this week.' }],
     },
+    {
+      label: 'Game C',
+      headlines: [{ day: 1, company: 'Kiteworks', trust: 1, direction: 'down', source: 'A stranger says', title: 'Kiteworks delivery delay', body: 'The delivery is late.' }],
+    },
   ],
 };
 
@@ -47,6 +54,49 @@ function placeOf(text: string, needle: string): number {
 }
 
 describe('the news page of the lab', () => {
+  it('keeps same-title variants distinct without duplicate list identities', () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const sheet: NewsSheet = { ...SMALL_SHEET, pool: { ...SMALL_SHEET.pool, situations: [
+        { direction: 'up', title: '{name} order', body: 'First batch.' },
+        { direction: 'up', title: '{name} order', body: 'Second batch.' },
+      ] } };
+      const { rerender } = render(createElement(NewsSheetView, { sheet }));
+      expect(screen.getByText('First batch.').closest('li')).not.toBe(screen.getByText('Second batch.').closest('li'));
+      rerender(createElement(NewsSheetView, { sheet: { ...sheet, pool: { ...sheet.pool, situations: sheet.pool.situations.slice(1) } } }));
+      expect(screen.queryByText('First batch.')).toBeNull();
+      expect(screen.getAllByText('Second batch.')).toHaveLength(1);
+      expect(errors.mock.calls).toEqual([]);
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
+  it('switches all three games through real button clicks and updates the pressed state', () => {
+    render(createElement(NewsSheetView, { sheet: SMALL_SHEET }));
+    const titles = ['Kiteworks has a great week', 'Snackbox has a poor week', 'Kiteworks delivery delay'];
+    for (const index of [1, 2, 0]) {
+      const label = ['Game A', 'Game B', 'Game C'][index];
+      if (label === undefined) throw new Error('missing label');
+      fireEvent.click(screen.getByRole('button', { name: label }));
+      for (const [i, title] of titles.entries()) {
+        expect(screen.queryByText(title) !== null).toBe(i === index);
+      }
+      for (const button of screen.getAllByRole('button')) {
+        expect(button.getAttribute('aria-pressed')).toBe(button.textContent === label ? 'true' : 'false');
+      }
+    }
+  });
+
+  it('renders candidate-like markup only as text', () => {
+    const sheet: NewsSheet = { ...SMALL_SHEET, pool: { ...SMALL_SHEET.pool, situations: [
+      { direction: 'up', title: '<b>Title</b>', body: '<img src=x onerror=alert(1)>' },
+    ] } };
+    const { container } = render(createElement(NewsSheetView, { sheet }));
+    expect(screen.getByText('<b>Title</b>')).toBeTruthy();
+    expect(screen.getByText('<img src=x onerror=alert(1)>')).toBeTruthy();
+    expect(container.querySelector('img, b')).toBeNull();
+  });
   it('carries the id the built page is found by, and says in plain words that it runs no game code', () => {
     const markup = markupOf(SMALL_SHEET);
 

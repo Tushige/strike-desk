@@ -168,8 +168,8 @@ function PoolSituations({ situations }: { situations: readonly SheetSituation[] 
             <ul className={PLAIN_LIST}>
               {situations
                 .filter((situation) => situation.direction === side.direction)
-                .map((situation) => (
-                  <li className={CARD} key={situation.title}>
+                .map((situation, index) => (
+                  <li className={CARD} key={JSON.stringify([situation.title, situation.body, index])}>
                     <p className="text-sm font-semibold text-card-foreground">{situation.title}</p>
                     <p className="mt-1 text-sm text-muted-foreground">{situation.body}</p>
                   </li>

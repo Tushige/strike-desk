@@ -86,7 +86,8 @@ function expectThin(frame: Frame): void {
     });
   }
   expect(frame.companies.map((company) => Object.keys(company).sort())).toEqual(Array.from({ length: 6 }, () => ['name', 'ticker']));
-  expect(frame.account).toEqual({ cashCents: 100_000_000, worthCents: 100_000_000, capCents: 50_000_000, canBuy: false });
+  expect(frame.account).toEqual({ cashCents: 100_000_000, worthCents: 100_000_000, capCents: 50_000_000,
+    canBuy: frame.clock.phase === 'preBell' || frame.clock.phase === 'open' });
   if (frame.history !== undefined) {
     expect(frame.history).toHaveLength(6);
     frame.history.forEach((path, companyId) => {
@@ -458,7 +459,6 @@ describe('offerFrame and sampleSessions', () => {
 
 describe('commands this service does not take yet', () => {
   const REFUSED = [
-    { t: 'buy', commandId: 'refused-buy', day: 1, contractId: 3, spendCents: 1_000_000, seenPriceCents: 5_000 },
     { t: 'cashOut', commandId: 'refused-cashOut', positionId: 'd1' },
   ];
 

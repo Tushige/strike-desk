@@ -49,7 +49,8 @@ function expectPublicOnly(frame: Frame): void {
   if (frame.clock.phase === 'final') expect(frame.final).toMatchObject({ finalCents: 100000000, changeCents: 0 });
   else expect(frame).not.toHaveProperty('final');
   expect(frame).not.toHaveProperty('draft');
-  expect(frame.account).toEqual({ cashCents: 100000000, worthCents: 100000000, capCents: 50000000, canBuy: false });
+  expect(frame.account).toEqual({ cashCents: 100000000, worthCents: 100000000, capCents: 50000000,
+    canBuy: !frame.stress && (frame.clock.phase === 'preBell' || frame.clock.phase === 'open') });
   for (const news of frame.news) {
     expect(Object.keys(news).sort()).toEqual([
       'body', 'companyId', 'day', 'direction', 'id', ...(news.revealed ? ['revealIndex'] : []), 'revealed', 'source', 'title', 'trust',

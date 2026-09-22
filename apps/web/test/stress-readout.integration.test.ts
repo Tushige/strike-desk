@@ -111,7 +111,8 @@ it('measures real socket workload and a changing visible contract price through 
     expect(messages.some((message) => message.t === 'quotes' && message.changes.length > 0)).toBe(true);
     expect(socketCount).toBe(1);
     expect(outbound.every((message) => message.t === 'start' || message.t === 'draft')).toBe(true);
-    expect(view.queryByRole('button', { name: /Buy ticket|Cash out|Retry/ })).toBeNull();
+    expect((view.getByRole('button', { name: 'Buy ticket' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(view.queryByRole('button', { name: /Cash out|Retry/ })).toBeNull();
   } finally {
     cleanup(); feed?.close(); child.stdin.end('close\n');
     await new Promise<void>((resolve) => {

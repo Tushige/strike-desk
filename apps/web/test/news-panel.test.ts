@@ -20,6 +20,7 @@ vi.mock('../src/boot', async () => {
   const { createChartStore } = await import('../src/gameplay/chartStore');
   const { createDeskFreshness } = await import('../src/comparison/freshness');
   const { createStressMeasurements } = await import('../src/board/stressMeasurements');
+  const { createBuyFlow } = await import('../src/gameplay/buyFlow');
   const { createWsFeed } = await import('../src/feed/wsFeed');
   const { createFakeSocket } = await import('./fakeSocket');
   const socket = createFakeSocket();
@@ -32,11 +33,12 @@ vi.mock('../src/boot', async () => {
   const deskFreshness = createDeskFreshness(clock);
   const stressMeasurements = createStressMeasurements(clock);
   feed.subscribe((event) => { if (event.type === 'message') chartStore.ingest(event.message); });
+  const buyFlow = createBuyFlow(feed, deskFreshness);
   feed.connect();
   socket.fireOpen();
   bootFixture.receive = (frame) => { socket.fireMessage(JSON.stringify(frame)); };
-  bootFixture.close = () => { deskFreshness.dispose(); stressMeasurements.setActive(false); gameLoop.dispose(); feed.close(); };
-  return { store: createGameStore(), newsStore: createNewsStore(), comparisonStore: createComparisonStore(() => true), gameLoop, chartStore, deskFreshness, stressMeasurements };
+  bootFixture.close = () => { buyFlow.dispose(); deskFreshness.dispose(); stressMeasurements.setActive(false); gameLoop.dispose(); feed.close(); };
+  return { store: createGameStore(), newsStore: createNewsStore(), comparisonStore: createComparisonStore(() => true), gameLoop, chartStore, deskFreshness, stressMeasurements, buyFlow };
 });
 
 afterEach(cleanup);

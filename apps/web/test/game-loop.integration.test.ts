@@ -84,8 +84,10 @@ it.each([
     let view = render(createElement(App));
     await waitFor(() => expect(messages[0]?.t).toBe('frame'));
     expect(outbound).toEqual([]);
-    expect(view.getByText('Five trading days. Read the news, follow prices, and explore tickets.')).toBeTruthy();
-    expect(view.getByText('Ticket preview only. Buying and cashing out are not available.')).toBeTruthy();
+    expect(view.getAllByText(board === null ? 'Five trading days. Read the news, buy tickets, and see how you finish.'
+      : 'Buying is switched off while the stress test runs.').length).toBeGreaterThan(0);
+    if (board === null) expect(view.getByText('Tickets settle at the closing bell. Cashing out is not available yet.')).toBeTruthy();
+    else expect(view.queryByText('Tickets settle at the closing bell. Cashing out is not available yet.')).toBeNull();
     async function sample(ms: number): Promise<Frame> {
       const count = messages.length;
       await act(async () => {
@@ -106,7 +108,7 @@ it.each([
     const reply = messages.at(-1);
     if (reply?.t !== 'reply') throw new Error('missing start reply');
     // $1,000,000 in cents; half is available as the cap. Preview spends nothing.
-    expect(reply.frame.account).toEqual({ cashCents: 100000000, worthCents: 100000000, capCents: 50000000, canBuy: false });
+    expect(reply.frame.account).toEqual({ cashCents: 100000000, worthCents: 100000000, capCents: 50000000, canBuy: board === null });
     expect(reply.frame.leadIn?.[0]).toHaveLength(40);
     expect(reply.frame.history?.[0]).toHaveLength(1);
     expect(view.getAllByText('$1,000,000').length).toBeGreaterThanOrEqual(2);
@@ -132,7 +134,8 @@ it.each([
     expect(outbound.filter((message) => message.t === 'openBell')).toEqual([
       { t: 'openBell', day: 1, commandId: opening.receipt.commandId },
     ]);
-    expect(view.getByText('Prices are moving. Compare tickets and explore what they could pay.')).toBeTruthy();
+    expect(view.getAllByText(board === null ? 'Prices are moving. You can buy one ticket today, until the closing bell.'
+      : 'Buying is switched off while the stress test runs.').length).toBeGreaterThan(0);
     const chartFrame = await sample(400);
     const chart = view.queryByRole('img', { name: chartFrame.companies[0]?.name });
     expect(chart).not.toBeNull();
@@ -150,7 +153,9 @@ it.each([
     const repaired = await sample(1500);
     expect(chartStore.source(0).series().values).toEqual([...repaired.leadIn![0]!, ...repaired.history![0]!]);
     expect(view.queryByText('Market number')).toBeNull();
-    expect(view.queryByRole('button', { name: /Buy ticket|Cash out/ })).toBeNull();
+    const buy = view.getByRole('button', { name: 'Buy ticket' }) as HTMLButtonElement;
+    if (board !== null) expect(buy.disabled).toBe(true);
+    expect(view.queryByRole('button', { name: 'Cash out' })).toBeNull();
     expect(sockets).toBe(1);
     expect(outbound.every((message) => message.t === 'start' || message.t === 'openBell' || message.t === 'draft')).toBe(true);
     for (const day of [1, 2, 3, 4, 5]) {

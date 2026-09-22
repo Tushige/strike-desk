@@ -76,6 +76,8 @@ it.each([null, 2500])('selects and previews a live contract through boot and the
     expect(disclosure).not.toBeNull();
     expect(disclosure?.getAttribute('aria-expanded')).toBe('false');
     expect(view.queryByRole('grid', { name: 'Contracts' })).toBeNull();
+    expect(view.getAllByRole('textbox', { name: 'How much to spend' })).toHaveLength(1);
+    expect(comparisonStore.requested.get().contractId).toBeNull();
     fireEvent.click(disclosure!);
     expect(view.queryByRole('textbox', { name: 'How much to spend' })).not.toBeNull();
     expect(view.queryByRole('combobox', { name: 'Company' })).not.toBeNull();
@@ -130,7 +132,9 @@ it.each([null, 2500])('selects and previews a live contract through boot and the
     expect((view.getByRole('combobox', { name: 'Company' }) as HTMLSelectElement).value).toBe('1');
     expect(comparisonStore.requested.get()).toEqual({ contractId: 0, spendCents: 100050 });
     fireEvent.click(disclosure!);
-    expect(view.queryByRole('textbox', { name: 'How much to spend' })).toBeNull();
+    expect(view.getByRole('textbox', { name: 'How much to spend' })).toBe(input);
+    expect(view.queryByRole('grid', { name: 'Contracts' })).toBeNull();
+    expect(view.queryByRole('combobox', { name: 'Company' })).toBeNull();
     expect(input.isConnected).toBe(true);
     fireEvent.click(disclosure!);
     expect(view.getByRole('textbox', { name: 'How much to spend' })).toBe(input);
@@ -204,8 +208,8 @@ it.each([null, 2500])('selects and previews a live contract through boot and the
         current.priceCents >= quoted.minTicketCents && current.priceCents <= quoted.account.cashCents && current.priceCents <= quoted.account.capCents &&
         decodeContractId(quoted.board!.targetsPerCompany, current.contractId).targetIndex >= quoted.board!.companies[1]!.lowestUpIndex)).toBe(true);
     });
-    // The preview release deliberately cannot buy; this does not make every ticket unaffordable.
-    expect(quoted.account.canBuy).toBe(false);
+    // Permission is independent of affordability: stress disables all buys.
+    expect(quoted.account.canBuy).toBe(board === null);
     const filterCell = grid.querySelector('.ag-cell')!;
     fireEvent.focusIn(filterCell);
     expect(view.getByText('Sorting and filters paused')).toBeTruthy();
@@ -286,6 +290,7 @@ it.each([null, 2500])('selects and previews a live contract through boot and the
       fireEvent.click(affordable);
     }
 
+    fireEvent.click(within(companies).getAllByRole('button')[0]!);
     const downChoices = view.getByRole('group', { name: 'DOWN ticket. Pays if the price ends below the target' });
     fireEvent.click(within(downChoices).getByRole('button', { name: /^Close/ }));
     expect(view.getByRole('img', { name: quoted.companies[0]!.name })).toBeTruthy();
@@ -326,7 +331,67 @@ it.each([null, 2500])('selects and previews a live contract through boot and the
     expect(makeFeed).toHaveBeenCalledTimes(1);
     expect(outbound.some((message) => message.t === 'buy' || message.t === 'cashOut')).toBe(false);
     expect(outbound.every((message) => message.t === 'start' || message.t === 'draft')).toBe(true);
-    expect(view.queryByRole('button', { name: /Buy ticket|Cash out|Retry safely/ })).toBeNull();
+    expect(view.getAllByRole('button', { name: 'Buy ticket' })).toHaveLength(1);
+    if (board !== null) expect((view.getByRole('button', { name: 'Buy ticket' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(view.queryByRole('button', { name: /Cash out|Retry safely/ })).toBeNull();
+    if (board === null) {
+      // The preceding browsing route sends no trades. Each buy below needs
+      // a deliberate press, first before the bell and then on the next open day.
+      fireEvent.click(view.getByRole('button', { name: 'Compare options' }));
+      for (const day of [2, 3]) {
+        const currentPanel = view.getByRole('region', { name: 'Your ticket' });
+        const currentSpend = within(currentPanel).getByRole<HTMLInputElement>('textbox', { name: 'How much to spend' });
+        expect(currentSpend.value).toBe('');
+        if (day === 3) {
+          expect(comparisonStore.requested.get().contractId).toBeNull();
+          fireEvent.click(view.getByRole('button', { name: 'Ring the opening bell' }));
+          await view.findByRole('heading', { name: 'Day 3: the market is open' });
+        }
+        fireEvent.click(within(currentPanel).getAllByRole('button', { name: /^Close/ })[0]!);
+        fireEvent.change(currentSpend, { target: { value: '1000' } });
+        await waitFor(() => expect(outbound.at(-1)).toMatchObject({ t: 'draft', spendCents: 100000 }), { timeout: 2500 });
+        const quotedBuy = await sample(2000);
+        const expected = quotedBuy?.draft?.ticket;
+        expect(expected).toBeDefined();
+        expect(view.queryByRole('grid', { name: 'Contracts' })).toBeNull();
+        const buy = within(currentPanel).getByRole<HTMLButtonElement>('button', { name: 'Buy ticket' });
+        expect(buy.disabled).toBe(false);
+        fireEvent.click(buy);
+        expect(within(currentPanel).getByRole('status').textContent).toBe('Pending...');
+        await waitFor(() => expect(within(currentPanel).getByRole('status').textContent).toBe('Accepted. The ticket is yours.'));
+        const result = messages.at(-1);
+        if (result?.t !== 'reply' || result.receipt.kind !== 'buy') throw new Error('missing purchase receipt');
+        const position = result.frame.positions.find((item) => item.day === day)!;
+        expect(position).toMatchObject({ entryPriceCents: expected!.priceCents, quantity: expected!.quantity, costCents: expected!.costCents });
+        expect(within(currentPanel).getByText('Bought for').nextElementSibling?.textContent).toBe(formatCents(position.costCents));
+        expect(within(currentPanel).queryByRole('textbox')).toBeNull();
+        expect(view.queryByRole('button', { name: 'Buy ticket' })).toBeNull();
+        expect(view.queryByRole('button', { name: 'Cash out' })).toBeNull();
+        fireEvent.click(view.getByRole('button', { name: 'Compare options' }));
+        expect(await view.findByRole('grid', { name: 'Contracts' })).toBeTruthy();
+        fireEvent.click(within(view.getByRole('list', { name: 'Companies' })).getAllByRole('button')[1]!);
+        expect(view.getByRole('img', { name: result.frame.companies[1]!.name })).toBeTruthy();
+        expect(view.getByRole('region', { name: 'Your ticket' })).toBe(currentPanel);
+        fireEvent.click(view.getByRole('button', { name: 'Compare options' }));
+        if (day === 2) {
+          fireEvent.click(view.getByRole('button', { name: 'Ring the opening bell' }));
+          await view.findByRole('heading', { name: 'Day 2: the market is open' });
+          await sample(2000);
+          fireEvent.click(view.getByRole('button', { name: 'Skip to the closing bell' }));
+          await view.findByRole('heading', { name: 'Day 2: closing bell' });
+          const bell = messages.at(-1);
+          if (bell?.t !== 'reply') throw new Error('missing bell result');
+          const settled = bell.frame.positions.find((item) => item.day === 2)!;
+          expect(within(currentPanel).getByText('Paid at the bell').nextElementSibling?.textContent).toBe(formatCents(settled.exit!.proceedsCents));
+          expect(within(currentPanel).getByText('Profit or loss').nextElementSibling?.textContent).toBe(`${settled.profitCents > 0 ? '+' : ''}${formatCents(settled.profitCents)}`);
+          fireEvent.click(view.getByRole('button', { name: 'Go to day 3' }));
+          await view.findByRole('heading', { name: 'Day 3: before the bell' });
+        }
+      }
+      expect(outbound.filter((message) => message.t === 'buy')).toHaveLength(2);
+      expect(outbound.some((message) => message.t === 'cashOut')).toBe(false);
+      expect(sockets).toBe(1);
+    }
   } finally {
     cleanup();
     unsubscribe();

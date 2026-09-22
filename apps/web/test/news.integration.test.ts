@@ -95,7 +95,7 @@ it.each([null, 2500])('boot delivers three actual headlines beside the mounted l
     expect(new Set(reply.frame.news.map((news) => news.companyId)).size).toBe(3);
     expect(reply.receipt).toMatchObject({ kind: 'start', outcome: 'accepted' });
     // $1,000,000 × 100 cents, with half available as the spending cap.
-    expect(reply.frame.account).toEqual({ cashCents: 100000000, worthCents: 100000000, capCents: 50000000, canBuy: false });
+    expect(reply.frame.account).toEqual({ cashCents: 100000000, worthCents: 100000000, capCents: 50000000, canBuy: board === null });
     expect(newsStore.getSnapshot().news).toHaveLength(3);
     for (const news of reply.frame.news) {
       const button = await view.findByRole('button', { name: news.title });

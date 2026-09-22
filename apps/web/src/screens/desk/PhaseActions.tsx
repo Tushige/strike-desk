@@ -23,11 +23,11 @@ function useSend(): [boolean, (send: () => Promise<unknown>) => void] {
   return [busy, run];
 }
 
-export function OpeningBellButton({ frame }: { frame: Frame }) {
+export function OpeningBellButton({ frame, compact = false }: { frame: Frame; compact?: boolean }) {
   const [busy, run] = useSend();
   return (
     <GhostButton
-      className="h-11"
+      className={compact ? 'h-10 text-[13px]' : 'h-11'}
       disabled={busy}
       onClick={() => {
         run(() => ringOpeningBell(frame.clock.day));
@@ -38,12 +38,12 @@ export function OpeningBellButton({ frame }: { frame: Frame }) {
   );
 }
 
-export function SkipToBellButton({ frame }: { frame: Frame }) {
+export function SkipToBellButton({ frame, compact = false }: { frame: Frame; compact?: boolean }) {
   const [busy, run] = useSend();
   return (
     <GhostButton
-      tone="sun"
-      className="h-14"
+      tone={compact ? 'line' : 'sun'}
+      className={compact ? 'h-10 text-[13px]' : 'h-14 short:h-12'}
       disabled={busy}
       onClick={() => {
         run(() => skipToClosingBell(frame.clock.day));

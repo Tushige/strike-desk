@@ -1,12 +1,14 @@
 import { useState } from 'react';
-import type { Frame } from '@strike-desk/shared/protocol';
+import type { Frame, Side } from '@strike-desk/shared/protocol';
 import { usePrice, useSeries } from '../../store/hooks';
 import { clock, percentChange, price, secondsFor } from '../format';
+import { TicketPanel } from '../ticket/TicketPanel';
 import { Bulb, CompanyTile, cx, Label } from '../ui';
 import { NewsCard, QuietCompany } from './NewsCard';
+import { companyOf, contractFor, contractIdFor, NO_PICK, pickFromTable } from './pick';
+import type { Pick } from './pick';
 import { PriceChart } from './PriceChart';
 import type { TargetLines } from './PriceChart';
-import { TicketPanel } from './TicketPanel';
 import { headlineFor, ticketToday, tipFor, twistShowing } from './tips';
 
 /**
@@ -20,11 +22,21 @@ import { headlineFor, ticketToday, tipFor, twistShowing } from './tips';
 
 const PHASE_LABEL = { preBell: 'Market opens in', open: 'Closing bell in', debrief: 'Next day in', lobby: '', final: '' } as const;
 
-/** The lines the chart draws for the ticket the player holds today, when it is on this company. */
-function targetFor(frame: Frame, companyId: number): TargetLines | null {
+/**
+ * The lines the chart draws: the ticket the player holds today when it is on
+ * this company, otherwise the ticket being built. The break-even of a draft
+ * is the server's own number for that contract, sent with every frame.
+ */
+function targetFor(frame: Frame, companyId: number, draftContractId: number | null): TargetLines | null {
   const ticket = ticketToday(frame);
-  if (ticket === null || ticket.companyId !== companyId) return null;
-  return { side: ticket.side, targetCents: ticket.targetCents, breakEvenCents: ticket.breakEvenCents };
+  if (ticket !== null) {
+    if (ticket.companyId !== companyId) return null;
+    return { side: ticket.side, targetCents: ticket.targetCents, breakEvenCents: ticket.breakEvenCents };
+  }
+  const draft = contractFor(frame, draftContractId);
+  const breakEvenCents = draftContractId === null ? undefined : frame.quoteBreakEvens[draftContractId];
+  if (draft === null || breakEvenCents === undefined) return null;
+  return { side: draft.side, targetCents: draft.targetCents, breakEvenCents };
 }
 
 function CompanyHeader({ frame, companyId }: { frame: Frame; companyId: number }) {
@@ -60,6 +72,27 @@ export function Desk({ frame }: { frame: Frame }) {
   const select = (companyId: number): void => {
     setChoice({ day, companyId });
   };
+
+  // The ticket being built: a side and a simple choice that follow the
+  // player from company to company, or an exact row from the table.
+  const [pickState, setPickState] = useState<{ day: number; pick: Pick }>({ day, pick: NO_PICK });
+  const pick = pickState.day === day ? pickState.pick : NO_PICK;
+  const setPick = (next: Pick): void => {
+    setPickState({ day, pick: next });
+  };
+  const chooseSide = (side: Side): void => {
+    setPick({ side, choice: pick.choice ?? 'close', contractId: null });
+  };
+  const chooseChoice = (simple: Pick['choice']): void => {
+    setPick({ side: pick.side ?? 'up', choice: simple, contractId: null });
+  };
+  const pickContract = (contractId: number): void => {
+    setPick(pickFromTable(frame, contractId));
+    const company = companyOf(frame, contractId);
+    if (company !== null) select(company);
+  };
+  const draftContractId = contractIdFor(frame, selected, pick);
+  const contract = contractFor(frame, draftContractId);
 
   const picking = frame.clock.phase === 'preBell';
   const ticket = ticketToday(frame);
@@ -124,7 +157,7 @@ export function Desk({ frame }: { frame: Frame }) {
           </div>
         </div>
 
-        <PriceChart frame={frame} companyId={selected} target={targetFor(frame, selected)} ticket={ticket} twist={twist} />
+        <PriceChart frame={frame} companyId={selected} target={targetFor(frame, selected, draftContractId)} ticket={ticket} twist={twist} />
 
         <div className="flex min-h-16 items-center gap-3.5 rounded-2xl bg-raised px-[18px] py-3">
           <Bulb className="size-[26px] shrink-0 text-sun" />
@@ -133,7 +166,15 @@ export function Desk({ frame }: { frame: Frame }) {
       </section>
 
       <section className="flex flex-col rounded-3xl border border-line bg-panel p-6 lg:w-[380px] lg:shrink-0 lg:overflow-y-auto" aria-label="Your ticket">
-        <TicketPanel frame={frame} companyId={selected} />
+        <TicketPanel
+          frame={frame}
+          companyId={selected}
+          contract={contract}
+          pick={pick}
+          onPick={pickContract}
+          onChooseSide={chooseSide}
+          onChooseChoice={chooseChoice}
+        />
       </section>
     </main>
   );

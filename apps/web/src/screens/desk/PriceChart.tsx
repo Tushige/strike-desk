@@ -165,13 +165,13 @@ export function PriceChart({
             <>
               <span
                 className={cx('absolute right-3 rounded-[10px] px-2.5 py-1 text-[13px] font-bold text-ink', target.side === 'up' ? 'bg-mint' : 'bg-coral')}
-                style={{ top: target.side === 'up' ? targetY - 32 : targetY + 8 }}
+                style={{ top: target.side === 'up' ? targetY + 6 : targetY - 32 }}
               >
                 Target {price(target.targetCents)}
               </span>
               <span
                 className={cx('absolute right-3 text-[12px] font-semibold', target.side === 'up' ? 'text-mint/80' : 'text-coral/80')}
-                style={{ top: target.side === 'up' ? breakEvenY - 24 : breakEvenY + 8 }}
+                style={{ top: target.side === 'up' ? breakEvenY - 22 : breakEvenY + 6 }}
               >
                 Break-even {price(target.breakEvenCents)}
               </span>

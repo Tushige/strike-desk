@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { CONTENT_VERSION } from '../src/market';
+import { CAST } from '../src/cast';
 import { EVENTS, SOURCES, SITUATIONS } from '../src/news';
 import type { NewsPool } from '../src/news';
 
@@ -14,10 +15,31 @@ function digest(pool: NewsPool): string {
   })).digest('hex');
 }
 
-const PINNED = { content: 'c2', digest: 'b63f117cb6d6126e2edd41c0b5932bc812d9e612635188decb34d0c558facf72' };
+const PINNED = { content: 'c3', digest: '3221bb475bdab91b95db5b9a8e631f00902defee7cb873c5b631c0313e50b753' };
 const RE_PIN = 'News content changed: bump CONTENT_VERSION and re-pin its digest together with the recording and sheet in one content revision.';
 
 describe('news content identity', () => {
+  it('supplies full-game variety and five-event capacity for every company kind and direction', () => {
+    expect(EVENTS.length).toBeGreaterThanOrEqual(25);
+    expect(EVENTS.length).toBeLessThanOrEqual(30);
+    const situations = EVENTS.reduce((count, event) => count + CAST.filter((company) => event.kinds.includes(company.kind)).length, 0);
+    expect(situations).toBeGreaterThanOrEqual(60);
+    expect(situations).toBeLessThanOrEqual(100);
+    for (const trust of [3, 2, 1] as const) {
+      expect(SOURCES[trust].length).toBeGreaterThanOrEqual(4);
+      expect(SOURCES[trust].length).toBeLessThanOrEqual(5);
+    }
+    for (const event of EVENTS) for (const kind of event.kinds) {
+      const variants = event.wordings[kind];
+      expect(variants?.length, `${event.id}/${kind}`).toBeGreaterThanOrEqual(2);
+      expect(variants?.length, `${event.id}/${kind}`).toBeLessThanOrEqual(3);
+    }
+    for (const kind of new Set(CAST.map((company) => company.kind))) for (const direction of ['up', 'down']) {
+      expect(EVENTS.filter((event) => event.direction === direction && event.kinds.includes(kind)).length,
+        `${kind}/${direction}`).toBeGreaterThanOrEqual(5);
+    }
+  });
+
   it('pins every source and event variant to its content version', () => {
     expect(CONTENT_VERSION, RE_PIN).toBe(PINNED.content);
     expect(digest({ sources: SOURCES, events: EVENTS }), RE_PIN).toBe(PINNED.digest);

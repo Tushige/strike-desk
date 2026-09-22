@@ -36,8 +36,21 @@ interface WritableSlice<T> extends Slice<T> {
 export type RowSink = (rows: readonly ContractRow[]) => void;
 type RequestedDraft = Pick<DraftMessage, 'contractId' | 'spendCents'>;
 
+type QuoteValues = Pick<ContractRow, 'contractId' | 'priceCents' | 'realCents' | 'hopeCents' | 'breakEvenCents'>;
+export type QuoteObservation = QuoteValues & { priceChanged: boolean };
+export type IngestResult = { accepted: false } | {
+  accepted: true;
+  kind: 'frame' | 'quotes';
+  session: string;
+  day: number;
+  phase: Frame['clock']['phase'];
+  stress: boolean;
+  boardReplaced: boolean;
+  quoteChanges: readonly QuoteObservation[];
+};
+
 export interface GameStore {
-  ingest(message: ServerMessage): void;
+  ingest(message: ServerMessage): IngestResult;
   setStatus(status: FeedStatus): void;
   setRequestedDraft(draft: RequestedDraft): void;
   price(companyId: number): Slice<number | null>;
@@ -118,6 +131,16 @@ function boardSignatureOf(frame: Frame, board: NonNullable<Frame['board']>): str
 const NO_ROWS: readonly ContractRow[] = [];
 const NO_COMPANIES: readonly CompanyView[] = [];
 
+function quoteChanged(before: QuoteValues, after: QuoteValues): boolean {
+  return before.priceCents !== after.priceCents || before.realCents !== after.realCents ||
+    before.hopeCents !== after.hopeCents || before.breakEvenCents !== after.breakEvenCents;
+}
+
+function observation(row: ContractRow, before: ContractRow): QuoteObservation {
+  return { contractId: row.contractId, priceCents: row.priceCents, realCents: row.realCents,
+    hopeCents: row.hopeCents, breakEvenCents: row.breakEvenCents, priceChanged: row.priceCents !== before.priceCents };
+}
+
 export function createGameStore(companyCount = 6): GameStore {
   const prices = Array.from({ length: companyCount }, () => createSlice<number | null>(null));
   const phase = createSlice('');
@@ -141,6 +164,8 @@ export function createGameStore(companyCount = 6): GameStore {
   let heldDay = 0;
   let heldMinTicketCents = 0;
   let heldBuyable = false;
+  let heldPhase: Frame['clock']['phase'] = 'lobby';
+  let heldStress = false;
   let requested: RequestedDraft = { contractId: null, spendCents: null };
 
   function setRequestedDraft(draft: RequestedDraft): void {
@@ -163,23 +188,22 @@ export function createGameStore(companyCount = 6): GameStore {
     return slice;
   }
 
-  function ingest(message: ServerMessage): void {
+  function ingest(message: ServerMessage): IngestResult {
     if (message.t === 'error') {
       if (message.code === 'noSession') sessionGone.set(true);
-      return;
+      return { accepted: false };
     }
 
     if (message.t === 'quotes') {
-      ingestQuotes(message);
-      return;
+      return ingestQuotes(message);
     }
 
     const frame = frameOf(message);
-    if (frame === null) return;
+    if (frame === null) return { accepted: false };
 
     if (!isNewerFrame(held, frame)) {
       counters.dropped += 1;
-      return;
+      return { accepted: false };
     }
     // A session we have not seen before is a game of its own: whatever was
     // said about the last one no longer applies.
@@ -196,7 +220,11 @@ export function createGameStore(companyCount = 6): GameStore {
       prices[companyId]?.set(frame.prices[companyId] ?? null);
     }
     if (!sameCompanies(companies.get(), frame.companies)) companies.set(frame.companies);
-    ingestBoard(frame);
+    heldPhase = frame.clock.phase;
+    heldStress = frame.stress;
+    const boardResult = ingestBoard(frame);
+    return { accepted: true, kind: 'frame', session: frame.session, day: heldDay,
+      phase: heldPhase, stress: heldStress, ...boardResult };
   }
 
   /**
@@ -217,10 +245,10 @@ export function createGameStore(companyCount = 6): GameStore {
    * saw a picture for would leave the ordering triple ahead of what is on
    * screen, which is the one thing the revision trigger exists to prevent.
    */
-  function ingestQuotes(message: QuotesMessage): void {
+  function ingestQuotes(message: QuotesMessage): IngestResult {
     if (held === null || held.session !== message.session || message.rev !== held.rev || message.day !== heldDay || !isNewerFrame(held, message)) {
       counters.dropped += 1;
-      return;
+      return { accepted: false };
     }
     held = { session: message.session, rev: message.rev, step: message.step };
     counters.accepted += 1;
@@ -230,6 +258,7 @@ export function createGameStore(companyCount = 6): GameStore {
     }
 
     const changed: ContractRow[] = [];
+    const quoteChanges: QuoteObservation[] = [];
     for (const change of message.changes) {
       const id = change[0];
       const row = rowsById[id];
@@ -238,14 +267,16 @@ export function createGameStore(companyCount = 6): GameStore {
       if (row === undefined) continue;
       const next = applyQuoteChange(row, change, { buyable: heldBuyable, minTicketCents: heldMinTicketCents });
       if (next === null) continue;
+      if (quoteChanged(row, next)) quoteChanges.push(observation(next, row));
       rowsById[id] = next;
       changed.push(next);
     }
-    if (changed.length === 0 || rowSink === null) return;
-    rowSink(changed);
+    if (changed.length > 0) rowSink?.(changed);
+    return { accepted: true, kind: 'quotes', session: message.session, day: heldDay,
+      phase: heldPhase, stress: heldStress, boardReplaced: false, quoteChanges };
   }
 
-  function ingestBoard(frame: Frame): void {
+  function ingestBoard(frame: Frame): { boardReplaced: boolean; quoteChanges: readonly QuoteObservation[] } {
     heldDay = frame.clock.day;
     heldMinTicketCents = frame.minTicketCents;
     // Too cheap to trade is a statement about buying, so it applies only
@@ -254,11 +285,12 @@ export function createGameStore(companyCount = 6): GameStore {
     heldBuyable = frame.clock.phase === 'preBell' || frame.clock.phase === 'open';
     const board = frame.board;
     if (board === null) {
+      const boardReplaced = boardSignature !== '';
       boardSignature = '';
       rowsById = [];
       rowOrder = [];
       boardRows.set(NO_ROWS);
-      return;
+      return { boardReplaced, quoteChanges: [] };
     }
 
     const input: RowInput = {
@@ -285,13 +317,18 @@ export function createGameStore(companyCount = 6): GameStore {
       rowOrder = rows.map((row) => row.contractId);
       for (const row of rows) rowsById[row.contractId] = row;
       boardRows.set(rows);
-      return;
+      return { boardReplaced: true, quoteChanges: [] };
     }
 
     const changed = changedRows(rowsById, input);
-    if (changed.length === 0) return;
-    for (const row of changed) rowsById[row.contractId] = row;
-    if (rowSink !== null) rowSink(changed);
+    const quoteChanges: QuoteObservation[] = [];
+    for (const row of changed) {
+      const before = rowsById[row.contractId];
+      if (before !== undefined && quoteChanged(before, row)) quoteChanges.push(observation(row, before));
+      rowsById[row.contractId] = row;
+    }
+    if (changed.length > 0) rowSink?.(changed);
+    return { boardReplaced: false, quoteChanges };
   }
 
   function setRowSink(sink: RowSink | null): void {

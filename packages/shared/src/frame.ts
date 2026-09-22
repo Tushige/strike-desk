@@ -105,7 +105,7 @@ export function projectFrame(market: Market, game: GameState, playerId: string, 
   const live = options.sections === 'live';
   const started = game.pace !== null;
   // Field by field: a field added to a company later never reaches the wire by default.
-  const companies: CompanyView[] = market.cast.map((company) => ({ ticker: company.ticker, name: company.name }));
+  const companies: CompanyView[] = market.cast.map((company) => ({ ticker: company.ticker, name: company.name, product: company.product }));
   const receipts = live ? [] : player.receipts.slice(-FRAME_RECEIPTS);
   const days = live
     ? []

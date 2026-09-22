@@ -215,6 +215,8 @@ export type NewsView = z.infer<typeof newsViewSchema>;
 export const companyViewSchema = z.object({
   ticker: z.string(),
   name: z.string(),
+  /** What the company makes, for the news cards: "robot pets". */
+  product: z.string().optional(),
 });
 export type CompanyView = z.infer<typeof companyViewSchema>;
 

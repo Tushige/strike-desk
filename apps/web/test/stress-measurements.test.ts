@@ -4,8 +4,6 @@ import { createElement } from 'react';
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { Frame, ServerMessage } from '@strike-desk/shared/protocol';
-import { createWsFeed } from '../src/feed/wsFeed';
-import type { WsFeedOptions } from '../src/feed/wsFeed';
 import { createSocketFactory, testFrame } from './fakeSocket';
 import { createStressMeasurements } from '../src/board/stressMeasurements';
 import type { IngestResult } from '../src/store/gameStore';
@@ -14,8 +12,8 @@ const stops: (() => void)[] = [];
 afterEach(() => {
   cleanup();
   stops.splice(0).forEach((stop) => { stop(); });
-  vi.doUnmock('../src/feed/wsFeed');
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   vi.useRealTimers();
   window.sessionStorage.clear();
 });
@@ -33,12 +31,10 @@ async function board() {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 800, 500));
   const sockets = createSocketFactory();
-  vi.doMock('../src/feed/wsFeed', () => ({ createWsFeed: (options: WsFeedOptions) => {
-    const feed = createWsFeed({ ...options, createSocket: (url) => sockets.create(url) });
-    stops.push(() => { feed.close(); });
-    return feed;
-  } }));
+  // Boot names the socket constructor once; a fake stands in for it here.
+  vi.stubGlobal('WebSocket', function FakeWebSocket(url: string) { return sockets.create(url); });
   const boot = await import('../src/boot');
+  stops.push(() => { boot.connection.close(); });
   const { ContractBoard } = await import('../src/board/ContractBoard');
   const view = render(createElement(ContractBoard, { selectedId: null, onSelect: () => {}, filter: null, isHighlighted: () => false }));
   act(() => { sockets.last().fireOpen(); });

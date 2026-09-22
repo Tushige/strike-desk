@@ -1,29 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { parseServerMessage } from '@strike-desk/shared/protocol';
-import { createWsFeed } from '../src/feed/wsFeed';
 import { createFakeTransport, fakeFrameText } from '../src/modules/connection/fake';
 import { createConnection } from '../src/modules/connection/index';
 import { describeFeedContract } from './contracts/feed.contract';
 
 /**
- * The feed the page runs on, tried against what any feed must do, over a
- * transport driven entirely by hand.
- */
-describeFeedContract('the page feed', (seam) =>
-  createWsFeed({
-    url: seam.url,
-    createSocket: seam.createSocket,
-    storage: seam.storage,
-    schedule: seam.schedule,
-    random: seam.random,
-    now: seam.now,
-  }),
-);
-
-/**
- * The connection is a feed too, and has to be one in full: the same cases,
- * over the same hand-driven transport. It never resends by itself here, so
- * every text a socket holds is one the case asked for.
+ * The connection is the feed the page runs on, and has to be one in full:
+ * every case any feed must pass, over a transport driven entirely by hand.
+ * It never resends by itself here, so every text a socket holds is one the
+ * case asked for.
  */
 describeFeedContract('the connection', (seam) =>
   createConnection({ seam, sessionKey: 'test.session', resendOnResume: () => false }),

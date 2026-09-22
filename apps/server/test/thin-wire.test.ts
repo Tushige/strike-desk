@@ -145,7 +145,7 @@ function thinAt(where: string): Record<string, unknown> {
     breakEvenCount: started ? CONTRACTS : 0,
     everyQuoteIsWholeCentsFromZero: true,
     quotesThatAreNotRealPlusHope: [],
-    companyKeys: Array.from({ length: COMPANIES }, () => 'name,ticker'),
+    companyKeys: Array.from({ length: COMPANIES }, () => 'name,product,ticker'),
     newsCount: started ? 3 : 0,
     positions: [],
     receipts: started ? [{ kind: 'start', step: 0, outcome: 'accepted' }] : [],

@@ -15,7 +15,7 @@ import type { CompanyKind, EventType, HeadlineSlot, HeadlineText, NewsPool, Rng,
  *
  *   pnpm --filter @strike-desk/server exec tsx scripts/news-sheet.ts
  *
- * It writes apps/web/src/lab/modules/news-engine.sheet.json. Run it again
+ * It writes apps/server/test/fixtures/news-engine.sheet.json. Run it again
  * after the pool or the writer changes: a test compares the committed file
  * with what `buildSheet` gives today, and fails when they differ.
  *
@@ -34,7 +34,7 @@ const SAMPLE_GAMES = [
   { label: 'Game C', market: 3303 },
 ] as const;
 
-const OUTPUT = fileURLToPath(new URL('../../web/src/lab/modules/news-engine.sheet.json', import.meta.url));
+const OUTPUT = fileURLToPath(new URL('../test/fixtures/news-engine.sheet.json', import.meta.url));
 
 export interface SheetHeadline {
   day: number;

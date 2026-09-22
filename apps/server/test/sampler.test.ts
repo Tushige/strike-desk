@@ -85,7 +85,7 @@ function expectThin(frame: Frame): void {
       expect({ id, sum: (frame.quoteReals[id] ?? NaN) + (frame.quoteHopes[id] ?? NaN) }).toEqual({ id, sum: price });
     });
   }
-  expect(frame.companies.map((company) => Object.keys(company).sort())).toEqual(Array.from({ length: 6 }, () => ['name', 'ticker']));
+  expect(frame.companies.map((company) => Object.keys(company).sort())).toEqual(Array.from({ length: 6 }, () => ['name', 'product', 'ticker']));
   expect(frame.account).toEqual({ cashCents: 100_000_000, worthCents: 100_000_000, capCents: 50_000_000,
     canBuy: frame.clock.phase === 'preBell' || frame.clock.phase === 'open' });
   if (frame.history !== undefined) {

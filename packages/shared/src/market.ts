@@ -28,7 +28,7 @@ export const ENGINE_VERSION = 'e4';
  * long as this label holds. `packages/shared/test/cast.test.ts` pins a digest
  * of the cast against it, so a cast edit that forgets the bump fails there.
  */
-export const CONTENT_VERSION = 'c2';
+export const CONTENT_VERSION = 'c3';
 
 /**
  * What names a market. The same identity always gives the same market, so

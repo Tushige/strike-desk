@@ -34,7 +34,7 @@ export function snapshotOf(props: OrderTicketProps): TicketSnapshot {
     contract: props.contract,
     quote: props.quote.get(),
     account: props.account.get(),
-    position: props.mode === 'buy' ? null : props.position.get(),
+    position: props.mode === 'buy' ? props.cashOut?.position.get() ?? null : props.position.get(),
     line: props.line,
   };
 }
@@ -80,9 +80,8 @@ export function createTicketHandlers(source: TicketHandlerSource): TicketHandler
       if (press === null) return;
       source.send(press.event);
       const { commandId } = press.command;
-      if (now.mode === 'buy' && press.command.t !== 'buy') return;
-      const outcome = now.mode === 'buy' && press.command.t === 'buy' ? now.submit(press.command)
-        : now.mode !== 'buy' ? now.submit(press.command) : null;
+      const outcome = now.mode !== 'buy' ? now.submit(press.command)
+        : press.command.t === 'buy' ? now.submit(press.command) : now.cashOut?.submit(press.command) ?? null;
       if (outcome === null) return;
       void outcome.then((outcome) => {
         source.send({ type: 'outcome', commandId, outcome });

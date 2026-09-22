@@ -53,7 +53,8 @@ function DayComparison({ comparison, game, overview, companyFocus, onContractCom
   const line = useSyncExternalStore(freshness.subscribe, readLine);
   const availabilitySlice = buy?.availability ?? NO_BUY;
   const availability = useSyncExternalStore(availabilitySlice.subscribe, availabilitySlice.get);
-  const buyActions = useMemo(() => buy === undefined ? null : { submit: buy.submit.bind(buy), retry: buy.retry.bind(buy) }, [buy]);
+  const buyActions = useMemo(() => buy === undefined ? null : { submit: buy.submit.bind(buy), retry: buy.retry.bind(buy),
+    cashOut: { position: buy.cashOutPosition, submit: buy.submitCashOut.bind(buy) } }, [buy]);
   const subscribeRows = useCallback((listener: () => void) => game.boardRows.subscribe(listener), [game]);
   const readRows = useCallback(() => game.boardRows.get(), [game]);
   const rows = useSyncExternalStore(subscribeRows, readRows);
@@ -162,6 +163,7 @@ function DayComparison({ comparison, game, overview, companyFocus, onContractCom
     <div className="min-h-0 overflow-y-auto sm:col-start-2">
       {buy === undefined ? <OrderTicket mode="preview" {...ticketProps} />
         : <OrderTicket mode="buy" {...ticketProps} submit={buyActions!.submit} newCommandId={newCommandId}
+          cashOut={buyActions!.cashOut}
           transaction={buy.transaction} purchase={buy.purchase} retryOffered={availability?.retryAllowed ?? false} onRetry={buyActions!.retry} />}
     </div>
     </div>

@@ -6,11 +6,20 @@ import { createDraftPacer } from './draftPacer';
 import { createLatestState, createTicketHandlers } from './handlers';
 import { breakEvenStopIndex, buyBlocker, cashOutBlocker, commandKindOf, initialTicketState, quoteEchoes, retryAllowed, stopAt, ticketReducer } from './machine';
 import type { CommandKind, TicketNotice, TicketSnapshot, TicketState } from './machine';
-import type { BuyPurchase, BuyTransaction, OpenTicket, OrderTicketProps, ReadSlice, SimpleChoice, TicketAccount, TicketContract, TicketDraft, TicketPreviewProps, TicketQuote } from './ports';
+import type { BuyPurchase, BuyTransaction, OpenTicket, OrderTicketProps, ReadSlice, SimpleChoice, TicketAccount, TicketContract, TicketDraft, TicketPreviewProps, TicketQuote, TradeNoticeProps } from './ports';
 import {
   ACCEPTED_WORDS,
   BOUGHT_FOR_LABEL,
   BELL_PAID_LABEL,
+  CASHED_OUT_WORDS,
+  CASHED_OUT_PAID_LABEL,
+  PAID_COST_LABEL,
+  SETTLED_WORDS,
+  CASH_OUT_LINE_WORDS,
+  CASH_OUT_GAME_GONE_WORDS,
+  LATE_CASHED_OUT_WORDS,
+  LATE_SETTLED_WORDS,
+  LATE_CASH_OUT_REJECTED_WORDS,
   GAME_GONE_WORDS,
   LATE_ACCEPTED_WORDS,
   LATE_REJECTED_WORDS,
@@ -93,15 +102,34 @@ function statusWords(state: TicketState): string | null {
   return state.notice === null ? null : noticeWords(state.notice);
 }
 
-function buyStatusWords(state: TicketState, transaction: BuyTransaction | null): string | null {
-  if (state.form === 'pending' || state.form === 'checking' || state.notice === null || transaction?.outcome === undefined) return statusWords(state);
-  if (transaction.command.t !== 'buy') return statusWords(state);
-  if (transaction.gameGone) return GAME_GONE_WORDS;
-  if (transaction.afterBell) {
-    if (transaction.outcome.outcome === 'accepted') return LATE_ACCEPTED_WORDS(transaction.command.day);
-    if (transaction.outcome.outcome === 'rejected') return `${LATE_REJECTED_WORDS(transaction.command.day)} ${transaction.outcome.receipt.reason === undefined ? REJECTED_NO_REASON : REJECT_WORDS[transaction.outcome.receipt.reason]}`;
+function originalDay(transaction: BuyTransaction): number {
+  return transaction.command.t === 'buy' ? transaction.command.day : transaction.originalDay ?? transaction.purchase?.position.day ?? 0;
+}
+
+function tradeOutcomeWords(transaction: BuyTransaction, day: number): string | null {
+  const { outcome, command, purchase } = transaction;
+  if (outcome === undefined) return null;
+  if (outcome.outcome === 'lost') return transaction.gameGone ? (command.t === 'buy' ? GAME_GONE_WORDS : CASH_OUT_GAME_GONE_WORDS) : LOST_WORDS;
+  const submittedDay = originalDay(transaction);
+  const reason = outcome.receipt.reason === undefined ? REJECTED_NO_REASON : REJECT_WORDS[outcome.receipt.reason];
+  if (command.t === 'buy') {
+    if (transaction.afterBell) return outcome.outcome === 'accepted' ? LATE_ACCEPTED_WORDS(submittedDay) : `${LATE_REJECTED_WORDS(submittedDay)} ${reason}`;
+    return outcome.outcome === 'accepted' ? ACCEPTED_WORDS.buy : `${REJECTED_LEAD} ${reason}`;
   }
-  return statusWords(state);
+  const late = submittedDay !== day;
+  if (outcome.outcome === 'rejected') return `${late ? LATE_CASH_OUT_REJECTED_WORDS(submittedDay) : REJECTED_LEAD} ${reason}`;
+  if (purchase?.position.exit?.kind === 'bell') return late ? LATE_SETTLED_WORDS(submittedDay) : SETTLED_WORDS;
+  if (purchase?.position.exit?.kind === 'cashOut') return late ? LATE_CASHED_OUT_WORDS(submittedDay) : CASHED_OUT_WORDS;
+  return null;
+}
+
+function buyStatusWords(state: TicketState, transaction: BuyTransaction | null, purchase: BuyPurchase | null, cashOutEnabled: boolean): string | null {
+  if (state.form === 'pending' || state.form === 'checking') return statusWords(state);
+  if (cashOutEnabled && purchase?.position.exit !== undefined && state.notice?.kind !== 'rejected' && state.notice?.kind !== 'lost') {
+    return purchase.position.exit.kind === 'bell' ? SETTLED_WORDS : CASHED_OUT_WORDS;
+  }
+  if (state.notice === null || transaction?.outcome === undefined) return statusWords(state);
+  return tradeOutcomeWords(transaction, state.day) ?? statusWords(state);
 }
 
 /** A profit is said in the UP colour and a loss in the DOWN colour; the sign says it too. */
@@ -348,17 +376,52 @@ function SettlementNumbers({ purchase }: { purchase: BuyPurchase }): ReactElemen
   </dl>;
 }
 
-function PurchaseNumbers({ purchase }: { purchase: BuyPurchase }): ReactElement {
+function RealizedNumbers({ purchase, includeCost = false }: { purchase: BuyPurchase; includeCost?: boolean }): ReactElement | null {
+  const { position } = purchase;
+  if (position.exit === undefined) return null;
+  const profit = profitText(position.profitCents);
+  return <dl className="m-0 grid grid-cols-2 gap-2 text-sm">
+    <Figure label={position.exit.kind === 'cashOut' ? CASHED_OUT_PAID_LABEL : BELL_PAID_LABEL}>{formatCents(position.exit.proceedsCents)}</Figure>
+    {includeCost ? <Figure label={PAID_COST_LABEL}>{formatCents(position.costCents)}</Figure> : null}
+    <Figure label={WHAT_IF_RESULT_LABEL} className={profit.className}>{profit.text}</Figure>
+  </dl>;
+}
+
+function PurchaseNumbers({ purchase, cashOutEnabled }: { purchase: BuyPurchase; cashOutEnabled: boolean }): ReactElement {
   const { position } = purchase;
   return <>
     <TicketHead ticket={{ ...position, companyName: purchase.companyName, ticker: purchase.ticker }} />
     <dl className="m-0 grid grid-cols-2 gap-2 text-sm">
       <Figure label={PRICE_LABEL}>{formatCents(position.entryPriceCents)}</Figure>
       <Figure label={QUANTITY_LABEL}>{position.quantity.toLocaleString('en-US')}</Figure>
-      <Figure label={BOUGHT_FOR_LABEL} className="text-2xl font-medium text-gold">{formatCents(position.costCents)}</Figure>
+      <Figure label={cashOutEnabled && position.exit !== undefined ? PAID_COST_LABEL : BOUGHT_FOR_LABEL} className="text-2xl font-medium text-gold">{formatCents(position.costCents)}</Figure>
     </dl>
-    <SettlementNumbers purchase={purchase} />
+    {cashOutEnabled ? <RealizedNumbers purchase={purchase} /> : <SettlementNumbers purchase={purchase} />}
   </>;
+}
+
+function NoticePresentation({ status, retry, onRetry, hint = BUY_RETRY_HINT, purchase = null }: {
+  status: string | null; retry: boolean; onRetry: () => void; hint?: string; purchase?: BuyPurchase | null;
+}): ReactElement {
+  const hintId = useId();
+  return <>
+    <p role="status" aria-live="polite" className="m-0 min-h-5 text-sm">{status}</p>
+    {purchase === null ? null : <RealizedNumbers purchase={purchase} includeCost />}
+    {retry ? <div className="grid gap-1">
+      <button type="button" className={`rounded-md border border-ring px-3 py-2 text-sm ${FOCUS} hover:bg-accent`} aria-describedby={hintId} onClick={onRetry}>{RETRY_LABEL}</button>
+      <p id={hintId} className="m-0 text-xs text-muted-foreground">{hint}</p>
+    </div> : null}
+  </>;
+}
+
+/** The retained answer remains visible after the daily ticket has unmounted. */
+export function TradeNotice({ transaction: source, day, phase, line, retryOffered, onRetry }: TradeNoticeProps): ReactElement | null {
+  const transaction = useSyncExternalStore(source.subscribe, source.get, source.get);
+  if (transaction === null || (transaction.outcome !== undefined && phase !== 'final' && originalDay(transaction) === day && !transaction.afterBell && !transaction.gameGone)) return null;
+  const unresolved = transaction.outcome === undefined;
+  const status = unresolved ? (transaction.interrupted || line !== 'live' ? CHECKING_WORDS : PENDING_WORDS) : tradeOutcomeWords(transaction, day);
+  return <NoticePresentation status={status} retry={unresolved && line === 'live' && retryOffered && transaction.retryAllowed} onRetry={onRetry}
+    purchase={transaction.outcome?.outcome === 'accepted' ? transaction.purchase ?? null : null} />;
 }
 
 export interface TicketViewProps {
@@ -376,6 +439,7 @@ export interface TicketViewProps {
   staleNoticeId?: string;
   purchase?: BuyPurchase | null;
   transaction?: BuyTransaction | null;
+  cashOutEnabled?: boolean;
 }
 
 /**
@@ -383,9 +447,8 @@ export interface TicketViewProps {
  * panel is ever shorter than the form, is the middle; the action and what it
  * says stay in view.
  */
-export function TicketView({ state, snapshot, choices, spendChoices, retryOffered, onPick, onChooseSpend, onPress, onRetry, spendEditor, staleNoticeId, purchase = null, transaction = null }: TicketViewProps): ReactElement {
+export function TicketView({ state, snapshot, choices, spendChoices, retryOffered, onPick, onChooseSpend, onPress, onRetry, spendEditor, staleNoticeId, purchase = null, transaction = null, cashOutEnabled = false }: TicketViewProps): ReactElement {
   const whyOffId = useId();
-  const retryHintId = useId();
 
   const { contract, quote, account, position, line } = snapshot;
   const drawnAs = commandKindOf(snapshot);
@@ -395,9 +458,9 @@ export function TicketView({ state, snapshot, choices, spendChoices, retryOffere
   const buyOff = buyBlocker(state, snapshot);
   const cashOutOff = cashOutBlocker(state, snapshot);
   const blocked = holding ? cashOutOff !== null : buyOff !== null;
-  const whyOff = spendEditor !== undefined && line !== 'live' ? BUY_LINE_WORDS[line]
+  const whyOff = spendEditor !== undefined && line !== 'live' ? (holding ? CASH_OUT_LINE_WORDS[line] : BUY_LINE_WORDS[line])
     : holding ? (cashOutOff === null ? null : CASH_OUT_BLOCKER_WORDS[cashOutOff]) : buyOff === null ? null : BLOCKER_WORDS[buyOff];
-  const status = spendEditor === undefined ? statusWords(state) : buyStatusWords(state, transaction);
+  const status = spendEditor === undefined ? statusWords(state) : buyStatusWords(state, transaction, purchase, cashOutEnabled);
   const dimmed = line === 'live' ? '' : 'opacity-60';
 
   return (
@@ -407,7 +470,7 @@ export function TicketView({ state, snapshot, choices, spendChoices, retryOffere
         {line === 'live' || staleNoticeId !== undefined ? null : <p className="m-0 rounded-sm border border-border px-1.5 py-0.5 text-xs text-gold">{LINE_WORDS[line]}</p>}
       </div>
       <div className="grid min-h-0 gap-3 overflow-y-auto px-4 pb-3">
-        {purchase !== null ? <PurchaseNumbers purchase={purchase} /> : holding ? (
+        {purchase !== null ? <div className={dimmed}><PurchaseNumbers purchase={purchase} cashOutEnabled={cashOutEnabled} /></div> : holding ? (
           <>
             <TicketHead ticket={position} />
             <div className={dimmed}>
@@ -434,7 +497,7 @@ export function TicketView({ state, snapshot, choices, spendChoices, retryOffere
         )}
       </div>
       <div className="grid gap-2 border-t border-border px-4 pt-3 pb-3.5">
-        {purchase === null ? <button
+        {purchase === null || holding ? <button
           type="button"
           className={ACTION}
           disabled={blocked}
@@ -445,26 +508,14 @@ export function TicketView({ state, snapshot, choices, spendChoices, retryOffere
         >
           {drawnAs === 'cashOut' ? CASH_OUT_LABEL : BUY_LABEL}
         </button> : null}
-        {purchase !== null || whyOff === null ? null : (
+        {(purchase !== null && !holding) || whyOff === null ? null : (
           <p id={whyOffId} className="m-0 text-xs text-muted-foreground">
             {whyOff}
           </p>
         )}
-        <p role="status" aria-live="polite" className="m-0 min-h-5 text-sm">
-          {status}
-        </p>
+        <NoticePresentation status={status} retry={retryAllowed(state, retryOffered)} onRetry={onRetry} hint={spendEditor === undefined ? RETRY_HINT : BUY_RETRY_HINT} />
         {purchase === null && status !== null && transaction?.afterBell && transaction.purchase !== undefined && transaction.command.t === 'buy' && transaction.command.day !== state.day
           ? <SettlementNumbers purchase={transaction.purchase} /> : null}
-        {retryAllowed(state, retryOffered) ? (
-          <div className="grid gap-1">
-            <button type="button" className={`rounded-md border border-ring px-3 py-2 text-sm ${FOCUS} hover:bg-accent`} aria-describedby={retryHintId} onClick={onRetry}>
-              {RETRY_LABEL}
-            </button>
-            <p id={retryHintId} className="m-0 text-xs text-muted-foreground">
-              {spendEditor === undefined ? RETRY_HINT : BUY_RETRY_HINT}
-            </p>
-          </div>
-        ) : null}
         <AccountLine account={account} />
       </div>
     </section>
@@ -477,11 +528,11 @@ const EMPTY_PURCHASE: ReadSlice<BuyPurchase | null> = { get: () => null, subscri
 
 function startingState(props: OrderTicketProps): TicketState {
   const record = props.mode === 'buy' ? props.transaction.get() : null;
-  const retained = record?.command.t !== 'buy' || (record.outcome !== undefined && record.command.day !== props.day && !record.afterBell && !record.gameGone) ? null : record;
-  let state = initialTicketState({ day: retained?.command.t === 'buy' ? retained.command.day : props.day, contractId: props.contract?.contractId ?? null,
-    spendCents: props.mode === 'buy' ? props.spendEditor.spendCents : null, held: props.mode === 'buy' ? false : props.position.get() !== null });
+  const retained = record?.outcome !== undefined && originalDay(record) !== props.day && !record.afterBell && !record.gameGone ? null : record;
+  let state = initialTicketState({ day: retained === null ? props.day : originalDay(retained), contractId: props.contract?.contractId ?? null,
+    spendCents: props.mode === 'buy' ? props.spendEditor.spendCents : null, held: props.mode === 'buy' ? props.cashOut?.position.get() != null : props.position.get() !== null });
   if (retained !== null) {
-    state = ticketReducer(state, { type: 'pressed', commandId: retained.command.commandId, kind: 'buy' });
+    state = ticketReducer(state, { type: 'pressed', commandId: retained.command.commandId, kind: retained.command.t });
     state = ticketReducer(state, { type: 'day', day: props.day });
     if (retained.interrupted) state = ticketReducer(state, { type: 'line', line: 'offline' });
     if (retained.outcome !== undefined) state = ticketReducer(state, { type: 'outcome', commandId: retained.command.commandId, outcome: retained.outcome });
@@ -492,7 +543,7 @@ function startingState(props: OrderTicketProps): TicketState {
 const TradingTicket = memo(function TradingTicket(props: OrderTicketProps): ReactElement {
   const quote = useSyncExternalStore(props.quote.subscribe, props.quote.get, props.quote.get);
   const account = useSyncExternalStore(props.account.subscribe, props.account.get, props.account.get);
-  const positionSlice = props.mode === 'buy' ? EMPTY_POSITION : props.position;
+  const positionSlice = props.mode === 'buy' ? props.cashOut?.position ?? EMPTY_POSITION : props.position;
   const position = useSyncExternalStore(positionSlice.subscribe, positionSlice.get, positionSlice.get);
   const transactionSlice = props.mode === 'buy' ? props.transaction : EMPTY_TRANSACTION;
   const transaction = useSyncExternalStore(transactionSlice.subscribe, transactionSlice.get, transactionSlice.get);
@@ -529,11 +580,11 @@ const TradingTicket = memo(function TradingTicket(props: OrderTicketProps): Reac
   }, [controlledSpend, send]);
   const observedCommand = useRef(transaction?.command.commandId ?? null);
   useEffect(() => {
-    if (transaction === null || transaction.command.t !== 'buy') return;
+    if (transaction === null) return;
     if (observedCommand.current !== transaction.command.commandId) {
       observedCommand.current = transaction.command.commandId;
-      send({ type: 'day', day: transaction.command.day });
-      send({ type: 'pressed', commandId: transaction.command.commandId, kind: 'buy' });
+      send({ type: 'day', day: originalDay(transaction) });
+      send({ type: 'pressed', commandId: transaction.command.commandId, kind: transaction.command.t });
       send({ type: 'day', day: props.day });
     }
     if (transaction.interrupted) send({ type: 'line', line: 'offline' });
@@ -593,6 +644,7 @@ const TradingTicket = memo(function TradingTicket(props: OrderTicketProps): Reac
       onRetry={handlers.onRetry}
       purchase={purchase?.position.day === props.day ? purchase : null}
       transaction={transaction}
+      cashOutEnabled={props.mode === 'buy' && props.cashOut !== undefined}
       {...(props.mode === 'buy' ? { spendEditor: props.spendEditor, ...(props.staleNoticeId === undefined ? {} : { staleNoticeId: props.staleNoticeId }) } : {})}
     />
   );

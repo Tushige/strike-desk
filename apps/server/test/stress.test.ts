@@ -302,9 +302,7 @@ describe('a stress session can never buy', () => {
   });
 
   it('reports that buying is not available, where an ordinary open market reports that it is', () => {
-    // The full projection, not the sampler's live form: the live form sets
-    // `canBuy` false for every session, stress or not, because no frame it
-    // sends today has a ticket form to enable.
+    // Ordinary permission is enabled; the stress setting remains read-only.
     const sections = { history: false, sections: 'full' } as const;
     const stressed = frameFor(started(STRESS_TARGETS), FIRST_PLAYER_ID, OPEN_AT, sections).frame;
     const ordinary = frameFor(started(), FIRST_PLAYER_ID, OPEN_AT, sections).frame;
@@ -318,12 +316,16 @@ describe('a stress session can never buy', () => {
     expect(ordinary.account.canBuy).toBe(true);
   });
 
-  it('never reaches the rule from the door, because the door takes no buy at all today', async () => {
+  it('returns the stress refusal through the real door without charging cash', async () => {
     const running = await boot();
     const { client } = await play(running, { board: STRESS_SIZE });
     client.send({ t: 'buy', commandId: 'buy-000001', day: 1, contractId: 0, spendCents: 1000, seenPriceCents: 1000 });
 
-    expect(await client.nextError()).toEqual({ t: 'error', code: 'badMessage', commandId: 'buy-000001' });
+    const reply = await client.nextReply();
+    expect(reply.receipt).toMatchObject({ kind: 'buy', commandId: 'buy-000001', outcome: 'rejected', reason: 'stressMode' });
+    expect(reply.frame.account).toMatchObject({ cashCents: 100000000, canBuy: false });
+    expect(reply.frame.positions).toEqual([]);
+    expect(reply.frame.receipts).toContainEqual(reply.receipt);
   });
 });
 

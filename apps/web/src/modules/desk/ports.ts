@@ -125,12 +125,14 @@ export interface DaySummary {
 export type PhaseScreenProps =
   | {
       readonly phase: 'lobby';
+      readonly instruction?: string;
       readonly paces: readonly Pace[];
       readonly canStart: boolean;
       readonly onStart: (pace: Pace) => void;
     }
   | {
       readonly phase: 'preBell';
+      readonly instruction?: string;
       readonly day: number;
       readonly canAct: boolean;
       readonly onOpenBell: () => void;
@@ -138,6 +140,7 @@ export type PhaseScreenProps =
     }
   | {
       readonly phase: 'open';
+      readonly instruction?: string;
       readonly day: number;
       readonly canAct: boolean;
       readonly onSkipToBell: () => void;

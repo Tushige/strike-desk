@@ -78,6 +78,11 @@ export const ACCEPTED_WORDS = {
 export const REJECTED_LEAD = 'Rejected.';
 export const REJECTED_NO_REASON = 'The game said no to that one. Check your ticket and press again.';
 export const LOST_WORDS = 'No answer came back for that one. Check your cash and your ticket, then press again if you still want it.';
+export const GAME_GONE_WORDS = 'The previous game is no longer available. That buy cannot be checked.';
+export const LATE_ACCEPTED_WORDS = (day: number): string => `Your Day ${String(day)} buy was accepted. That ticket has settled at the closing bell.`;
+export const LATE_REJECTED_WORDS = (day: number): string => `Your Day ${String(day)} buy was rejected.`;
+export const BOUGHT_FOR_LABEL = 'Bought for';
+export const BELL_PAID_LABEL = 'Paid at the bell';
 
 /** A plain reason for every way the server can say no. */
 export const REJECT_WORDS: Record<RejectReason, string> = {
@@ -85,7 +90,7 @@ export const REJECT_WORDS: Record<RejectReason, string> = {
   overCap: "That is over today's spending cap. Pick a smaller amount.",
   marketClosed: 'Market closed. The closing bell has rung.',
   priceMoved: 'The price moved. Check the new price and press again.',
-  alreadyBought: "You already hold today's ticket. It is one ticket a day.",
+  alreadyBought: "You already bought today's ticket. It is one ticket a day.",
   tooCheap: 'That ticket is too cheap to trade. Pick another target.',
   spendTooSmall: 'That amount does not buy one whole ticket. Pick a bigger amount.',
   unknownContract: 'That ticket is not on the board. Pick another one.',
@@ -104,6 +109,11 @@ export const REJECT_WORDS: Record<RejectReason, string> = {
 export const CHECKING_WORDS = 'Checking...';
 export const RETRY_LABEL = 'Retry safely';
 export const RETRY_HINT = 'Sends the same order again. It can never buy or pay twice.';
+export const BUY_RETRY_HINT = 'Send the same request again. It will not happen twice.';
+export const BUY_LINE_WORDS = {
+  stale: 'Buying is off until prices are up to date.',
+  offline: 'Not connected. Buying is off until fresh prices arrive.',
+};
 
 /** Said at the top of the form while the line is not live. */
 export const LINE_WORDS = {

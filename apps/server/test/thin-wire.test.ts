@@ -17,7 +17,7 @@ import {
   playerOf,
   seedToMarketCode,
 } from '@strike-desk/shared/engine';
-import type { BuyCommand, CashOutCommand, Frame, Market, QuotesMessage } from '@strike-desk/shared/engine';
+import type { CashOutCommand, Frame, Market, QuotesMessage } from '@strike-desk/shared/engine';
 import { LIMITS, createTokenBucket, createWindowCounter } from '../src/limits';
 import { handleInbound } from '../src/door';
 import type { Connection, DoorOptions } from '../src/door';
@@ -36,7 +36,7 @@ import { FIXED_SEEDS, startHarness } from './harness';
  * last day. Two things are asserted about every frame collected: that the
  * only sections filled in are the ones this service owns (the clock, the
  * share prices, names, board, public news, receipts and day results). Trades
- * stay unavailable and the market identity appears only at final.
+ * are absent without a purchase, and the market identity appears only at final.
  *
  * The fake clock is jumped straight to each moment. It may jump forward as
  * far as it likes and must never go back.
@@ -150,7 +150,8 @@ function thinAt(where: string): Record<string, unknown> {
     positions: [],
     receipts: started ? [{ kind: 'start', step: 0, outcome: 'accepted' }] : [],
     days: (finishedDays[where] ?? []).map((day) => ({ day, startCents: 100000000, endCents: 100000000, changeCents: 0 })),
-    canBuy: false,
+    canBuy: ['the first step', 'the last step before the opening bell', 'the first open step',
+      'the middle of day 1', 'the first step of day 2', 'draft sample'].includes(where),
     stress: false,
     hasHistory: ['the first open step', 'the middle of day 1', 'the closing bell of day 1',
       'the first step of day 2', "day 5's debrief", 'one step past the end of the game', 'draft sample'].includes(where),
@@ -211,13 +212,13 @@ describe('every frame this service emits', () => {
     expect(collected.map(({ where }) => where)).toEqual([LOBBY, ...MOMENTS.map(([where]) => where)]);
   });
 
-  it('fills the public preview and ordered game results while trading remains unavailable', () => {
+  it('fills public quotes and ordered game results with buying available only during active days', () => {
     for (const sampled of collected) {
       expect(allowList(sampled)).toEqual(thinAt(sampled.where));
       expect({ where: sampled.where, account: sampled.frame.account }).toEqual({
         where: sampled.where,
         // $1,000,000 × 100 cents; the cap is half, $500,000 × 100.
-        account: { cashCents: STARTING_CASH_CENTS, worthCents: STARTING_CASH_CENTS, capCents: 50_000_000, canBuy: false },
+        account: { cashCents: STARTING_CASH_CENTS, worthCents: STARTING_CASH_CENTS, capCents: 50_000_000, canBuy: thinAt(sampled.where)['canBuy'] },
       });
     }
   });
@@ -449,9 +450,8 @@ describe('the trading commands this service does not take', () => {
    * proved is that the door refuses a command that is otherwise perfectly
    * well formed.
    */
-  const buy: BuyCommand = { t: 'buy', commandId: 'refused-buy', day: 1, contractId: 3, spendCents: 1_000_000, seenPriceCents: 5_000 };
   const cashOut: CashOutCommand = { t: 'cashOut', commandId: 'refused-cashOut', positionId: 'd1' };
-  const REFUSED = [buy, cashOut];
+  const REFUSED = [cashOut];
 
   it.each(REFUSED)('$t is refused by name, and the revision and the cash are untouched', async (command) => {
     harness = await startHarness();
@@ -503,7 +503,7 @@ function expectDraftAtFrame(frame: Frame, contractId: number, spendCents: number
   });
   expect(frame.draft?.ticket?.quantity).toBeGreaterThan(0);
   expect(frame.draft?.ticket?.whatIf).toContainEqual({ atCents: frame.quoteBreakEvens[contractId], profitCents: 0 });
-  expect(frame).toMatchObject({ positions: [], days: [], account: { cashCents: STARTING_CASH_CENTS, canBuy: false } });
+  expect(frame).toMatchObject({ positions: [], days: [], account: { cashCents: STARTING_CASH_CENTS, canBuy: !frame.stress } });
   expect(frame.receipts).toHaveLength(1);
   expect(frame.receipts[0]).toMatchObject({ kind: 'start', step: 0, outcome: 'accepted' });
   if (frame.history !== undefined) {

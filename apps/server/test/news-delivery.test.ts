@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { CONTENT_VERSION, ENGINE_VERSION, FIRST_PLAYER_ID, PROTOCOL_VERSION, createSession, handleCommand, momentAt } from '@strike-desk/shared/engine';
+import { CONTENT_VERSION, ENGINE_VERSION, FIRST_PLAYER_ID, PROTOCOL_VERSION, createSession, frameSchema, handleCommand, momentAt } from '@strike-desk/shared/engine';
 import type { Frame, Session } from '@strike-desk/shared/engine';
 import { liveNewsFrameFor } from '../src/liveNewsFrame';
 import { FIXED_SEEDS, startHarness } from './harness';
@@ -106,4 +106,48 @@ it.each([undefined, 2500])('delivers the passed reveal on samples and resuming h
   } finally {
     await harness.close();
   }
+});
+
+it('preserves sold-ticket comparisons and receipts beside the public news whitelist on reply, sample and resume', async () => {
+  const harness = await startHarness();
+  try {
+    const client = harness.connect(); await client.opened();
+    client.send({ t: 'hello', v: PROTOCOL_VERSION }); const lobby = await client.nextFrame();
+    client.send({ t: 'start', commandId: 'sale-news-start', pace: 1 });
+    const startedFrame = (await client.nextReply()).frame;
+    const contractId = startedFrame.quotes.findIndex((price) => price >= startedFrame.minTicketCents && price <= 100000);
+    client.send({ t: 'buy', commandId: 'sale-news-buy', day: 1, contractId,
+      spendCents: 100000, seenPriceCents: 1000000 });
+    const bought = await client.nextReply(); expect(bought.receipt.outcome).toBe('accepted');
+    const position = bought.frame.positions[0]!;
+    client.send({ t: 'cashOut', commandId: 'sale-news-sell', positionId: position.id });
+    const sold = await client.nextReply(); expect(sold.receipt.outcome).toBe('accepted');
+    expect(sold.frame.positions[0]).toMatchObject({ status: 'cashedOut', ifHeldCents: position.valueCents,
+      valueCents: position.valueCents, exit: { kind: 'cashOut', proceedsCents: position.valueCents } });
+    harness.clock.advance(140000); harness.sample();
+    const sampled = await client.nextFrame();
+    expect(sampled.news.every((news) => news.revealed)).toBe(true);
+    await client.close();
+    const resumed = harness.connect(); await resumed.opened();
+    resumed.send({ t: 'hello', v: PROTOCOL_VERSION, session: lobby.session });
+    const recovered = await resumed.nextFrame();
+    expect(recovered).toEqual(sampled);
+    for (const frame of [sold.frame, sampled, recovered]) {
+      expect(frameSchema.parse(frame)).toEqual(frame);
+      expect(frame.positions[0]?.ifHeldCents).toBeTypeOf('number');
+      expect(frame.positions[0]?.exit).toEqual(sold.frame.positions[0]?.exit);
+      expect(frame.positions[0]?.valueCents).toBe(sold.frame.positions[0]?.valueCents);
+      expect(frame.positions[0]?.profitCents).toBe(sold.frame.positions[0]?.profitCents);
+      expect(frame.account).toEqual(sold.frame.account);
+      expect(frame.receipts).toContainEqual(sold.receipt);
+      expect(frame).not.toHaveProperty('final');
+      expect(JSON.stringify(frame)).not.toContain('marketCode');
+      expect(JSON.stringify(frame)).not.toContain(String(FIXED_SEEDS[0]));
+      for (const news of frame.news) {
+        expect(Object.keys(news).sort()).toEqual(['body', 'companyId', 'day', 'direction', 'id',
+          ...(news.revealed ? ['revealIndex'] : []), 'revealed', 'source', 'title', 'trust'].sort());
+        if (news.revealed) expect(news.revealIndex).toBeLessThanOrEqual(frame.clock.priceIndex);
+      }
+    }
+  } finally { await harness.close(); }
 });

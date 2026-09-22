@@ -43,8 +43,6 @@ describe('buying over the game socket', () => {
       const recovered = await resumed.nextFrame();
       expect(recovered.positions).toEqual(result.frame.positions);
       expect(recovered.receipts).toContainEqual(result.receipt);
-      client.send({ t: 'cashOut', commandId: 'cash-out', positionId: result.frame.positions[0]!.id });
-      expect(await client.nextError()).toEqual({ t: 'error', code: 'badMessage', commandId: 'cash-out' });
       h.clock.advance(190000);
       client.send(command); const late = await client.nextReply();
       expect(late.receipt).toEqual(result.receipt);

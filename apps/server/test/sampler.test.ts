@@ -356,6 +356,53 @@ describe('offerFrame and sampleSessions', () => {
     expect(entry.drafts.has(slow)).toBe(false);
   });
 
+  it('repairs a skipped sale with its receipt, fixed payout and current held comparison', () => {
+    const registry = createRegistry({ drawSeed: () => 77, drawId: () => 'sale-repair', limits: LIMITS });
+    const entry = registry.create(0)!;
+    const ready = fakeSocket();
+    const slow = fakeSocket();
+    registry.attach(entry.session.id, FIRST_PLAYER_ID, ready);
+    registry.attach(entry.session.id, FIRST_PLAYER_ID, slow);
+    registry.replace(entry.session.id, handleCommand(entry.session, FIRST_PLAYER_ID,
+      { t: 'start', commandId: 'repair-start', pace: 1 }, 0).session);
+    const stats = { sent: 0, skipped: 0 };
+    sampleSessions(registry, 60000, stats, 1500);
+    const before = frameSchema.parse(JSON.parse(ready.sent.at(-1)!));
+    const contractId = before.quotes.findIndex((price) => price >= before.minTicketCents && price <= 100000);
+    const bought = handleCommand(entry.session, FIRST_PLAYER_ID, { t: 'buy', commandId: 'repair-buy',
+      day: 1, contractId, spendCents: 100000, seenPriceCents: 1000000 }, 60000);
+    expect(bought.receipt.outcome).toBe('accepted');
+    registry.replace(entry.session.id, bought.session);
+    sampleSessions(registry, 60000, stats, 1500);
+    const open = frameSchema.parse(JSON.parse(ready.sent.at(-1)!)).positions[0]!;
+    const sold = handleCommand(entry.session, FIRST_PLAYER_ID,
+      { t: 'cashOut', commandId: 'repair-sale', positionId: open.id }, 60000);
+    expect(sold.receipt.outcome).toBe('accepted');
+    registry.replace(entry.session.id, sold.session);
+    slow.bufferedAmount = 1;
+    const deliveredBeforeSale = slow.sent.length;
+    sampleSessions(registry, 60200, stats, 1500);
+    const paid = frameSchema.parse(JSON.parse(ready.sent.at(-1)!));
+    expect(slow.sent).toHaveLength(deliveredBeforeSale);
+    expect(paid.positions[0]).toMatchObject({ status: 'cashedOut', valueCents: open.valueCents,
+      exit: { kind: 'cashOut', proceedsCents: open.valueCents } });
+    expect(paid.positions[0]?.ifHeldCents).toBeTypeOf('number');
+    slow.bufferedAmount = 0;
+    sampleSessions(registry, 64000, stats, 1500);
+    const healthy = frameSchema.parse(JSON.parse(ready.sent.at(-1)!));
+    const repaired = frameSchema.parse(JSON.parse(slow.sent.at(-1)!));
+    expect(repaired.history?.[0]).toHaveLength(repaired.clock.priceIndex + 1);
+    expect(repaired.positions).toEqual(healthy.positions);
+    expect(repaired.positions[0]?.ifHeldCents).toBeTypeOf('number');
+    expect(repaired.positions[0]?.exit).toEqual(paid.positions[0]?.exit);
+    expect(repaired.positions[0]?.valueCents).toBe(paid.positions[0]?.valueCents);
+    expect(repaired.positions[0]?.profitCents).toBe(paid.positions[0]?.profitCents);
+    expect(repaired.account).toEqual(paid.account);
+    expect(repaired.receipts).toContainEqual(sold.receipt);
+    expect(stats.skipped).toBe(1);
+    expect(entry.deliveries.get(slow)?.repair).toBe(false);
+  });
+
   it('keeps stress repair pending through deltas until the existing whole-frame deadline', () => {
     const registry = createRegistry({ drawSeed: () => 77, drawId: () => 'stress-history', limits: LIMITS });
     const entry = registry.create(0, 209)!;
@@ -457,12 +504,12 @@ describe('offerFrame and sampleSessions', () => {
   });
 });
 
-describe('commands this service does not take yet', () => {
+describe('admitted game commands', () => {
   const REFUSED = [
     { t: 'cashOut', commandId: 'refused-cashOut', positionId: 'd1' },
   ];
 
-  it.each(REFUSED)('$t is answered badMessage with its id and changes nothing', async (command) => {
+  it.each(REFUSED)('$t gets a stored unknown-position refusal without changing money', async (command) => {
     const running = await boot();
     const { client } = await join(running);
     client.send(start('start-0001'));
@@ -472,10 +519,13 @@ describe('commands this service does not take yet', () => {
     const before = await sampleFrame(running, client);
 
     client.send(command);
-    expect(await client.nextError()).toEqual({ t: 'error', code: 'badMessage', commandId: command.commandId });
+    const refused = await client.nextReply();
+    expect(refused.receipt).toMatchObject({ kind: 'cashOut', commandId: command.commandId,
+      outcome: 'rejected', reason: 'unknownPosition' });
 
     const after = await sampleFrame(running, client);
-    expect({ ...after, history: undefined, leadIn: undefined }).toEqual({ ...before, history: undefined, leadIn: undefined });
+    expect({ ...after, history: undefined, leadIn: undefined }).toEqual({ ...before,
+      rev: before.rev + 1, receipts: [...before.receipts, refused.receipt], history: undefined, leadIn: undefined });
   });
 
   it('openBell opens the current day and later reads keep that jump', async () => {

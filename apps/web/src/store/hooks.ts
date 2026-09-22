@@ -1,13 +1,15 @@
 import { useSyncExternalStore } from 'react';
-import type { CompanyView } from '@strike-desk/shared/protocol';
-import { store } from '../boot';
+import type { CompanyView, Frame } from '@strike-desk/shared/protocol';
+import { connection, store } from '../boot';
+import type { ConnectionState, PendingCommand } from '../modules/connection/index';
 import type { RowSource } from '../modules/live-grid/index';
 import type { ContractRow } from './contractRows';
+import type { PriceSeries } from './gameStore';
 
 /**
- * The only file under `store/` that imports React, and the only importer of
- * `boot.ts` — which is what makes the one store and the one feed load once
- * per page load, however many times a component mounts.
+ * The only file under `store/` that imports React, and the one place the
+ * screens meet `boot.ts` — which is what makes the one store and the one
+ * connection load once per page load, however many times a component mounts.
  *
  * React compares snapshots with `Object.is` and resubscribes whenever the
  * subscribe function changes identity, so both are made once per company
@@ -41,12 +43,60 @@ export function usePrice(companyId: number): number | null {
   return useSyncExternalStore(subscriberFor(companyId), snapshotFor(companyId));
 }
 
+const seriesSubscribers = new Map<number, (listener: () => void) => () => void>();
+const seriesSnapshots = new Map<number, () => PriceSeries>();
+
+/** One company's chart series: yesterday's tail and today's prices so far, in cents. */
+export function useSeries(companyId: number): PriceSeries {
+  let subscribe = seriesSubscribers.get(companyId);
+  if (subscribe === undefined) {
+    subscribe = (listener: () => void): (() => void) => store.series(companyId).subscribe(listener);
+    seriesSubscribers.set(companyId, subscribe);
+  }
+  let snapshot = seriesSnapshots.get(companyId);
+  if (snapshot === undefined) {
+    snapshot = (): PriceSeries => store.series(companyId).get();
+    seriesSnapshots.set(companyId, snapshot);
+  }
+  return useSyncExternalStore(subscribe, snapshot);
+}
+
+const subscribeFrame = (listener: () => void): (() => void) => store.frame.subscribe(listener);
+const snapshotFrame = (): Frame | null => store.frame.get();
+
+/**
+ * The whole latest picture: the clock, the account, the open ticket, the
+ * news, today's results. A component that calls this redraws whenever a
+ * new frame lands (five times a second while the market is open), which is
+ * exactly what the desk wants; something that needs only one price reads
+ * `usePrice` instead.
+ */
+export function useFrame(): Frame | null {
+  return useSyncExternalStore(subscribeFrame, snapshotFrame);
+}
+
 const subscribeCompanies = (listener: () => void): (() => void) => store.companies.subscribe(listener);
 const snapshotCompanies = (): readonly CompanyView[] => store.companies.get();
 
 /** The companies' names and tickers, by company id; empty before the first frame. */
 export function useCompanies(): readonly CompanyView[] {
   return useSyncExternalStore(subscribeCompanies, snapshotCompanies);
+}
+
+const subscribeConnection = (listener: () => void): (() => void) => connection.state.subscribe(listener);
+const snapshotConnection = (): ConnectionState => connection.state.get();
+
+/** Where the connection stands: live, stale, reconnecting, and so on. */
+export function useConnectionState(): ConnectionState {
+  return useSyncExternalStore(subscribeConnection, snapshotConnection);
+}
+
+const subscribePending = (listener: () => void): (() => void) => connection.pending.subscribe(listener);
+const snapshotPending = (): readonly PendingCommand[] => connection.pending.get();
+
+/** Every command without an answer yet, oldest first. */
+export function usePendingCommands(): readonly PendingCommand[] {
+  return useSyncExternalStore(subscribePending, snapshotPending);
 }
 
 const subscribeBoardRows = (listener: () => void): (() => void) => store.boardRows.subscribe(listener);

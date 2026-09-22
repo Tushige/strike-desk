@@ -56,10 +56,8 @@ const webSharedImportFence = {
 // The modules that hold or move live data stay free of React, so that data
 // lives outside React state and only `store/hooks.ts` connects the two.
 const webDataModules = [
-  'apps/web/src/feed/**/*.ts',
   'apps/web/src/store/gameStore.ts',
   'apps/web/src/store/contractRows.ts',
-  'apps/web/src/autoStart.ts',
 ];
 
 const reactFreeGroup = {
@@ -68,53 +66,50 @@ const reactFreeGroup = {
     "Live data stays outside React: this module must not import it. Components read the store through 'apps/web/src/store/hooks.ts'.",
 };
 
-// A building block, and the lab that shows it, are built and looked at on
-// their own. Neither is part of the running game, so neither may reach into
-// it: importing any of these would open a socket and start a real game from
-// a page that is supposed to talk to nothing.
+// A building block is built and tested on its own, against its ports. It is
+// not part of the running game, so it may not reach into it: importing any
+// of these would open a socket and start a real game from a test that is
+// supposed to talk to nothing.
 const webBlockFiles = [
   'apps/web/src/modules/**/*.ts',
   'apps/web/src/modules/**/*.tsx',
-  'apps/web/src/lab/**/*.ts',
-  'apps/web/src/lab/**/*.tsx',
   'apps/web/src/fixtures/**/*.ts',
 ];
 
-// `**/feed` is the page's own socket feed (`apps/web/src/feed/`), but it also
-// matches the package path `@strike-desk/shared/feed` — the Feed interface a
-// block is built against. The negation lets that one path back in; it works
-// here because no pattern above it excludes a parent of it, and gitignore
-// rules cannot re-include anything under an excluded parent.
+// The running game is boot (the one connection), the store, the screens and
+// App. `**/feed` also matches the package path `@strike-desk/shared/feed` —
+// the Feed interface a block is built against. The negation lets that one
+// path back in; it works here because no pattern above it excludes a parent
+// of it, and gitignore rules cannot re-include anything under an excluded
+// parent.
 const runningGameGroup = {
   group: [
     '**/boot',
     '**/store',
     '**/store/**',
+    '**/screens',
+    '**/screens/**',
     '**/feed',
     '**/feed/**',
     '!@strike-desk/shared/feed',
-    '**/autoStart',
     '**/App',
   ],
   message:
-    'A building block and the lab never reach the running game: no boot, no store, no socket feed, no App. A block is built against its port and shown against its stand-in source.',
+    'A building block never reaches the running game: no boot, no store, no App. A block is built against its port and tested against its stand-in source.',
 };
 
 // The group above never sees a dynamic `import()`: no-restricted-imports
-// visits import and export declarations and nothing else. A block registers
-// the demo the lab shows as exactly that — `demo: () => import('./…')` — so
-// the one import shape the lab's contract asks for would otherwise pass every
-// fence, and a demo could open a socket and start a real game from a page that
-// is supposed to talk to nothing.
+// visits import and export declarations and nothing else, so a block could
+// otherwise reach the running game through `import('../boot')`.
 //
 // The same names as the group above, read off the text of the specifier: a
-// relative path whose last step is boot, App or autoStart; a relative path
-// with a store or feed step anywhere in it; and the shared package's engine
+// relative path whose last step is boot or App; a relative path
+// with a store or screens step anywhere in it; and the shared package's engine
 // entry. Whole steps only, so `../feeds/x` and `../my-store/x` are somebody
 // else's folders and are left alone — as are the shared package's client-safe
 // entry points, `@strike-desk/shared/feed` (the interface a block is built
 // against) included, since those are not relative paths.
-const RUNNING_GAME_SPECIFIER = String.raw`^\.{1,2}\/(?:.*\/)?(?:boot|App|autoStart)(?:\.[jt]sx?)?$|^\.{1,2}\/(?:.*\/)?(?:store|feed)(?:\/|$)|^@strike-desk\/shared\/engine(?:\/|$)`;
+const RUNNING_GAME_SPECIFIER = String.raw`^\.{1,2}\/(?:.*\/)?(?:boot|App)(?:\.[jt]sx?)?$|^\.{1,2}\/(?:.*\/)?(?:store|screens)(?:\/|$)|^@strike-desk\/shared\/engine(?:\/|$)`;
 
 const runningGameDynamicImport = {
   selector: `ImportExpression > Literal[value=/${RUNNING_GAME_SPECIFIER}/]`,
@@ -133,20 +128,20 @@ const runningGameDynamicImport = {
 // named folder — and then anything at all except that folder's `index` or
 // `fake`, with or without an extension. It says nothing about how deep the
 // file doing the importing sits, so it reads the same from a block, from a
-// stand-in source, from `lab/` and from `lab/modules/`.
+// stand-in source and from a test.
 //
 // It is text, not resolved paths, so it has to be told which folders are not
-// blocks: `fixtures/` and `lab/` are the two a block legitimately reaches
+// blocks: `fixtures/` is the one folder a block legitimately reaches
 // sideways into, and a further `../` is a climb that has not landed yet. A
-// third such folder has to be added here.
+// second such folder has to be added here.
 const siblingBlockGroup = {
-  regex: String.raw`^(?:\.\./)+(?:modules/)?(?!\.\.|fixtures/|modules/|lab/)[^/]+/(?!(?:index|fake)(?:\.[jt]sx?)?$)`,
+  regex: String.raw`^(?:\.\./)+(?:modules/)?(?!\.\.|fixtures/|modules/)[^/]+/(?!(?:index|fake)(?:\.[jt]sx?)?$)`,
   message:
-    'Import another block only through its index.ts (or its fake.ts from a test or a lab demo), never its inner files.',
+    'Import another block only through its index.ts (or its fake.ts from a test), never its inner files.',
 };
 
 const WEB_SOCKET_MESSAGE =
-  "Only 'apps/web/src/feed/wsFeed.ts' opens a socket. Read data through the Feed interface from '@strike-desk/shared/feed' instead.";
+  "Only 'apps/web/src/boot.ts' names the socket constructor; it hands it to the connection through its transport seam. Read data through the Feed interface from '@strike-desk/shared/feed' instead.";
 
 export default tseslint.config(
   {
@@ -225,8 +220,8 @@ export default tseslint.config(
     },
   },
   {
-    // ...except the one feed file, which is that seam.
-    files: ['apps/web/src/feed/wsFeed.ts'],
+    // ...except boot, which hands the constructor to the connection's seam.
+    files: ['apps/web/src/boot.ts'],
     rules: {
       'no-restricted-globals': 'off',
       'no-restricted-properties': 'off',
@@ -248,7 +243,7 @@ export default tseslint.config(
     },
   },
   {
-    // A block and the lab are fenced off from the running game, and from each
+    // A block is fenced off from the running game, and from every other
     // other's inner files. The shared-package fence is repeated here because
     // a later block replaces a rule's options rather than adding to them.
     files: webBlockFiles,
@@ -264,11 +259,12 @@ export default tseslint.config(
     },
   },
   {
-    // A stand-in data source lives outside React, like every other module
-    // that holds or moves data. Both fences are repeated whole, for the same
-    // reason: a later block replaces a rule's options rather than adding to
-    // them, so anything left out here is lost for these files.
-    files: ['apps/web/src/modules/*/fake.ts', 'apps/web/src/fixtures/**/*.ts'],
+    // The connection and every stand-in data source live outside React, like
+    // every other module that holds or moves data. Both fences are repeated
+    // whole, for the same reason: a later block replaces a rule's options
+    // rather than adding to them, so anything left out here is lost for
+    // these files.
+    files: ['apps/web/src/modules/connection/**/*.ts', 'apps/web/src/modules/*/fake.ts', 'apps/web/src/fixtures/**/*.ts'],
     rules: {
       'no-restricted-imports': [
         'error',

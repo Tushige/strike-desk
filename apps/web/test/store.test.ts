@@ -1,11 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { Command, Frame, QuotesMessage, ServerMessage } from '@strike-desk/shared/protocol';
-import type { Feed, FeedEvent } from '@strike-desk/shared/feed';
+import type { Frame, QuotesMessage, ServerMessage } from '@strike-desk/shared/protocol';
 import { createGameStore } from '../src/store/gameStore';
 import type { GameStore } from '../src/store/gameStore';
 import { applyQuoteChange, buildRows } from '../src/store/contractRows';
 import type { ContractRow } from '../src/store/contractRows';
-import { autoStart } from '../src/autoStart';
 import { testFrame } from './fakeSocket';
 
 /**
@@ -224,125 +222,6 @@ describe('the game store', () => {
     store.ingest(testFrame({ step: 2, prices: [2, 2, 3, 4, 5, 6] }));
 
     expect(told).toBe(1);
-  });
-});
-
-interface FakeFeed {
-  feed: Feed;
-  sent: Command[];
-  emit(event: FeedEvent): void;
-}
-
-function fakeFeed(): FakeFeed {
-  const listeners = new Set<(event: FeedEvent) => void>();
-  const sent: Command[] = [];
-  const feed: Feed = {
-    connect: () => undefined,
-    close: () => undefined,
-    send: (message) => {
-      // Commands only: anything else a feed may carry has no command id.
-      if ('commandId' in message) sent.push(message);
-      return true;
-    },
-    simulateDrop: () => undefined,
-    subscribe: (listener: (event: FeedEvent) => void) => {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
-  };
-  return {
-    feed,
-    sent,
-    emit(event: FeedEvent) {
-      for (const listener of [...listeners]) listener(event);
-    },
-  };
-}
-
-function lobbyFrame(session: string, step = 0): Frame {
-  return testFrame({ session, step, clock: { phase: 'lobby', day: 0, stepsLeft: 0, priceIndex: 0, pace: null } });
-}
-
-function message(frame: Frame): FeedEvent {
-  return { type: 'message', message: frame, receivedAt: 0 };
-}
-
-describe('auto-start', () => {
-  it('starts the game once, at the pace it was given', () => {
-    const fake = fakeFeed();
-    autoStart(fake.feed, { pace: 3, makeId: () => 'command-abcdefgh' });
-
-    fake.emit(message(lobbyFrame('s-1')));
-    fake.emit(message(lobbyFrame('s-1', 1)));
-    fake.emit(message(lobbyFrame('s-1', 2)));
-
-    expect(fake.sent).toEqual([{ t: 'start', commandId: 'command-abcdefgh', pace: 3 }]);
-    expect(fake.sent[0]?.commandId.length).toBeGreaterThanOrEqual(8);
-  });
-
-  it('sends nothing for a frame in any other phase', () => {
-    const fake = fakeFeed();
-    autoStart(fake.feed, { pace: 3, makeId: () => 'command-abcdefgh' });
-
-    fake.emit(message(testFrame({ session: 's-1', clock: OPEN_CLOCK })));
-    fake.emit(
-      message(
-        testFrame({
-          session: 's-1',
-          clock: { phase: 'preBell', day: 1, stepsLeft: 200, priceIndex: 0, pace: 3 },
-        }),
-      ),
-    );
-
-    expect(fake.sent).toEqual([]);
-  });
-
-  it('resends the same command id after the connection comes back, and only once', () => {
-    const fake = fakeFeed();
-    autoStart(fake.feed, { pace: 3, makeId: () => 'command-abcdefgh' });
-
-    fake.emit(message(lobbyFrame('s-1')));
-    fake.emit({ type: 'status', status: 'reconnecting' });
-    fake.emit({ type: 'status', status: 'live' });
-    fake.emit(message(lobbyFrame('s-1', 1)));
-    fake.emit(message(lobbyFrame('s-1', 2)));
-
-    expect(fake.sent).toEqual([
-      { t: 'start', commandId: 'command-abcdefgh', pace: 3 },
-      { t: 'start', commandId: 'command-abcdefgh', pace: 3 },
-    ]);
-  });
-
-  it('uses a new command id for a new session', () => {
-    const fake = fakeFeed();
-    let made = 0;
-    autoStart(fake.feed, {
-      pace: 3,
-      makeId: () => {
-        made += 1;
-        return `command-${made}-abcdefgh`;
-      },
-    });
-
-    fake.emit(message(lobbyFrame('s-1')));
-    fake.emit(message(lobbyFrame('s-2')));
-
-    expect(fake.sent).toEqual([
-      { t: 'start', commandId: 'command-1-abcdefgh', pace: 3 },
-      { t: 'start', commandId: 'command-2-abcdefgh', pace: 3 },
-    ]);
-  });
-
-  it('stops listening once its unsubscribe is called', () => {
-    const fake = fakeFeed();
-    const stop = autoStart(fake.feed, { pace: 3, makeId: () => 'command-abcdefgh' });
-    stop();
-
-    fake.emit(message(lobbyFrame('s-1')));
-
-    expect(fake.sent).toEqual([]);
   });
 });
 

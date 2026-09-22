@@ -153,18 +153,17 @@ describe('shared package lint fences', () => {
 // entry points. Each case is one line of source linted as if it were the
 // named file, through the same root config `pnpm run lint` uses.
 const webProbePath = path.join(repoRoot, 'apps/web/src/__fence_probe__.ts');
-const webFeedPath = path.join(repoRoot, 'apps/web/src/feed/wsFeed.ts');
-const webDecodePath = path.join(repoRoot, 'apps/web/src/feed/decode.ts');
+// Boot is the one file that may name the socket constructor; it hands it to
+// the connection through the transport seam. The connection module and the
+// store hold or move live data, so React is refused in them.
+const webBootPath = path.join(repoRoot, 'apps/web/src/boot.ts');
+const webSocketFeedPath = path.join(repoRoot, 'apps/web/src/modules/connection/socketFeed.ts');
+const webConnectionPath = path.join(repoRoot, 'apps/web/src/modules/connection/connection.ts');
 const webStorePath = path.join(repoRoot, 'apps/web/src/store/gameStore.ts');
-const webAutoStartPath = path.join(repoRoot, 'apps/web/src/autoStart.ts');
 const webHooksPath = path.join(repoRoot, 'apps/web/src/store/hooks.ts');
-const webTestPath = path.join(repoRoot, 'apps/web/test/feed.test.ts');
+const webTestPath = path.join(repoRoot, 'apps/web/test/store.test.ts');
 const webBlockPath = path.join(repoRoot, 'apps/web/src/modules/connection/ports.ts');
 const webBlockFakePath = path.join(repoRoot, 'apps/web/src/modules/connection/fake.ts');
-const webLabPath = path.join(repoRoot, 'apps/web/src/lab/modules/connection.lab.ts');
-// The lab's own files sit one folder higher than a block's `*.lab.ts`, which
-// is where a demo wrapper goes: the fences have to read the same from both.
-const webLabTopPath = path.join(repoRoot, 'apps/web/src/lab/registry.ts');
 
 // Hardcoded on purpose, like the Math list above: the fence is checked
 // against what the web app is meant to reach, not against the config's own
@@ -254,27 +253,27 @@ describe('web app lint fences', () => {
   );
 
   it(
-    'web fences: refuses the name WebSocket everywhere in the web app but the one feed file',
+    'web fences: refuses the name WebSocket everywhere in the web app but boot',
     async () => {
       const globalLines = ['void WebSocket;', "void new WebSocket('ws://example.test');"];
       const memberLines = ['void window.WebSocket;', 'void globalThis.WebSocket;', 'void self.WebSocket;'];
 
-      for (const filePath of [webProbePath, webDecodePath, webStorePath]) {
+      for (const filePath of [webProbePath, webSocketFeedPath, webStorePath]) {
         expect(await linesReported(globalLines, filePath, 'no-restricted-globals')).toEqual(everyLine(globalLines));
         expect(await linesReported(memberLines, filePath, 'no-restricted-properties')).toEqual(everyLine(memberLines));
       }
-      expect(await linesReported(globalLines, webFeedPath, 'no-restricted-globals')).toEqual([]);
-      expect(await linesReported(memberLines, webFeedPath, 'no-restricted-properties')).toEqual([]);
+      expect(await linesReported(globalLines, webBootPath, 'no-restricted-globals')).toEqual([]);
+      expect(await linesReported(memberLines, webBootPath, 'no-restricted-properties')).toEqual([]);
     },
     LINT_TIMEOUT_MS * 2,
   );
 
   it(
-    'web fences: refuses React in the feed, the store and the auto-start module, and nowhere else',
+    'web fences: refuses React in the connection module and the store, and nowhere else',
     async () => {
       const lines = ["import 'react';", "import { useState } from 'react';", "import 'react-dom';", "import 'react-dom/client';"];
 
-      for (const filePath of [webStorePath, webFeedPath, webDecodePath, webAutoStartPath]) {
+      for (const filePath of [webStorePath, webSocketFeedPath, webConnectionPath]) {
         expect(await linesReported(lines, filePath, 'no-restricted-imports')).toEqual(everyLine(lines));
       }
       expect(await linesReported(lines, webHooksPath, 'no-restricted-imports')).toEqual([]);
@@ -289,7 +288,7 @@ describe('web app lint fences', () => {
       const banned = bannedWebImports.map((name) => `import '${name}';`);
       const allowed = allowedWebImports.map((name) => `import '${name}';`);
 
-      for (const filePath of [webStorePath, webFeedPath, webAutoStartPath]) {
+      for (const filePath of [webStorePath, webSocketFeedPath, webConnectionPath]) {
         expect(await linesReported([...banned, ...allowed], filePath, 'no-restricted-imports')).toEqual(everyLine(banned));
       }
     },
@@ -297,12 +296,11 @@ describe('web app lint fences', () => {
   );
 
   it(
-    'web fences: a block, its stand-in source and the lab may import the shared Feed interface, but not the page\'s own feed',
+    'web fences: a block and its stand-in source may import the shared Feed interface, but not the running game',
     async () => {
-      // The running-game fence names '**/feed' for the page's socket feed at
-      // 'apps/web/src/feed/'. That pattern also reads the package path
-      // '@strike-desk/shared/feed' — the Feed interface every block is built
-      // against — so the two are pinned apart here.
+      // The running-game fence names '**/feed'. That pattern also reads the
+      // package path '@strike-desk/shared/feed' — the Feed interface every
+      // block is built against — so the two are pinned apart here.
       const allowed = [
         "import type { Feed } from '@strike-desk/shared/feed';",
         "import type { Frame } from '@strike-desk/shared/protocol';",
@@ -313,13 +311,13 @@ describe('web app lint fences', () => {
         "import '../../feed/index';",
         "import '../../boot';",
         "import '../../store/hooks';",
-        "import '../../autoStart';",
+        "import '../../screens/TopBar';",
         "import '../../App';",
       ];
 
       // Every path is two steps up from each of these files, so one list of
-      // lines reads the same from all three.
-      for (const filePath of [webBlockPath, webBlockFakePath, webLabPath]) {
+      // lines reads the same from both.
+      for (const filePath of [webBlockPath, webBlockFakePath]) {
         expect(await linesReported(allowed, filePath, 'no-restricted-imports')).toEqual([]);
         expect(await linesReported(refused, filePath, 'no-restricted-imports')).toEqual(everyLine(refused));
       }
@@ -330,9 +328,8 @@ describe('web app lint fences', () => {
   it(
     'web fences: a block is reached by its index or its fake and never by an inner file, from every folder the fence covers',
     async () => {
-      // One list, read from all four paths: the fence reads the specifier and
-      // not how deep the file doing the importing sits, so a demo wrapper in
-      // `lab/` is answered the same as a block's own file.
+      // One list, read from both paths: the fence reads the specifier and
+      // not how deep the file doing the importing sits.
       const refused = [
         "import '../other/inner/file';",
         "import '../other/ports';",
@@ -362,7 +359,7 @@ describe('web app lint fences', () => {
         "import './inner/file';",
       ];
 
-      for (const filePath of [webBlockPath, webBlockFakePath, webLabPath, webLabTopPath]) {
+      for (const filePath of [webBlockPath, webBlockFakePath]) {
         expect(await linesReported(refused, filePath, 'no-restricted-imports')).toEqual(everyLine(refused));
         expect(await linesReported(allowed, filePath, 'no-restricted-imports')).toEqual([]);
       }
@@ -371,25 +368,23 @@ describe('web app lint fences', () => {
   );
 
   it(
-    'web fences: a dynamic import of the running game is refused from a block, its stand-in and the lab',
+    'web fences: a dynamic import of the running game is refused from a block and its stand-in',
     async () => {
-      // A block hands the lab its demo as `() => import('…')`, and the import
-      // fence never sees a dynamic import: it visits import and export
-      // declarations only. So the same names are refused a second time, by
-      // shape, or the one import every block writes would pass every fence.
+      // The import fence never sees a dynamic import: it visits import and
+      // export declarations only. So the same names are refused a second
+      // time, by shape.
       const refused = [
         "void import('../../boot');",
         "void import('../../store');",
         "void import('../../store/hooks');",
-        "void import('../../feed');",
-        "void import('../../feed/wsFeed');",
-        "void import('../../autoStart');",
+        "void import('../../screens');",
+        "void import('../../screens/TopBar');",
         "void import('../../App');",
         "void import('@strike-desk/shared/engine');",
         "void import('@strike-desk/shared/engine/market');",
       ];
-      // What a demo actually loads: another block through its public entry or
-      // its stand-in source, its own files, and the client-safe entry points.
+      // What a block may load: another block through its public entry or its
+      // stand-in source, its own files, and the client-safe entry points.
       const allowed = [
         "void import('../../modules/live-grid');",
         "void import('../../modules/live-grid/index');",
@@ -400,7 +395,7 @@ describe('web app lint fences', () => {
         "void import('@strike-desk/shared/protocol');",
       ];
 
-      for (const filePath of [webBlockPath, webBlockFakePath, webLabPath]) {
+      for (const filePath of [webBlockPath, webBlockFakePath]) {
         expect(await linesReported(refused, filePath, 'no-restricted-syntax')).toEqual(everyLine(refused));
         expect(await linesReported(allowed, filePath, 'no-restricted-syntax')).toEqual([]);
       }

@@ -32,7 +32,7 @@ import { handle } from '../src/modules/command-path/index';
  *
  *   pnpm --filter @strike-desk/server exec tsx scripts/command-path-transcript.ts
  *
- * It writes apps/web/src/lab/modules/command-path.transcript.json, one entry
+ * It writes apps/server/test/fixtures/command-path.transcript.json, one entry
  * per line. Nothing but the game goes into the file (no time, no path, no
  * machine detail), and nothing of the market but the prices the commands
  * themselves name, so two runs give the same bytes. Retake it after the rules
@@ -46,7 +46,7 @@ const SEED = 4242424242;
 const SESSION_ID = 'command-path-transcript';
 const T0 = 1_000_000;
 const SPEND = 10_000_000;
-const OUTPUT = fileURLToPath(new URL('../../web/src/lab/modules/command-path.transcript.json', import.meta.url));
+const OUTPUT = fileURLToPath(new URL('../test/fixtures/command-path.transcript.json', import.meta.url));
 
 /** A ticket as the transcript keeps it: what the player holds, what each one was filled at, and what it paid when it is closed. */
 export interface TranscriptTicket {

@@ -1,5 +1,5 @@
 import type { Frame } from '@strike-desk/shared/protocol';
-import type { SocketLike } from '../src/feed/wsFeed';
+import type { SocketLike } from '../src/modules/connection/index';
 
 /**
  * The hand-driven doubles the web tests run on. Nothing here is

@@ -383,12 +383,12 @@ describe('projectFrame', () => {
 
 /** The six companies of the real cast as a player may see them. Written out: the frame must carry exactly this and no more. */
 const REAL_NAMES = [
-  { ticker: 'RPUP', name: 'RoboPup' },
-  { ticker: 'FIZZ', name: 'Fizzly' },
-  { ticker: 'JETK', name: 'JetKicks' },
-  { ticker: 'MUNC', name: 'MoonMunch' },
-  { ticker: 'PIXL', name: 'PixelPals' },
-  { ticker: 'ZAPP', name: 'ZapCharge' },
+  { ticker: 'RPUP', name: 'RoboPup', product: 'robot pets' },
+  { ticker: 'FIZZ', name: 'Fizzly', product: 'fizzy drinks' },
+  { ticker: 'JETK', name: 'JetKicks', product: 'jet sneakers' },
+  { ticker: 'MUNC', name: 'MoonMunch', product: 'space snacks' },
+  { ticker: 'PIXL', name: 'PixelPals', product: 'video games' },
+  { ticker: 'ZAPP', name: 'ZapCharge', product: 'super batteries' },
 ];
 
 describe('projectFrame, the names and the cheapest tradable price', () => {
@@ -403,21 +403,21 @@ describe('projectFrame, the names and the cheapest tradable price', () => {
     }
   });
 
-  it.each(FORMS)('%s form: a company entry has a ticker and a name and no other key', (form) => {
+  it.each(FORMS)('%s form: a company entry has a ticker, a name, what it makes and no other key', (form) => {
     for (const [name, game, step] of everyMoment()) {
       const { companies } = project(market, game, step, false, form);
       expect(companies).toHaveLength(6);
-      for (const company of companies) expect({ name, keys: Object.keys(company).sort() }).toEqual({ name, keys: ['name', 'ticker'] });
+      for (const company of companies) expect({ name, keys: Object.keys(company).sort() }).toEqual({ name, keys: ['name', 'product', 'ticker'] });
     }
   });
 
   it('names the cast the market was built on', () => {
     const small = buildMarket(TEST_IDENTITY, { cast: TEST_CAST });
     const expected = [
-      { ticker: 'TSTA', name: 'Test Alpha' },
-      { ticker: 'TSTB', name: 'Test Bravo' },
-      { ticker: 'TSTC', name: 'Test Charlie' },
-      { ticker: 'TSTD', name: 'Test Delta' },
+      { ticker: 'TSTA', name: 'Test Alpha', product: 'test kites' },
+      { ticker: 'TSTB', name: 'Test Bravo', product: 'test juice' },
+      { ticker: 'TSTC', name: 'Test Charlie', product: 'test snacks' },
+      { ticker: 'TSTD', name: 'Test Delta', product: 'test cells' },
     ];
     expect(project(small, newGame(), 0).companies).toEqual(expected);
     expect(projectLive(small, startedGame(small), 400).companies).toEqual(expected);

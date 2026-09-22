@@ -1,0 +1,2 @@
+# Generated fixtures are compared byte-for-byte with their LF-only writers.
+apps/server/test/fixtures/*.json text eol=lf

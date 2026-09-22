@@ -58,10 +58,9 @@ export const strikeTheme = themeQuartz.withParams({
   // colour, which would otherwise follow the accent.
   focusShadow: { radius: 2, spread: 2, color: 'var(--ring)' },
   rangeSelectionBorderColor: 'var(--ring)',
-  fontFamily: 'system-ui, sans-serif',
+  fontFamily: 'Lexend, system-ui, sans-serif',
   fontSize: 13,
-  // A hair lighter than regular, where the font allows it: a dense dark table reads less heavy.
-  fontWeight: 350,
+  fontWeight: 400,
   headerFontSize: 11,
   headerFontWeight: 500,
   rowHeight: 34,

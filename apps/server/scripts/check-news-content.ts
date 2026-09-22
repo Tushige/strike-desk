@@ -171,7 +171,7 @@ const FILES: Record<keyof ContentRevision, string> = {
   market: 'packages/shared/src/market.ts', pool: 'packages/shared/src/newsPool.ts',
   castTest: 'packages/shared/test/cast.test.ts', poolTest: 'packages/shared/test/news-pool.test.ts',
   prices: 'packages/shared/test/fixtures/price-paths.json', recording: 'apps/web/src/fixtures/recorded-game.json',
-  sheet: 'apps/web/src/lab/modules/news-engine.sheet.json', transcript: 'apps/web/src/lab/modules/command-path.transcript.json',
+  sheet: 'apps/server/test/fixtures/news-engine.sheet.json', transcript: 'apps/server/test/fixtures/command-path.transcript.json',
 };
 
 function main(args: string[]): void {

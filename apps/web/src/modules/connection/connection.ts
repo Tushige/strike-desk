@@ -99,7 +99,7 @@ export const createConnection: CreateConnection = (options) => {
   const { seam } = options;
   // The feed takes the seam's clock, so `receivedAt` and the age of the data
   // are readings of one clock.
-  const feed = createSocketFeed(seam, options.sessionKey);
+  const feed = createSocketFeed(seam, options.sessionKey, options.board);
 
   /** How many listeners `state` has. The stale check only runs while there are any. */
   let watchers = 0;

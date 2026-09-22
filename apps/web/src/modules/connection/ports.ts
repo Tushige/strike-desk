@@ -204,6 +204,13 @@ export interface ConnectionOptions {
    */
   sessionKey: string;
   /**
+   * The board size to ask the server for in every hello: the stress setting.
+   * Left out, the server builds its normal board. A server that refuses the
+   * size is answered with one plain hello on the same socket, so the page
+   * still gets a game.
+   */
+  board?: number;
+  /**
    * Asked once per unanswered command on the first frame after a reconnect.
    * Returning false leaves the command `checking` until a frame settles it
    * or `resend` is called.

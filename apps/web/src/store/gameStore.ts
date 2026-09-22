@@ -21,7 +21,10 @@ import type { ContractRow, RowInput } from './contractRows';
  * really changed go to the row sink the table registers. The full row set
  * changes once a day, and that one does go through a slice.
  *
- * Only the ordering triple is kept, never the frame itself.
+ * The latest whole picture is kept as `frame`, for the screens that read a
+ * dozen things from it at once (the clock, the account, the open ticket, the
+ * news) and are happy to redraw when a new picture lands. The chart reads
+ * `series`, which the store keeps up between the frames that carry history.
  */
 
 export interface Slice<T> {
@@ -35,6 +38,16 @@ interface WritableSlice<T> extends Slice<T> {
 
 export type RowSink = (rows: readonly ContractRow[]) => void;
 type RequestedDraft = Pick<DraftMessage, 'contractId' | 'spendCents'>;
+
+/**
+ * One company's prices for the chart, in cents. `leadIn` is yesterday's
+ * tail, drawn before the opening bell; `today` runs from the opening price
+ * (index 0) to the newest price the server has shown.
+ */
+export interface PriceSeries {
+  leadIn: readonly number[];
+  today: readonly number[];
+}
 
 type QuoteValues = Pick<ContractRow, 'contractId' | 'priceCents' | 'realCents' | 'hopeCents' | 'breakEvenCents'>;
 export type QuoteObservation = QuoteValues & { priceChanged: boolean };
@@ -54,6 +67,10 @@ export interface GameStore {
   setStatus(status: FeedStatus): void;
   setRequestedDraft(draft: RequestedDraft): void;
   price(companyId: number): Slice<number | null>;
+  /** The whole latest picture, or null before the first frame. A new object per accepted frame. */
+  frame: Slice<Frame | null>;
+  /** One company's chart series. Changes only when a price is added or history is replaced. */
+  series(companyId: number): Slice<PriceSeries>;
   phase: Slice<string>;
   day: Slice<number>;
   status: Slice<FeedStatus>;
@@ -130,6 +147,8 @@ function boardSignatureOf(frame: Frame, board: NonNullable<Frame['board']>): str
 /** One shared empty array, so repeated boardless frames tell nobody anything. */
 const NO_ROWS: readonly ContractRow[] = [];
 const NO_COMPANIES: readonly CompanyView[] = [];
+const NO_POINTS: readonly number[] = [];
+const EMPTY_SERIES: PriceSeries = { leadIn: NO_POINTS, today: NO_POINTS };
 
 function quoteChanged(before: QuoteValues, after: QuoteValues): boolean {
   return before.priceCents !== after.priceCents || before.realCents !== after.realCents ||
@@ -143,6 +162,8 @@ function observation(row: ContractRow, before: ContractRow): QuoteObservation {
 
 export function createGameStore(companyCount = 6): GameStore {
   const prices = Array.from({ length: companyCount }, () => createSlice<number | null>(null));
+  const seriesSlices = Array.from({ length: companyCount }, () => createSlice<PriceSeries>(EMPTY_SERIES));
+  const frameSlice = createSlice<Frame | null>(null);
   const phase = createSlice('');
   const day = createSlice(0);
   const status = createSlice<FeedStatus>('closed');
@@ -188,6 +209,35 @@ export function createGameStore(companyCount = 6): GameStore {
     return slice;
   }
 
+  function series(companyId: number): Slice<PriceSeries> {
+    const slice = seriesSlices[companyId];
+    if (slice === undefined) throw new Error(`no company ${String(companyId)}`);
+    return slice;
+  }
+
+  /**
+   * Keep each company's chart series up to date. A frame that carries
+   * history replaces the series outright; any other frame, and every batch
+   * of quotes, adds the one newest price when it is the next point in line.
+   * A gap is left alone: the server sends history again whenever it skipped
+   * a step, and that frame puts the series right.
+   */
+  function ingestSeries(prices: readonly number[], priceIndex: number, history?: Frame['history'], leadIn?: Frame['leadIn']): void {
+    for (let companyId = 0; companyId < companyCount; companyId += 1) {
+      const slice = seriesSlices[companyId];
+      if (slice === undefined) continue;
+      const held = slice.get();
+      const path = history?.[companyId];
+      if (path !== undefined) {
+        slice.set({ leadIn: leadIn?.[companyId] ?? held.leadIn, today: path });
+        continue;
+      }
+      const newest = prices[companyId];
+      if (newest === undefined || held.today.length !== priceIndex) continue;
+      slice.set({ leadIn: held.leadIn, today: [...held.today, newest] });
+    }
+  }
+
   function ingest(message: ServerMessage): IngestResult {
     if (message.t === 'error') {
       if (message.code === 'noSession') sessionGone.set(true);
@@ -220,9 +270,11 @@ export function createGameStore(companyCount = 6): GameStore {
       prices[companyId]?.set(frame.prices[companyId] ?? null);
     }
     if (!sameCompanies(companies.get(), frame.companies)) companies.set(frame.companies);
+    ingestSeries(frame.prices, frame.clock.priceIndex, frame.history, frame.leadIn);
     heldPhase = frame.clock.phase;
     heldStress = frame.stress;
     const boardResult = ingestBoard(frame);
+    frameSlice.set(frame);
     return { accepted: true, kind: 'frame', session: frame.session, day: heldDay,
       phase: heldPhase, stress: heldStress, ...boardResult };
   }
@@ -256,6 +308,7 @@ export function createGameStore(companyCount = 6): GameStore {
     for (let companyId = 0; companyId < companyCount; companyId += 1) {
       prices[companyId]?.set(message.prices[companyId] ?? null);
     }
+    ingestSeries(message.prices, message.priceIndex);
 
     const changed: ContractRow[] = [];
     const quoteChanges: QuoteObservation[] = [];
@@ -353,6 +406,8 @@ export function createGameStore(companyCount = 6): GameStore {
     setStatus,
     setRequestedDraft,
     price,
+    frame: frameSlice,
+    series,
     phase,
     day,
     status,

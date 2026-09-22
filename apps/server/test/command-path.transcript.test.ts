@@ -23,7 +23,7 @@ import type { Receipt } from '@strike-desk/shared/engine';
 /** What to do about a failure here, said where a red run will show it. */
 const RETAKE = 'The command path transcript is older than the rules. Retake it: pnpm --filter @strike-desk/server exec tsx scripts/command-path-transcript.ts';
 
-const TRANSCRIPT = new URL('../../web/src/lab/modules/command-path.transcript.json', import.meta.url);
+const TRANSCRIPT = new URL('./fixtures/command-path.transcript.json', import.meta.url);
 
 /** The market the script plays. No live game uses it. */
 const SEED = 4242424242;

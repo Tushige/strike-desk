@@ -21,7 +21,7 @@ import { buildReview, buildSheet, checkCandidate, renderReview, renderSheet } fr
 /** What to do about a failure here, said where a red run will show it. */
 const REWRITE = 'The news sheet is older than the pool or the writer. Rewrite it: pnpm --filter @strike-desk/server exec tsx scripts/news-sheet.ts';
 
-const SHEET = new URL('../../web/src/lab/modules/news-engine.sheet.json', import.meta.url);
+const SHEET = new URL('./fixtures/news-engine.sheet.json', import.meta.url);
 
 /** Every key the sheet may hold, at any depth. Typed in: a new key is a decision, made here. */
 const KNOWN_KEYS = [

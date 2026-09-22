@@ -11,7 +11,7 @@ import type { SessionRegistry } from './sessions';
  * The door: every inbound message is parsed here and routed from here.
  * `hello` makes or resumes a session; clock commands move the game. A `draft`
  * only replaces this connection's preview request for the next whole frame.
- * Buys reach the game rules; cashing out remains unavailable.
+ * Buys and cash-outs reach the game rules through the one command path.
  */
 
 export interface Connection {

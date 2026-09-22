@@ -3,8 +3,6 @@
 import { createElement } from 'react';
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { createWsFeed } from '../src/feed/wsFeed';
-import type { WsFeedOptions } from '../src/feed/wsFeed';
 import { createSocketFactory, testFrame } from './fakeSocket';
 import { createStressMeasurements } from '../src/board/stressMeasurements';
 import { watchTable } from '../src/board/watchTable';
@@ -14,7 +12,6 @@ const stops: (() => void)[] = [];
 afterEach(() => {
   cleanup();
   stops.splice(0).forEach((stop) => { stop(); });
-  vi.doUnmock('../src/feed/wsFeed');
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
@@ -246,12 +243,10 @@ it('samples a changed Price cell rendered by the actual contract columns', async
   vi.stubGlobal('requestAnimationFrame', (run: FrameRequestCallback) => { frames.set(++serial, run); return serial; });
   vi.stubGlobal('cancelAnimationFrame', (id: number) => { frames.delete(id); });
   const sockets = createSocketFactory();
-  vi.doMock('../src/feed/wsFeed', () => ({ createWsFeed: (options: WsFeedOptions) => {
-    const feed = createWsFeed({ ...options, createSocket: (url) => sockets.create(url) });
-    stops.push(() => { feed.close(); });
-    return feed;
-  } }));
-  const { stressMeasurements } = await import('../src/boot');
+  // Boot names the socket constructor once; a fake stands in for it here.
+  vi.stubGlobal('WebSocket', function FakeWebSocket(url: string) { return sockets.create(url); });
+  const { connection, stressMeasurements } = await import('../src/boot');
+  stops.push(() => { connection.close(); });
   const { ContractBoard } = await import('../src/board/ContractBoard');
   const view = render(createElement(ContractBoard, { selectedId: null, onSelect: () => {}, filter: null, isHighlighted: () => false }));
   const frame = testFrame({ stress: true, step: 1,

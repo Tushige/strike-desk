@@ -198,7 +198,7 @@ export interface FakeTicketDeskControls {
 
 export interface FakeTicketDesk {
   /** The current props. The same object until the desk changes something. */
-  props: () => OrderTicketProps;
+  props: () => Extract<OrderTicketProps, { mode?: 'trade' }>;
   /** Told when `props()` would return something new. Returns the unsubscribe. */
   subscribe: (listener: () => void) => () => void;
   controls: FakeTicketDeskControls;
@@ -251,7 +251,7 @@ export function createFakeTicketDesk(): FakeTicketDesk {
   };
 
   let shown: { contract: TicketContract | null; line: LineState; retryOffered: boolean } = { contract: null, line: 'live', retryOffered: false };
-  let current: OrderTicketProps | null = null;
+  let current: Extract<OrderTicketProps, { mode?: 'trade' }> | null = null;
 
   function change(next: Partial<typeof shown>): void {
     shown = { ...shown, ...next };
@@ -364,8 +364,8 @@ export function createHeldTicketDesk(options: HeldTicketDeskOptions): HeldTicket
   let waiting = false;
   let callOff: (() => void) | null = null;
   let day = source.day;
-  let current: OrderTicketProps | null = null;
-  let builtFrom: OrderTicketProps | null = null;
+  let current: Extract<OrderTicketProps, { mode?: 'trade' }> | null = null;
+  let builtFrom: Extract<OrderTicketProps, { mode?: 'trade' }> | null = null;
 
   function tell(): void {
     current = null;

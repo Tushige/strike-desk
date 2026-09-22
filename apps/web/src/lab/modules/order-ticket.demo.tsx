@@ -124,7 +124,7 @@ export default function OrderTicketDemo(): ReactElement {
   const draftTimes = useRef<number[]>([]);
 
   // The same props, with the page told whenever the form sends or reports something, so that the logs are never behind.
-  const shown = useMemo<OrderTicketProps>(
+  const shown = useMemo<Extract<OrderTicketProps, { mode?: 'trade' }>>(
     () => ({
       ...props,
       submit: (command) => {

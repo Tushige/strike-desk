@@ -37,7 +37,7 @@ it.each([
   // These legacy aliases are absent from the browser's theme. Avoid jsdom's
   // recursive inherited-variable lookup; every other computed style stays real.
   const computedStyle = globalThis.getComputedStyle;
-  const styleLookup = board === null ? undefined : vi.spyOn(globalThis, 'getComputedStyle').mockImplementation((element, pseudo) => {
+  const styleLookup = vi.spyOn(globalThis, 'getComputedStyle').mockImplementation((element, pseudo) => {
     const style = computedStyle(element, pseudo);
     return new Proxy(style, { get(target, key): unknown {
       if (key === 'getPropertyValue') return (name: string) => ABSENT_LEGACY_THEME_PROPERTIES.has(name) ? '' : target.getPropertyValue(name);
@@ -224,7 +224,7 @@ it.each([
     expect(fresh.session).not.toBe(oldSession);
     expect(window.sessionStorage.getItem('unrelated')).toBe('keep');
   } finally {
-    styleLookup?.mockRestore();
+    styleLookup.mockRestore();
     vi.unstubAllGlobals();
     cleanup(); feed?.close(); child.stdin.end('close\n');
     await new Promise<void>((resolve) => {

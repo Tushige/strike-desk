@@ -80,7 +80,7 @@ it.each([null, 2500])('boot delivers three actual headlines beside the mounted l
         }) };
     });
     vi.doMock('../src/feed/wsFeed', () => ({ createWsFeed: makeFeed }));
-    const { store, newsStore } = await import('../src/boot');
+    const { store, newsStore, comparisonStore } = await import('../src/boot');
     const { default: App } = await import('../src/App');
     const view = render(createElement(App));
     fireEvent.click(await view.findByRole('button', { name: 'Start fast (3x)' }));
@@ -112,6 +112,16 @@ it.each([null, 2500])('boot delivers three actual headlines beside the mounted l
     }
     fireEvent.click(view.getByRole('button', { name: 'Compare options' }));
     const grid = await view.findByRole('grid', { name: 'Contracts' });
+    const story = reply.frame.news[0]!;
+    fireEvent.click(view.getByRole('button', { name: story.title }));
+    expect(view.getByRole('img', { name: reply.frame.companies[story.companyId]!.name })).toBeTruthy();
+    const companyFilter = view.getByRole('combobox', { name: 'Company' }) as HTMLSelectElement;
+    expect(companyFilter.value).toBe(String(story.companyId));
+    expect(comparisonStore.requested.get().contractId).toBeNull();
+    fireEvent.change(companyFilter, { target: { value: '' } });
+    expect(view.getByRole('img', { name: reply.frame.companies[story.companyId]!.name })).toBeTruthy();
+    expect(view.getByRole('button', { name: story.title }).getAttribute('aria-pressed')).toBe('true');
+    expect(view.queryByRole('button', { name: 'Cash out' })).toBeNull();
     const before = store.price(0).get();
     const quotesBefore = store.currentRows();
     await act(async () => {

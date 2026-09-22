@@ -7,15 +7,17 @@ import { createInterface } from 'node:readline';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { createElement } from 'react';
-import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { Frame, ServerMessage } from '@strike-desk/shared/protocol';
+import { formatCents } from '@strike-desk/shared/money';
 import type { Outbound } from '@strike-desk/shared/feed';
 import { createWsFeed } from '../src/feed/wsFeed';
 import type { SocketLike, WsFeedOptions } from '../src/feed/wsFeed';
 
+interface TestSocket extends SocketLike { ping(): void; once(event: 'pong', listener: () => void): void }
 const Socket = createRequire(path.resolve('apps/server/package.json'))('ws') as
-  new (url: string, options: { origin: string }) => SocketLike;
+  new (url: string, options: { origin: string }) => TestSocket;
 
 const ABSENT_LEGACY_THEME_PROPERTIES = new Set([
   '--ag-grid-size', '--ag-active-color', '--ag-alpine-active-color', '--ag-balham-active-color',
@@ -86,8 +88,8 @@ it.each([
     expect(outbound).toEqual([]);
     expect(view.getAllByText(board === null ? 'Five trading days. Read the news, buy tickets, and see how you finish.'
       : 'Buying is switched off while the stress test runs.').length).toBeGreaterThan(0);
-    if (board === null) expect(view.getByText('Tickets settle at the closing bell. Cashing out is not available yet.')).toBeTruthy();
-    else expect(view.queryByText('Tickets settle at the closing bell. Cashing out is not available yet.')).toBeNull();
+    expect(view.queryByText('Tickets settle at the closing bell. Cashing out is not available yet.')).toBeNull();
+    expect(view.queryByRole('button', { name: 'Cash out' })).toBeNull();
     async function sample(ms: number): Promise<Frame> {
       const count = messages.length;
       await act(async () => {
@@ -315,5 +317,213 @@ it.each(['before delivery', 'after acceptance'] as const)('recovers an opening b
       const timer = setTimeout(() => { child.kill(); resolve(); }, 5000);
       child.once('exit', () => { clearTimeout(timer); resolve(); });
     }); lines.close();
+  }
+}, 45000);
+
+it('trades through five real days with sales, holds and an original-day late receipt', async () => {
+  vi.resetModules(); window.history.replaceState(null, '', '/');
+  const computedStyle = globalThis.getComputedStyle;
+  vi.spyOn(globalThis, 'getComputedStyle').mockImplementation((element, pseudo) => {
+    const style = computedStyle(element, pseudo);
+    return new Proxy(style, { get(target, key): unknown {
+      if (key === 'getPropertyValue') return (name: string) => ABSENT_LEGACY_THEME_PROPERTIES.has(name) ? '' : target.getPropertyValue(name);
+      const value: unknown = Reflect.get(target, key, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    } });
+  });
+  const child = spawn('pnpm', ['--filter', '@strike-desk/server', 'exec', 'tsx', 'test/news-app.ts'], { stdio: 'pipe' });
+  const lines = createInterface({ input: child.stdout });
+  let errors = ''; child.stderr.on('data', (chunk: Buffer) => { errors += chunk.toString(); });
+  const ready = new Promise<string>((resolve, reject) => {
+    const timer = setTimeout(() => { reject(new Error(`service readiness timeout: ${errors}`)); }, 30000);
+    lines.on('line', (line) => {
+      if (!line.startsWith('{')) return;
+      const message: unknown = JSON.parse(line);
+      if (typeof message === 'object' && message !== null && 'url' in message && typeof message.url === 'string') { clearTimeout(timer); resolve(message.url); }
+    });
+    child.once('exit', () => { clearTimeout(timer); reject(new Error(`service exited: ${errors}`)); });
+  });
+  let feed: ReturnType<typeof createWsFeed> | undefined;
+  let socket: TestSocket | undefined;
+  let sockets = 0;
+  let holdNextSale = false;
+  const messages: ServerMessage[] = [];
+  const outbound: Outbound[] = [];
+  let disposeStores = () => {};
+  try {
+    const url = await ready;
+    vi.doMock('../src/feed/wsFeed', () => ({ createWsFeed: (options: WsFeedOptions) => {
+      const live = createWsFeed({ ...options, url, createSocket: (address) => {
+        sockets += 1; socket = new Socket(address, { origin: window.location.origin }); return socket;
+      } });
+      feed = live;
+      live.subscribe((event) => { if (event.type === 'message') messages.push(event.message); });
+      return { ...live, send(message: Outbound) {
+        outbound.push(message);
+        if (message.t === 'cashOut' && holdNextSale) { holdNextSale = false; return false; }
+        return live.send(message);
+      } };
+    } }));
+    const { default: App } = await import('../src/App');
+    const boot = await import('../src/boot');
+    disposeStores = () => { boot.buyFlow.dispose(); boot.deskFreshness.dispose(); boot.gameLoop.dispose(); };
+    const view = render(createElement(App));
+    async function sample(ms = 0): Promise<Frame> {
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => { reject(new Error('socket barrier timeout')); }, 3000);
+        socket!.once('pong', () => { clearTimeout(timer); resolve(); }); socket!.ping();
+      });
+      const before = messages.filter((message) => message.t === 'frame').length;
+      await act(async () => { child.stdin.write(`${String(ms)}\n`); await waitFor(() => { expect(messages.filter((message) => message.t === 'frame')).toHaveLength(before + 1); }); });
+      const frame = messages.at(-1); if (frame?.t !== 'frame') throw new Error('missing sample'); return frame;
+    }
+
+    fireEvent.click(await view.findByRole('button', { name: 'Start at normal speed' }));
+    await view.findByRole('heading', { name: 'Day 1: before the bell' });
+    const positionIds: string[] = [];
+    let delayedSale: Outbound | undefined;
+    const signed = (cents: number) => `${cents > 0 ? '+' : ''}${formatCents(cents)}`;
+    const lastReply = (kind: string) => {
+      const message = messages.findLast((item) => item.t === 'reply' && item.receipt.kind === kind);
+      if (message?.t !== 'reply') throw new Error(`missing ${kind} receipt`);
+      expect(message.receipt.outcome).toBe('accepted');
+      return message;
+    };
+    for (const day of [1, 2, 3, 4, 5]) {
+      await view.findByRole('heading', { name: `Day ${String(day)}: before the bell` });
+      // The injected wall clock refills the unchanged real socket budget.
+      await sample(10000);
+      const panel = view.getByRole('region', { name: 'Your ticket' });
+      const input = within(panel).getByRole<HTMLInputElement>('textbox', { name: 'How much to spend' });
+      expect(input.value).toBe('');
+      expect(boot.comparisonStore.requested.get().contractId).toBeNull();
+      expect(outbound.filter((item) => item.t === 'buy')).toHaveLength(day - 1);
+      if (day === 2 || day === 3) {
+        fireEvent.click(view.getByRole('button', { name: 'Ring the opening bell' }));
+        await view.findByRole('heading', { name: `Day ${String(day)}: the market is open` });
+      }
+      if (day === 2) {
+        fireEvent.click(view.getByRole('button', { name: 'Compare options' }));
+        const grid = await view.findByRole('grid', { name: 'Contracts' });
+        await waitFor(() => { expect(grid.querySelector('.ag-row[row-id="0"] [col-id="company"]')).not.toBeNull(); });
+        fireEvent.click(grid.querySelector('.ag-row[row-id="0"] [col-id="company"]')!);
+        await waitFor(() => { expect(boot.comparisonStore.requested.get().contractId).toBe(0); });
+      } else fireEvent.click(within(panel).getAllByRole('button', { name: /^Close/ })[0]!);
+      const chosen = boot.comparisonStore.requested.get().contractId;
+      fireEvent.change(input, { target: { value: '1000.50' } });
+      await waitFor(() => { expect(outbound.at(-1)).toEqual({ t: 'draft', contractId: chosen, spendCents: 100050 }); }, { timeout: 2500 });
+      const quoted = await sample(200);
+      expect(quoted.draft?.ticket?.contractId).toBe(chosen);
+
+      if (day === 5) {
+        // Yesterday's unanswered sale resolves without replacing today's draft.
+        expect(boot.buyFlow.transaction.get()?.command).toEqual(delayedSale);
+        fireEvent.click(view.getByRole('button', { name: 'Retry safely' }));
+        await view.findByText('Day 4: settled at the bell.');
+        const recovered = lastReply('cashOut');
+        expect(recovered.receipt.commandId).toBe(delayedSale?.t === 'cashOut' ? delayedSale.commandId : '');
+        expect(recovered.frame.account).toEqual(quoted.account);
+        expect(boot.comparisonStore.requested.get()).toEqual({ contractId: chosen, spendCents: 100050 });
+        expect(input.value).toBe('1000.50');
+        expect(view.getByRole('region', { name: 'Your ticket' })).toBe(panel);
+      }
+
+      const buy = within(panel).getByRole<HTMLButtonElement>('button', { name: 'Buy ticket' });
+      expect(buy.disabled).toBe(false);
+      fireEvent.click(buy);
+      expect(within(panel).getByRole('status').textContent).toBe('Pending...');
+      await waitFor(() => { expect(within(panel).getByRole('status').textContent).toBe('Accepted. The ticket is yours.'); });
+      const purchase = lastReply('buy');
+      const position = purchase.frame.positions.find((item) => item.day === day)!;
+      positionIds.push(position.id);
+      expect(new Set(positionIds).size).toBe(day);
+      expect(position).toMatchObject({ contractId: chosen, status: 'open', entryPriceCents: quoted.draft!.ticket!.priceCents,
+        costCents: quoted.draft!.ticket!.costCents, quantity: quoted.draft!.ticket!.quantity });
+      expect(purchase.frame.account.canBuy).toBe(false);
+      expect(within(panel).getByText('Bought for').nextElementSibling?.textContent).toBe(formatCents(position.costCents));
+      expect(view.queryByRole('textbox')).toBeNull();
+      expect(view.queryByRole('button', { name: 'Buy ticket' })).toBeNull();
+
+      let sale: Frame['positions'][number] | undefined;
+      if (day === 1 || day === 3) {
+        fireEvent.click(within(panel).getByRole('button', { name: 'Cash out' }));
+        await waitFor(() => { expect(within(panel).getByRole('status').textContent).toBe('You cashed out'); });
+        const result = lastReply('cashOut');
+        sale = result.frame.positions.find((item) => item.id === position.id)!;
+        expect(result.frame.clock.phase).toBe(day === 1 ? 'preBell' : 'open');
+        expect(sale.exit?.kind).toBe('cashOut');
+        expect(result.frame.account.canBuy).toBe(false);
+        expect(within(panel).getByText('Money back in your pocket').nextElementSibling?.textContent).toBe(formatCents(sale.exit!.proceedsCents));
+        expect(within(panel).getByText('If you had held on').nextElementSibling?.textContent).toContain(formatCents(sale.ifHeldCents!));
+        expect(view.queryByRole('button', { name: 'Cash out' })).toBeNull();
+      }
+      if (day === 1 || day === 4 || day === 5) {
+        fireEvent.click(view.getByRole('button', { name: 'Ring the opening bell' }));
+        await view.findByRole('heading', { name: `Day ${String(day)}: the market is open` });
+      }
+      const watching = await sample(2000);
+      if (sale !== undefined) {
+        const held = watching.positions.find((item) => item.id === position.id)!;
+        expect(held.exit).toEqual(sale.exit);
+        expect(held.profitCents).toBe(sale.profitCents);
+        await waitFor(() => {
+          expect(within(panel).getByText('If you had held on').nextElementSibling?.textContent).toContain(formatCents(held.ifHeldCents!));
+        });
+        expect(within(panel).getByText('Money back in your pocket').nextElementSibling?.textContent).toBe(formatCents(sale.exit!.proceedsCents));
+      }
+      if (day === 4) {
+        holdNextSale = true;
+        fireEvent.click(within(panel).getByRole('button', { name: 'Cash out' }));
+        delayedSale = outbound.at(-1);
+        expect(delayedSale).toMatchObject({ t: 'cashOut', positionId: position.id });
+        expect(within(panel).getByRole('status').textContent).toBe('Checking...');
+      }
+      fireEvent.click(view.getByRole('button', { name: 'Skip to the closing bell' }));
+      await view.findByRole('heading', { name: `Day ${String(day)}: closing bell` });
+      const closing = lastReply('skipToBell').frame;
+      const closedPosition = closing.positions.find((item) => item.id === position.id)!;
+      expect(closedPosition.status).toBe(sale === undefined ? 'settled' : 'cashedOut');
+      expect(closedPosition.exit?.kind).toBe(sale === undefined ? 'bell' : 'cashOut');
+      expect(closing.positions.filter((item) => item.day === day)).toHaveLength(1);
+      if (sale !== undefined) {
+        expect(closedPosition.exit).toEqual(sale.exit);
+        expect(within(panel).getByText('If you had held to the bell').nextElementSibling?.textContent).toContain(formatCents(closedPosition.ifHeldCents!));
+      } else expect(within(panel).getByText('Paid at the bell').nextElementSibling?.textContent).toBe(formatCents(closedPosition.exit!.proceedsCents));
+      const dayResult = closing.days.find((item) => item.day === day)!;
+      expect(dayResult.endCents).toBe(closing.account.cashCents);
+      expect(view.getByText('Ended the day with').nextElementSibling?.textContent).toBe(formatCents(dayResult.endCents));
+      expect(view.getByText('Change today').nextElementSibling?.textContent).toBe(signed(dayResult.changeCents));
+      expect(view.queryByRole('button', { name: 'Cash out' })).toBeNull();
+      expect(outbound.filter((item) => item.t === 'buy')).toHaveLength(day);
+      const frozen = await sample(200);
+      expect(frozen.positions).toEqual(closing.positions);
+      expect(frozen.account).toEqual(closing.account);
+      expect(frozen.days).toEqual(closing.days);
+      fireEvent.click(view.getByRole('button', { name: day === 5 ? 'See your final result' : `Go to day ${String(day + 1)}` }));
+      await view.findByRole('heading', { name: day === 5 ? 'That was the final bell!' : `Day ${String(day + 1)}: before the bell` });
+    }
+    const final = lastReply('nextDay').frame;
+    expect(final.clock.phase).toBe('final');
+    expect(final.positions.map((item) => item.id)).toEqual(positionIds);
+    expect(final.days.map((item) => item.day)).toEqual([1, 2, 3, 4, 5]);
+    expect(view.getByText('You finished with').nextElementSibling?.textContent).toBe(formatCents(final.final!.finalCents));
+    expect(view.getByText('Since the start').nextElementSibling?.textContent).toBe(signed(final.final!.changeCents));
+    expect(final.account.cashCents).toBe(final.final!.finalCents);
+    const finalRows = view.getByRole('table', { name: 'Day by day' }).querySelectorAll('tbody tr');
+    expect(finalRows).toHaveLength(5);
+    for (const [index, result] of final.days.entries()) expect(finalRows[index]?.textContent).toContain(formatCents(result.endCents));
+    expect(view.queryByRole('region', { name: 'Your ticket' })).toBeNull();
+    expect(view.queryByRole('button', { name: /Buy ticket|Cash out/ })).toBeNull();
+    const trades = outbound.filter((item) => item.t === 'buy' || item.t === 'cashOut');
+    expect(trades.filter((item) => item.t === 'buy')).toHaveLength(5);
+    expect(trades.filter((item) => item.t === 'cashOut')).toHaveLength(4);
+    expect(new Set(trades.map((item) => item.commandId)).size).toBe(8);
+    expect(trades.filter((item) => item.t === 'cashOut').slice(-2)).toEqual([delayedSale, delayedSale]);
+    expect(messages.filter((item) => item.t === 'error')).toEqual([]);
+    expect(sockets).toBe(1);
+  } finally {
+    vi.restoreAllMocks(); cleanup(); feed?.close(); disposeStores(); child.stdin.end('close\n');
+    await new Promise<void>((resolve) => { const timer = setTimeout(() => { child.kill(); resolve(); }, 5000); child.once('exit', () => { clearTimeout(timer); resolve(); }); });
+    lines.close();
   }
 }, 45000);

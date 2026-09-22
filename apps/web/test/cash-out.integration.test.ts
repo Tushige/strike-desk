@@ -117,7 +117,7 @@ it.each([false, true])('cashes out from one root ticket and continues the day (o
     expect(sold.frame.account.canBuy).toBe(false);
     expect(within(panel).getByText('Money back in your pocket').nextElementSibling?.textContent).toBe(formatCents(sold.frame.positions[0]!.exit!.proceedsCents));
     expect(view.queryByText('Cash out before the closing bell, or hold to settle at the bell.')).toBeNull();
-    expect(view.getByText('This is what your ticket would be worth right now. Keep watching. It can still go either way.')).toBeTruthy();
+    expect(within(panel).getByText('This is what your ticket would be worth right now. Keep watching. It can still go either way.')).toBeTruthy();
     if (!open) {
       fireEvent.click(view.getByRole('button', { name: 'Ring the opening bell' }));
       await view.findByRole('heading', { name: 'Day 1: the market is open' });

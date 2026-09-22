@@ -1,9 +1,8 @@
 import type { Frame, Side } from '@strike-desk/shared/protocol';
 import type { TicketContract } from '../../modules/order-ticket/index';
-import { NextDayButton } from '../desk/PhaseActions';
 import type { Pick } from '../desk/pick';
-import { ActionDock } from '../ui';
 import { CashedOut, LiveTicket } from './LiveTicket';
+import { ResultPanel } from './ResultPanel';
 import { todaysTicket } from './sources';
 import { TicketBuilder } from './TicketBuilder';
 import { useTicketMachine } from './useTicketMachine';
@@ -35,16 +34,7 @@ export function TicketPanel({
   const ticket = todaysTicket(frame);
   const phase = frame.clock.phase;
 
-  if (phase === 'debrief') {
-    return (
-      <div className="flex min-h-full flex-col gap-[18px] short:gap-3.5 motion-safe:animate-rise">
-        <h2 className="m-0 font-display text-xl font-bold">Closing bell</h2>
-        <ActionDock>
-          <NextDayButton frame={frame} />
-        </ActionDock>
-      </div>
-    );
-  }
+  if (phase === 'debrief') return <ResultPanel frame={frame} companyId={companyId} />;
   if (ticket === null) {
     return (
       <TicketBuilder frame={frame} companyId={companyId} pick={pick} onChooseSide={onChooseSide} onChooseChoice={onChooseChoice} machine={machine} />

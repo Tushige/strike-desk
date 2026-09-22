@@ -163,15 +163,16 @@ export function PriceChart({
 
           {target !== null && (
             <>
+              {/* Both labels sit just past the opening bell, at the start of the day, clear of the price bubble that rides the newest point. */}
               <span
-                className={cx('absolute right-3 rounded-[10px] px-2.5 py-1 text-[13px] font-bold text-ink', target.side === 'up' ? 'bg-mint' : 'bg-coral')}
-                style={{ top: target.side === 'up' ? targetY + 6 : targetY - 32 }}
+                className={cx('absolute rounded-[10px] px-2.5 py-1 text-[13px] font-bold text-ink', target.side === 'up' ? 'bg-mint' : 'bg-coral')}
+                style={{ left: openX + 8, top: target.side === 'up' ? targetY + 6 : targetY - 32 }}
               >
                 Target {price(target.targetCents)}
               </span>
               <span
-                className={cx('absolute right-3 text-[12px] font-semibold', target.side === 'up' ? 'text-mint/80' : 'text-coral/80')}
-                style={{ top: target.side === 'up' ? breakEvenY - 22 : breakEvenY + 6 }}
+                className={cx('absolute text-[12px] font-semibold', target.side === 'up' ? 'text-mint/80' : 'text-coral/80')}
+                style={{ left: openX + 8, top: target.side === 'up' ? breakEvenY - 22 : breakEvenY + 6 }}
               >
                 Break-even {price(target.breakEvenCents)}
               </span>

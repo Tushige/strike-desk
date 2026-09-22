@@ -67,10 +67,16 @@ function CompanyHeader({ frame, companyId }: { frame: Frame; companyId: number }
 export function Desk({ frame }: { frame: Frame }) {
   const day = frame.clock.day;
   const headlines = frame.news.filter((item) => item.day === day);
-  const [choice, setChoice] = useState<{ day: number; companyId: number } | null>(null);
-  const selected = choice !== null && choice.day === day ? choice.companyId : (headlines[0]?.companyId ?? 0);
+  const picking = frame.clock.phase === 'preBell';
+  const ticket = ticketToday(frame);
+  // The selection starts over on a new day, and again at the closing bell,
+  // where the ticket's company is the one to look at.
+  const selectionKey = `${String(day)}:${frame.clock.phase === 'debrief' ? 'bell' : 'day'}`;
+  const [choice, setChoice] = useState<{ key: string; companyId: number } | null>(null);
+  const byDefault = (frame.clock.phase === 'debrief' ? ticket?.companyId : undefined) ?? headlines[0]?.companyId ?? 0;
+  const selected = choice !== null && choice.key === selectionKey ? choice.companyId : byDefault;
   const select = (companyId: number): void => {
-    setChoice({ day, companyId });
+    setChoice({ key: selectionKey, companyId });
   };
 
   // The ticket being built: a side and a simple choice that follow the
@@ -94,8 +100,6 @@ export function Desk({ frame }: { frame: Frame }) {
   const draftContractId = contractIdFor(frame, selected, pick);
   const contract = contractFor(frame, draftContractId);
 
-  const picking = frame.clock.phase === 'preBell';
-  const ticket = ticketToday(frame);
   const secondsLeft = secondsFor(frame.clock.stepsLeft, frame.clock.pace);
   const hurry = (frame.clock.phase === 'open' && secondsLeft < 15) || (picking && secondsLeft < 10);
   const twist = twistShowing(frame, selected);

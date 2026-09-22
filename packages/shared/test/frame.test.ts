@@ -105,6 +105,39 @@ const FORMS = ['full', 'live'] as const;
 const STEPS_IN_BOTH_FORMS = FORMS.flatMap((form) => STEPS.map(([name, step]): [(typeof FORMS)[number], string, number] => [form, name, step]));
 
 describe('projectFrame keeps the future secret', () => {
+  it('projects only reached held value after sale, then clamps it to its own bell through final', () => {
+    const source = structuredClone(market);
+    source.days[0]!.news = [];
+    source.days[0]!.paths[0] = Array<number>(501).fill(100);
+    source.days[0]!.paths[0][498] = 110;
+    source.days[0]!.paths[0][499] = 112;
+    source.days[0]!.paths[0][500] = 120;
+    const bought = applyCommand(source, startedGame(source), ME,
+      buyCommand({ day: 1, contractId: 20, spendCents: 200000, seenPriceCents: 100000 }), 798);
+    const sale = applyCommand(source, bought.game, ME, cashOut('d1'), 798);
+    const atSale = project(source, sale.game, 798);
+    // Two calls covering 100 shares each: $10 intrinsic pays $2,000;
+    // the reached $12 intrinsic would pay $2,400, and $20 at the bell $4,000.
+    expect(atSale.positions[0]).toMatchObject({ costCents: 200000, valueCents: 200000, profitCents: 0, ifHeldCents: 200000 });
+    const reached = advanceTo(source, sale.game, 799);
+    const live = project(source, reached, 799);
+    expect(live.positions[0]?.ifHeldCents).toBe(240000);
+    expect(project(scrambleFuture(source, 799), reached, 799)).toEqual(live);
+    const control = structuredClone(source); control.days[0]!.paths[0]![499] = 113;
+    expect(project(control, reached, 799).positions[0]?.ifHeldCents).toBe(260000);
+    expect(live.account.cashCents).toBe(100000000);
+    let game = reached;
+    for (const step of [800, 950, GAME_STEPS]) {
+      game = advanceTo(source, game, step);
+      const frame = project(source, game, step);
+      expect(frame.positions[0]).toMatchObject({ costCents: 200000, valueCents: 200000, profitCents: 0, ifHeldCents: 400000,
+        exit: { kind: 'cashOut', step: 798, proceedsCents: 200000 } });
+      expect(frame.account.cashCents).toBe(100000000);
+      expect(frame.days[0]).toEqual({ day: 1, startCents: 100000000, endCents: 100000000, changeCents: 0 });
+      expect(project(source, game, step)).toEqual(frame);
+      if (step === GAME_STEPS) expect(frame.final).toMatchObject({ finalCents: 100000000, changeCents: 0 });
+    }
+  });
   it('projects earlier observations as integer cents only beside requested full history', () => {
     const source = structuredClone(market);
     // $98.12 and $99.34 precede an unchanged $100 open: 9812, 9934, 10000 cents.

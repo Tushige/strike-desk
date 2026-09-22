@@ -24,6 +24,63 @@ function bought(): GameState {
   return result.game;
 }
 
+function boundaryMarket() {
+  const source = structuredClone(market);
+  source.days[0]!.news = [];
+  source.days[0]!.paths[0] = Array<number>(501).fill(100);
+  source.days[0]!.paths[0][498] = 110;
+  source.days[0]!.paths[0][499] = 112;
+  source.days[0]!.paths[0][500] = 120;
+  return source;
+}
+
+describe('literal bell payment and receipt boundaries', () => {
+  it.each([799, 800, 801])('distinguishes a buy and a cash-out received at step %i', (step) => {
+    const source = boundaryMarket(); const initial = startedGame(source);
+    const bought = applyCommand(source, initial, ME, buyCommand({ day: 1, contractId: 20, spendCents: 200000, seenPriceCents: 100000 }), 798);
+    expect(me(bought.game).positions[0]).toMatchObject({ targetCents: 10000, quantity: 2, costCents: 200000 });
+    const sale = applyCommand(source, bought.game, ME, cashOut('d1', 'sale'), step);
+    // Two 100-share calls: $112-$100 gives $2,400 before the bell;
+    // $120-$100 gives $4,000 at the bell. The original cost was $2,000.
+    expect(me(sale.game).cashCents).toBe(step === 799 ? 100040000 : 100200000);
+    expect(me(sale.game).positions[0]?.exit).toMatchObject({ kind: step === 799 ? 'cashOut' : 'bell', proceedsCents: step === 799 ? 240000 : 400000 });
+    expect(sale.receipt.step).toBe(step);
+    expect(me(sale.game).rev).toBe(step === 799 ? 3 : 4);
+    const purchase = applyCommand(source, initial, ME, buyCommand({ day: 1, contractId: 20, spendCents: 240000, seenPriceCents: 120000 }), step);
+    expect(purchase.receipt).toMatchObject(step === 799 ? { outcome: 'accepted' } : { outcome: 'rejected', reason: 'marketClosed' });
+  });
+
+  it.each([799, 800])('keeps same-ID altered payloads immutable but stores distinct attempts at step %i', (step) => {
+    const source = boundaryMarket();
+    const bought = applyCommand(source, startedGame(source), ME, buyCommand({ day: 1, contractId: 20, spendCents: 200000, seenPriceCents: 100000 }), 798);
+    const first = applyCommand(source, bought.game, ME, cashOut('d1', 'sale'), step);
+    for (const changed of [cashOut('unknown', 'sale'), start(1, 'sale')]) {
+      const duplicate = applyCommand(source, first.game, ME, changed, GAME_STEPS);
+      expect(duplicate).toEqual({ game: first.game, receipt: first.receipt, repeat: true });
+      expect(duplicate.game).toBe(first.game);
+    }
+    let game = first.game;
+    for (const commandId of ['second', 'third']) {
+      const before = me(game);
+      const next = applyCommand(source, game, ME, cashOut('d1', commandId), step);
+      expect(next.repeat).toBe(false);
+      expect(next.receipt).toMatchObject(step === 799 ? { outcome: 'rejected', reason: 'alreadyClosed' } : { outcome: 'accepted', positionId: 'd1' });
+      expect(me(next.game).cashCents).toBe(step === 799 ? 100040000 : 100200000);
+      expect(me(next.game).rev).toBe(before.rev + 1);
+      expect(me(next.game).log).toHaveLength(before.log.length + 1);
+      expect(me(next.game).receipts).toHaveLength(before.receipts.length + 1);
+      game = next.game;
+    }
+    game = advanceTo(source, game, GAME_STEPS);
+    const final = applyCommand(source, game, ME, cashOut('d1', 'final-sale'), GAME_STEPS);
+    expect(final.receipt).toMatchObject(step === 799 ? { outcome: 'rejected', reason: 'alreadyClosed' } : { outcome: 'accepted' });
+    expect(me(final.game).cashCents).toBe(step === 799 ? 100040000 : 100200000);
+    expect(applyCommand(source, final.game, ME, cashOut('unknown'), GAME_STEPS).receipt.reason).toBe('unknownPosition');
+    expect(advanceTo(source, final.game, GAME_STEPS)).toBe(final.game);
+    expect(applyCommand(source, newGame(), ME, cashOut('d1'), 0).receipt.reason).toBe('notStarted');
+  });
+});
+
 function expectRejected(game: GameState, command: Command, step: number, reason: string): void {
   const result = applyCommand(market, game, ME, command, step);
   expect(result.receipt).toMatchObject({ commandId: command.commandId, kind: command.t, outcome: 'rejected', reason });

@@ -2,7 +2,8 @@ import { useCallback, useMemo, useState, useSyncExternalStore } from 'react';
 import { contractId, decodeContractId, draftMessageSchema } from '@strike-desk/shared/protocol';
 import { ContractBoard } from '../board/ContractBoard';
 import { OrderTicket } from '../modules/order-ticket/index';
-import type { SimpleChoice, TicketContract } from '../modules/order-ticket/index';
+import type { ReadSlice, SimpleChoice, TicketContract } from '../modules/order-ticket/index';
+import type { BuyAvailability, BuyFlow } from '../gameplay/buyFlow';
 import type { GameStore } from '../store/gameStore';
 import type { ContractRow } from '../store/contractRows';
 import type { ComparisonOverview, ComparisonStore } from './comparisonStore';
@@ -16,6 +17,10 @@ interface DeskProps {
   /** A new request filters the table without replacing the pinned ticket. */
   companyFocus?: { readonly companyId: number } | null;
   onContractCompany?: (companyId: number) => void;
+  viewedCompanyId?: number;
+  comparisonExpanded?: boolean;
+  comparisonId?: string;
+  buy?: BuyFlow;
 }
 
 /** Representation conversion only. All ticket amounts remain the server's. */
@@ -31,6 +36,8 @@ function spendFromText(text: string): number | null {
 
 const CHOICES = ['close', 'far', 'moonshot'] as const;
 const SELECT = 'min-w-0 rounded-sm border border-border bg-card px-2 py-1 text-sm text-foreground focus-visible:outline-2 focus-visible:outline-ring';
+const NO_BUY: ReadSlice<BuyAvailability | null> = { get: () => null, subscribe: () => () => {} };
+const newCommandId = (): string => crypto.randomUUID();
 
 function FreshnessNotice({ freshness }: { freshness: DeskFreshness }) {
   const { waiting, ageSeconds } = useSyncExternalStore(freshness.subscribe, freshness.get);
@@ -40,9 +47,13 @@ function FreshnessNotice({ freshness }: { freshness: DeskFreshness }) {
   </div>;
 }
 
-function DayComparison({ comparison, game, overview, companyFocus, onContractCompany, freshness = deskFreshness }: DeskProps & { overview: ComparisonOverview }) {
+function DayComparison({ comparison, game, overview, companyFocus, onContractCompany, freshness = deskFreshness,
+  viewedCompanyId, comparisonExpanded = true, comparisonId, buy }: DeskProps & { overview: ComparisonOverview }) {
   const readLine = useCallback(() => freshness.get().line, [freshness]);
   const line = useSyncExternalStore(freshness.subscribe, readLine);
+  const availabilitySlice = buy?.availability ?? NO_BUY;
+  const availability = useSyncExternalStore(availabilitySlice.subscribe, availabilitySlice.get);
+  const buyActions = useMemo(() => buy === undefined ? null : { submit: buy.submit.bind(buy), retry: buy.retry.bind(buy) }, [buy]);
   const subscribeRows = useCallback((listener: () => void) => game.boardRows.subscribe(listener), [game]);
   const readRows = useCallback(() => game.boardRows.get(), [game]);
   const rows = useSyncExternalStore(subscribeRows, readRows);
@@ -86,8 +97,8 @@ function DayComparison({ comparison, game, overview, companyFocus, onContractCom
   }, [selectedId, byId, overview.board]);
   const choices = useMemo<readonly SimpleChoice[]>(() => {
     const board = overview.board;
-    if (selectedId === null || board === null) return [];
-    const { companyId } = decodeContractId(board.targetsPerCompany, selectedId);
+    if (board === null || (viewedCompanyId === undefined && selectedId === null)) return [];
+    const companyId = viewedCompanyId ?? decodeContractId(board.targetsPerCompany, selectedId!).companyId;
     const company = board.companies[companyId];
     if (company === undefined) return [];
     const result: SimpleChoice[] = [];
@@ -100,7 +111,7 @@ function DayComparison({ comparison, game, overview, companyFocus, onContractCom
       });
     }
     return result;
-  }, [selectedId, overview.board]);
+  }, [selectedId, overview.board, viewedCompanyId]);
   const isHighlighted = useMemo(() => {
     const side = contract?.side;
     const ids = new Set(choices.filter((choice) => choice.side === side).map((choice) => choice.contractId));
@@ -118,10 +129,16 @@ function DayComparison({ comparison, game, overview, companyFocus, onContractCom
     setSpendText(text);
   };
 
+  const ticketProps = { day: overview.day, contract, choices, onPick, staleNoticeId: 'comparison-freshness',
+    quote: comparison.quote, account: comparison.account, line,
+    onDraftChange: comparison.sendDraft, spendEditor: { value: spendText, spendCents,
+      error: spendText === '' || spendCents !== null ? null : 'Enter an amount in dollars and cents.', onChange: onSpendChange } };
   return <div className="flex h-full min-h-0 flex-col gap-2">
     <FreshnessNotice freshness={freshness} />
-    <div className="grid min-h-0 flex-1 grid-rows-[minmax(12rem,1fr)_minmax(12rem,1fr)] gap-3 overflow-y-auto overscroll-contain sm:grid-cols-[minmax(0,1fr)_20rem] sm:grid-rows-[minmax(0,1fr)] sm:overflow-visible lg:grid-cols-[minmax(0,1fr)_22rem]">
-    <div className="flex min-h-0 min-w-0 flex-col gap-2">
+    <div className={`grid min-h-0 flex-1 gap-3 overflow-y-auto overscroll-contain ${comparisonExpanded
+      ? 'grid-rows-[minmax(12rem,1fr)_minmax(12rem,1fr)] sm:grid-cols-[minmax(0,1fr)_20rem] sm:grid-rows-[minmax(0,1fr)] sm:overflow-visible lg:grid-cols-[minmax(0,1fr)_22rem]'
+      : 'grid-cols-1 grid-rows-[minmax(0,1fr)] sm:grid-cols-[minmax(0,1fr)_20rem] lg:grid-cols-[minmax(0,1fr)_22rem]'}`}>
+    <div id={comparisonId} hidden={!comparisonExpanded} className={comparisonExpanded ? 'flex min-h-0 min-w-0 flex-col gap-2' : 'hidden'}>
       <div className="flex flex-wrap items-end gap-2">
         <label className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">Company
           <select name="company" className={SELECT} value={companyFilter} onChange={(event) => { setCompanyFilter(event.target.value); }}>
@@ -142,19 +159,17 @@ function DayComparison({ comparison, game, overview, companyFocus, onContractCom
       <div className="board min-h-0 flex-1"><ContractBoard selectedId={selectedId === null ? null : String(selectedId)} onSelect={onSelect} filter={filter} isHighlighted={isHighlighted}
         stale={line !== 'live'} staleNoticeId="comparison-freshness" /></div>
     </div>
-    <div className="min-h-0 overflow-y-auto">
-      <OrderTicket mode="preview" day={overview.day} contract={contract} choices={choices} onPick={onPick}
-        staleNoticeId="comparison-freshness"
-        quote={comparison.quote} account={comparison.account} line={line}
-        onDraftChange={comparison.sendDraft} spendEditor={{ value: spendText, spendCents,
-          error: spendText === '' || spendCents !== null ? null : 'Enter an amount in dollars and cents.', onChange: onSpendChange }} />
+    <div className="min-h-0 overflow-y-auto sm:col-start-2">
+      {buy === undefined ? <OrderTicket mode="preview" {...ticketProps} />
+        : <OrderTicket mode="buy" {...ticketProps} submit={buyActions!.submit} newCommandId={newCommandId}
+          transaction={buy.transaction} purchase={buy.purchase} retryOffered={availability?.retryAllowed ?? false} onRetry={buyActions!.retry} />}
     </div>
     </div>
   </div>;
 }
 
-export function ComparisonDesk({ comparison, game, companyFocus, onContractCompany, freshness }: DeskProps) {
+export function ComparisonDesk({ comparison, game, ...props }: DeskProps) {
   const overview = useSyncExternalStore(comparison.overview.subscribe, comparison.overview.get);
   return <DayComparison key={`${overview.session ?? ''}:${String(overview.day)}`} comparison={comparison} game={game} overview={overview}
-    companyFocus={companyFocus} onContractCompany={onContractCompany} freshness={freshness} />;
+    {...props} />;
 }

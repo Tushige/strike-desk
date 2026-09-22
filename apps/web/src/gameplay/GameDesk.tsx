@@ -3,7 +3,7 @@ import type { CompanyView } from '@strike-desk/shared/protocol';
 import { OPEN_STEPS, PACES } from '@strike-desk/shared/time';
 import { PriceChart } from '../modules/price-chart/index';
 import type { ChartLine, ChartMarker } from '../modules/price-chart/index';
-import { chartStore } from '../boot';
+import { buyFlow, chartStore } from '../boot';
 import { CompanyChip, CompanyStrip, PhaseScreen, TopBar, controlWords, stripWords } from '../modules/desk/index';
 import { REJECT_WORDS } from '../modules/order-ticket/index';
 import { ComparisonDesk } from '../comparison/ComparisonDesk';
@@ -95,8 +95,9 @@ function DayDesk({ loop, game, comparison, news }: GameDeskProps) {
         className="shrink-0 self-start rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
         Compare options
       </button>
-      <div id={comparisonId} hidden={!expanded} className="min-h-0 flex-1">
-        <ComparisonDesk comparison={comparison} game={game} companyFocus={companyFocus} onContractCompany={setCompanyId} />
+      <div className="min-h-0 flex-1">
+        <ComparisonDesk comparison={comparison} game={game} companyFocus={companyFocus} onContractCompany={setCompanyId}
+          viewedCompanyId={companyId} comparisonExpanded={expanded} comparisonId={comparisonId} buy={buyFlow} />
       </div>
     </div>
   </div>;
@@ -121,7 +122,6 @@ export function GameDesk({ loop, game, comparison, news }: GameDeskProps) {
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col gap-3">
       <GameTopBar loop={loop} />
-      <p className="m-0 text-xs text-muted-foreground">{controlWords.preview}</p>
       <div className="min-h-0 flex-1">{phase}</div>
       <div className="flex flex-wrap items-center justify-end gap-2">
         <div role="status" aria-live="polite" className="text-sm text-muted-foreground">

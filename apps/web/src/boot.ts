@@ -3,6 +3,7 @@ import { boardFromSearch } from './boardSize';
 import { createWsFeed } from './feed/wsFeed';
 import { createGameStore } from './store/gameStore';
 import { createGameLoop } from './gameplay/gameLoop';
+import { createBuyFlow } from './gameplay/buyFlow';
 import { createChartStore } from './gameplay/chartStore';
 import { createNewsStore } from './news/newsStore';
 import { createComparisonStore } from './comparison/comparisonStore';
@@ -64,5 +65,6 @@ feed.subscribe((event) => {
 });
 
 export const gameLoop = createGameLoop(feed, () => crypto.randomUUID());
+export const buyFlow = createBuyFlow(feed, deskFreshness);
 
 feed.connect();

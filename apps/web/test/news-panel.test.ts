@@ -18,18 +18,25 @@ vi.mock('../src/boot', async () => {
   const { createComparisonStore } = await import('../src/comparison/comparisonStore');
   const { createGameLoop } = await import('../src/gameplay/gameLoop');
   const { createChartStore } = await import('../src/gameplay/chartStore');
+  const { createDeskFreshness } = await import('../src/comparison/freshness');
+  const { createStressMeasurements } = await import('../src/board/stressMeasurements');
   const { createWsFeed } = await import('../src/feed/wsFeed');
   const { createFakeSocket } = await import('./fakeSocket');
   const socket = createFakeSocket();
   const feed = createWsFeed({ url: 'ws://example.test/ws', createSocket: () => socket });
   const gameLoop = createGameLoop(feed, () => 'render-control');
   const chartStore = createChartStore();
+  const clock = { now: () => performance.now(), schedule: (run: () => void, ms: number) => {
+    const timer = setTimeout(run, ms); return () => { clearTimeout(timer); };
+  } };
+  const deskFreshness = createDeskFreshness(clock);
+  const stressMeasurements = createStressMeasurements(clock);
   feed.subscribe((event) => { if (event.type === 'message') chartStore.ingest(event.message); });
   feed.connect();
   socket.fireOpen();
   bootFixture.receive = (frame) => { socket.fireMessage(JSON.stringify(frame)); };
-  bootFixture.close = () => { gameLoop.dispose(); feed.close(); };
-  return { store: createGameStore(), newsStore: createNewsStore(), comparisonStore: createComparisonStore(() => true), gameLoop, chartStore };
+  bootFixture.close = () => { deskFreshness.dispose(); stressMeasurements.setActive(false); gameLoop.dispose(); feed.close(); };
+  return { store: createGameStore(), newsStore: createNewsStore(), comparisonStore: createComparisonStore(() => true), gameLoop, chartStore, deskFreshness, stressMeasurements };
 });
 
 afterEach(cleanup);
@@ -214,27 +221,47 @@ it('leaves an empty card region when news or its companies are absent', () => {
 });
 
 it('does not redraw the news panel or the application root while the price slice updates', () => {
-  const current = { ...frame(), session: 'render-session' };
-  gameStore.ingest(current);
-  pageNews.ingest(current);
-  bootFixture.receive!(current);
-  const root = vi.fn(App);
-  const panelRendered = vi.fn();
-  const view = render(createElement(root));
-  render(createElement(Profiler, { id: 'news', onRender: panelRendered }, createElement(NewsPanel, { store: pageNews })));
-  const beforeRoot = root.mock.calls.length;
-  const beforePanel = panelRendered.mock.calls.length;
-  const snapshot = pageNews.getSnapshot();
-  act(() => {
-    const moving: Frame = { ...current, step: 310, prices: [10100, 20000, 30000, 40000, 50000, 60000], clock: { ...current.clock, priceIndex: 10, stepsLeft: 490 } };
-    gameStore.ingest(moving);
-    pageNews.ingest(moving);
-    bootFixture.receive!(moving);
+  // These aliases are absent from the browser theme. Keep other styles real
+  // without jsdom recursively resolving inherited legacy custom properties.
+  const absentLegacyThemeProperties = new Set([
+    '--ag-grid-size', '--ag-active-color', '--ag-alpine-active-color', '--ag-balham-active-color',
+    '--ag-material-primary-color', '--ag-header-foreground-color', '--ag-control-panel-background-color',
+    '--ag-cell-horizontal-border', '--ag-header-column-separator-color',
+  ]);
+  const computedStyle = globalThis.getComputedStyle;
+  const styleLookup = vi.spyOn(globalThis, 'getComputedStyle').mockImplementation((element, pseudo) => {
+    const style = computedStyle(element, pseudo);
+    return new Proxy(style, { get(target, key): unknown {
+      if (key === 'getPropertyValue') return (name: string) => absentLegacyThemeProperties.has(name) ? '' : target.getPropertyValue(name);
+      const value: unknown = Reflect.get(target, key, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    } });
   });
-  expect(within(view.getByRole('list', { name: 'Companies' })).getByText('$101')).toBeTruthy(); // 10,100 cents / 100.
-  expect(pageNews.getSnapshot()).toBe(snapshot);
-  expect(root.mock.calls.length).toBe(beforeRoot);
-  expect(panelRendered.mock.calls.length).toBe(beforePanel);
-  expect(beforeRoot).toBeGreaterThan(0);
-  expect(beforePanel).toBeGreaterThan(0);
+  try {
+    const current = { ...frame(), session: 'render-session' };
+    gameStore.ingest(current);
+    pageNews.ingest(current);
+    bootFixture.receive!(current);
+    const root = vi.fn(App);
+    const panelRendered = vi.fn();
+    const view = render(createElement(root));
+    render(createElement(Profiler, { id: 'news', onRender: panelRendered }, createElement(NewsPanel, { store: pageNews })));
+    const beforeRoot = root.mock.calls.length;
+    const beforePanel = panelRendered.mock.calls.length;
+    const snapshot = pageNews.getSnapshot();
+    act(() => {
+      const moving: Frame = { ...current, step: 310, prices: [10100, 20000, 30000, 40000, 50000, 60000], clock: { ...current.clock, priceIndex: 10, stepsLeft: 490 } };
+      gameStore.ingest(moving);
+      pageNews.ingest(moving);
+      bootFixture.receive!(moving);
+    });
+    expect(within(view.getByRole('list', { name: 'Companies' })).getByText('$101')).toBeTruthy(); // 10,100 cents / 100.
+    expect(pageNews.getSnapshot()).toBe(snapshot);
+    expect(root.mock.calls.length).toBe(beforeRoot);
+    expect(panelRendered.mock.calls.length).toBe(beforePanel);
+    expect(beforeRoot).toBeGreaterThan(0);
+    expect(beforePanel).toBeGreaterThan(0);
+  } finally {
+    styleLookup.mockRestore();
+  }
 });

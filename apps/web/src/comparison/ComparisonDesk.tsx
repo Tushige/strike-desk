@@ -6,10 +6,13 @@ import type { SimpleChoice, TicketContract } from '../modules/order-ticket/index
 import type { GameStore } from '../store/gameStore';
 import type { ContractRow } from '../store/contractRows';
 import type { ComparisonOverview, ComparisonStore } from './comparisonStore';
+import { deskFreshness } from '../boot';
+import type { DeskFreshness } from './freshness';
 
 interface DeskProps {
   comparison: ComparisonStore;
   game: GameStore;
+  freshness?: DeskFreshness;
   /** A new request filters the table without replacing the pinned ticket. */
   companyFocus?: { readonly companyId: number } | null;
   onContractCompany?: (companyId: number) => void;
@@ -29,7 +32,17 @@ function spendFromText(text: string): number | null {
 const CHOICES = ['close', 'far', 'moonshot'] as const;
 const SELECT = 'min-w-0 rounded-sm border border-border bg-card px-2 py-1 text-sm text-foreground focus-visible:outline-2 focus-visible:outline-ring';
 
-function DayComparison({ comparison, game, overview, companyFocus, onContractCompany }: DeskProps & { overview: ComparisonOverview }) {
+function FreshnessNotice({ freshness }: { freshness: DeskFreshness }) {
+  const { waiting, ageSeconds } = useSyncExternalStore(freshness.subscribe, freshness.get);
+  return <div id="comparison-freshness" className="shrink-0 text-sm text-muted-foreground">
+    <span role="status" aria-live="polite">{waiting ? 'Waiting for new prices' : ''}</span>
+    {waiting && ageSeconds !== null ? <span className="ml-2">Last update: {ageSeconds} seconds ago</span> : null}
+  </div>;
+}
+
+function DayComparison({ comparison, game, overview, companyFocus, onContractCompany, freshness = deskFreshness }: DeskProps & { overview: ComparisonOverview }) {
+  const readLine = useCallback(() => freshness.get().line, [freshness]);
+  const line = useSyncExternalStore(freshness.subscribe, readLine);
   const subscribeRows = useCallback((listener: () => void) => game.boardRows.subscribe(listener), [game]);
   const readRows = useCallback(() => game.boardRows.get(), [game]);
   const rows = useSyncExternalStore(subscribeRows, readRows);
@@ -105,7 +118,9 @@ function DayComparison({ comparison, game, overview, companyFocus, onContractCom
     setSpendText(text);
   };
 
-  return <div className="grid h-full min-h-0 grid-rows-[minmax(12rem,1fr)_minmax(12rem,1fr)] gap-3 overflow-y-auto overscroll-contain sm:grid-cols-[minmax(0,1fr)_20rem] sm:grid-rows-[minmax(0,1fr)] sm:overflow-visible lg:grid-cols-[minmax(0,1fr)_22rem]">
+  return <div className="flex h-full min-h-0 flex-col gap-2">
+    <FreshnessNotice freshness={freshness} />
+    <div className="grid min-h-0 flex-1 grid-rows-[minmax(12rem,1fr)_minmax(12rem,1fr)] gap-3 overflow-y-auto overscroll-contain sm:grid-cols-[minmax(0,1fr)_20rem] sm:grid-rows-[minmax(0,1fr)] sm:overflow-visible lg:grid-cols-[minmax(0,1fr)_22rem]">
     <div className="flex min-h-0 min-w-0 flex-col gap-2">
       <div className="flex flex-wrap items-end gap-2">
         <label className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">Company
@@ -124,19 +139,22 @@ function DayComparison({ comparison, game, overview, companyFocus, onContractCom
             className="accent-primary focus-visible:outline-2 focus-visible:outline-ring" />Affordable for me
         </label>
       </div>
-      <div className="board min-h-0 flex-1"><ContractBoard selectedId={selectedId === null ? null : String(selectedId)} onSelect={onSelect} filter={filter} isHighlighted={isHighlighted} /></div>
+      <div className="board min-h-0 flex-1"><ContractBoard selectedId={selectedId === null ? null : String(selectedId)} onSelect={onSelect} filter={filter} isHighlighted={isHighlighted}
+        stale={line !== 'live'} staleNoticeId="comparison-freshness" /></div>
     </div>
     <div className="min-h-0 overflow-y-auto">
       <OrderTicket mode="preview" day={overview.day} contract={contract} choices={choices} onPick={onPick}
-        quote={comparison.quote} account={comparison.account} line={overview.status === 'live' ? 'live' : 'offline'}
+        staleNoticeId="comparison-freshness"
+        quote={comparison.quote} account={comparison.account} line={line}
         onDraftChange={comparison.sendDraft} spendEditor={{ value: spendText, spendCents,
           error: spendText === '' || spendCents !== null ? null : 'Enter an amount in dollars and cents.', onChange: onSpendChange }} />
+    </div>
     </div>
   </div>;
 }
 
-export function ComparisonDesk({ comparison, game, companyFocus, onContractCompany }: DeskProps) {
+export function ComparisonDesk({ comparison, game, companyFocus, onContractCompany, freshness }: DeskProps) {
   const overview = useSyncExternalStore(comparison.overview.subscribe, comparison.overview.get);
   return <DayComparison key={`${overview.session ?? ''}:${String(overview.day)}`} comparison={comparison} game={game} overview={overview}
-    companyFocus={companyFocus} onContractCompany={onContractCompany} />;
+    companyFocus={companyFocus} onContractCompany={onContractCompany} freshness={freshness} />;
 }

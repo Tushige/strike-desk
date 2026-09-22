@@ -128,6 +128,8 @@ export interface LiveGridProps<Row extends GridRow> {
   readonly isHighlighted?: (row: Row) => boolean;
   /** The values are no longer live: the table looks stale and says so, and still scrolls and selects. */
   readonly stale: boolean;
+  /** Caller-owned freshness description; omits the standalone stale notice. */
+  readonly staleNoticeId?: string;
   /** When given, called about once a second. */
   readonly onReadout?: (sample: GridReadout) => void;
 }

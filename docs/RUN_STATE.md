@@ -23,7 +23,17 @@ Screenshots for each step are taken with headless Chromium against the built ser
 | 5 | Compare options: the kept grid opened from the desk | done |
 | 6 | Reconnect and honesty: status, stale, buy disabled, dev disconnect, end-to-end test | done |
 | 7 | What-if slider and stress readout | done |
-| 8 | README, final pass at 1366×768, full game, deliverable | next |
+| 8 | README, final pass at 1366×768, full game, deliverable | done |
+
+## Done means (bridge section 6), checked in headless Chromium on 2026-09-22
+
+1. Start screen and the v1 desk at 1366×768 and 1440×900, one screen, no page scroll during play.
+2. Ticket built the simple way and from Compare options (filter to affordable UP tickets on one company, sort by break-even, pick a row); buy while prices move: pending, then accepted; total worth does not lurch.
+3. `?dev` → Drop the line: status shows Reconnecting, the desk dims, buying and cashing out are off; after the reconnect the same single ticket and the same cash (also proved by `apps/web/test/reconnect.e2e.test.ts`).
+4. Plot twist lands (marker on the chart, banner, hope value drops); cash out or hold.
+5. Closing bell debrief with the lesson sentence and "holding on would have paid"; five days; final screen with rank, five bars and the market number; Play again.
+6. `?board=2500`: 2,508 contracts with the readout; numbers in the README.
+7. `pnpm typecheck`, `lint`, `test` (1,373 tests), `build`, `check:bundle`, `check:css` green; no console errors in a full game; a whole day played with Tab, Enter and Space.
 
 ## Notes
 

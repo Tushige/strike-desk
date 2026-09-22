@@ -37,7 +37,13 @@ function ValueBar({ position }: { position: PositionView }) {
   const pct = (n: number): string => `${String((n / scale) * 100)}%`;
   return (
     <div className="flex flex-col gap-3 rounded-2xl border border-line p-4 short:gap-2 short:p-3">
-      <div className="text-sm font-semibold">What your ticket is made of</div>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-semibold">What a ticket is made of</span>
+        <span className="flex items-center gap-1.5 whitespace-nowrap text-xs text-muted">
+          <span className="h-3.5 w-[3px] shrink-0 bg-sun" aria-hidden="true" />
+          you paid {money(paid)}
+        </span>
+      </div>
       <div className="relative py-1" aria-hidden="true">
         <div className="flex h-[22px] overflow-hidden rounded-full bg-ink">
           <span className="h-full bg-cloud transition-[width] duration-200" style={{ width: pct(real) }} />
@@ -67,11 +73,6 @@ function ValueBar({ position }: { position: PositionView }) {
             <div className="text-xs leading-snug text-muted short:hidden">What traders pay for the time that is left. It melts to $0 by the bell.</div>
           </div>
         </div>
-        <div className="flex items-center gap-2.5 short:hidden">
-          <span className="mx-[4.5px] h-3.5 w-[3px] shrink-0 bg-sun" />
-          <span className="text-xs text-muted">Yellow line: what you paid a ticket ({money(paid)}).</span>
-        </div>
-        <div className="hidden text-xs text-muted short:block">Yellow line: what you paid a ticket ({money(paid)}).</div>
       </dl>
     </div>
   );

@@ -50,11 +50,12 @@ export function watchTable(table: HTMLElement, measurements: StressMeasurements,
   const requestFrame = options.requestFrame === undefined
     ? (typeof window.requestAnimationFrame === 'function' ? (run: FrameRequestCallback) => window.requestAnimationFrame(run) : null)
     : options.requestFrame;
-  const cancelFrame = options.cancelFrame ?? ((id) => { window.cancelAnimationFrame(id); });
+  const cancelFrame = options.cancelFrame ?? (typeof window.cancelAnimationFrame === 'function'
+    ? (id: number) => { window.cancelAnimationFrame(id); } : null);
   const isVisible = options.isVisible ?? visible;
   const dirty = new Set<HTMLElement>();
   let stopped = false;
-  let frame = 0;
+  let frame: number | null = null;
   let active = false;
   function visibility() {
     if (stopped) return false;
@@ -99,15 +100,15 @@ export function watchTable(table: HTMLElement, measurements: StressMeasurements,
       }
       dirty.clear();
     }
-    frame = requestFrame?.(onFrame) ?? 0;
+    frame = requestFrame?.(onFrame) ?? null;
   };
   document.addEventListener('visibilitychange', visibility);
   visibility();
-  frame = requestFrame?.(onFrame) ?? 0;
+  frame = requestFrame?.(onFrame) ?? null;
   return () => {
     if (stopped) return;
     stopped = true;
-    cancelFrame(frame);
+    if (frame !== null) cancelFrame?.(frame);
     stopTexts?.();
     stopTasks?.();
     document.removeEventListener('visibilitychange', visibility);

@@ -154,6 +154,40 @@ it('reports missing frame/text APIs honestly and resets candidates on board repl
   expect(watch.measurements.get().clientDelay).toBe('Collecting…');
 });
 
+it('cleans up idempotently when both browser animation-frame APIs are absent', () => {
+  vi.stubGlobal('requestAnimationFrame', undefined);
+  vi.stubGlobal('cancelAnimationFrame', undefined);
+  const stopTexts = vi.fn();
+  const stopTasks = vi.fn();
+  const watch = watched({ requestFrame: undefined, cancelFrame: undefined,
+    observeText: () => stopTexts, observeLongTasks: () => stopTasks });
+  watch.advance(1000);
+  expect(watch.measurements.get().clientDelay).toBe('Unsupported');
+  expect(watch.measurements.get().frameInterval).toBe('Unsupported');
+  expect(() => { watch.stop(); watch.stop(); }).not.toThrow();
+  expect(stopTexts).toHaveBeenCalledTimes(1);
+  expect(stopTasks).toHaveBeenCalledTimes(1);
+  expect(vi.getTimerCount()).toBe(0);
+  expect(watch.measurements.get().records).toBe('Paused');
+  document.dispatchEvent(new Event('visibilitychange'));
+  expect(watch.measurements.get().records).toBe('Paused');
+});
+
+it('cancels a scheduled browser frame with handle zero once and ignores a late callback', () => {
+  let pending: FrameRequestCallback = () => {};
+  const requestFrame = vi.fn((run: FrameRequestCallback) => { pending = run; return 0; });
+  const cancelFrame = vi.fn();
+  vi.stubGlobal('requestAnimationFrame', requestFrame);
+  vi.stubGlobal('cancelAnimationFrame', cancelFrame);
+  const watch = watched({ requestFrame: undefined, cancelFrame: undefined });
+  expect(requestFrame).toHaveBeenCalledTimes(1);
+  watch.stop(); watch.stop(); pending(16);
+  expect(cancelFrame).toHaveBeenCalledExactlyOnceWith(0);
+  expect(requestFrame).toHaveBeenCalledTimes(1);
+  expect(vi.getTimerCount()).toBe(0);
+  expect(watch.measurements.get().records).toBe('Paused');
+});
+
 it('excludes a table clipped outside its internal scrolling panel', () => {
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
     return this.id === 'clip' ? new DOMRect(0, 0, 300, 100) : new DOMRect(0, 120, 300, 400);

@@ -10,7 +10,7 @@ import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react
 import { afterEach, expect, it } from 'vitest';
 import { contractId } from '@strike-desk/shared/protocol';
 import type { CashOutCommand, Frame, PositionView, Receipt, ServerMessage } from '@strike-desk/shared/protocol';
-import { OrderTicket } from '../src/modules/order-ticket/index';
+import { OrderTicket, TradeNotice } from '../src/modules/order-ticket/index';
 import type { OrderTicketProps } from '../src/modules/order-ticket/index';
 import { createBuyFlow } from '../src/gameplay/buyFlow';
 import type { BuyFlow } from '../src/gameplay/buyFlow';
@@ -84,7 +84,9 @@ it.each(['cashOut', 'bell', 'rejected', 'noSession'] as const)('retains today’
 interface TestSocket extends SocketLike { ping(): void; once(event: 'pong', listener: () => void): void }
 const Socket = createRequire(path.resolve('apps/server/package.json'))('ws') as new (url: string) => TestSocket;
 
-it.each(['lost reply', 'unsent command'] as const)('recovers a real cash-out %s with receipt-first manual recovery', async (fault) => {
+it.each(['lost reply', 'unsent command', 'unsent command at final'] as const)('recovers a real cash-out %s with receipt-first manual recovery', async (fault) => {
+  const atFinal = fault === 'unsent command at final';
+  const day = atFinal ? 5 : 1;
   const child = spawn('pnpm', ['--filter', '@strike-desk/server', 'exec', 'tsx', 'test/news-app.ts'], { stdio: 'pipe' });
   const lines = createInterface({ input: child.stdout });
   let errors = ''; child.stderr.on('data', (chunk: Buffer) => { errors += chunk.toString(); });
@@ -95,7 +97,7 @@ it.each(['lost reply', 'unsent command'] as const)('recovers a real cash-out %s 
   });
   const schedule = createManualScheduler();
   let socket: TestSocket | undefined;
-  const sales: string[] = []; const received: ServerMessage[] = [];
+  const sales: string[] = []; const hellos: string[] = []; const received: ServerMessage[] = [];
   let withheld: ServerMessage | null = null;
   let armed = true;
   const freshness = createDeskFreshness({ now: () => 0, schedule: () => () => {} });
@@ -108,9 +110,10 @@ it.each(['lost reply', 'unsent command'] as const)('recovers a real cash-out %s 
       return { get readyState() { return live.readyState; }, close: () => { live.close(); },
         send(text) {
           const message = JSON.parse(text) as { t: string };
+          if (message.t === 'hello') hellos.push(text);
           if (message.t === 'cashOut') {
             sales.push(text);
-            if (fault === 'unsent command' && armed) { armed = false; return; }
+            if (fault !== 'lost reply' && armed) { armed = false; return; }
           }
           live.send(text);
         },
@@ -137,42 +140,54 @@ it.each(['lost reply', 'unsent command'] as const)('recovers a real cash-out %s 
     feed.send({ t: 'start', commandId: 'recovery-start', pace: 1 });
     await waitFor(() => { expect(flow!.availability.get().phase).toBe('preBell'); });
     const start = received.at(-1); if (start?.t !== 'reply' || start.frame.board === null) throw new Error('missing board');
-    const id = contractId(start.frame.board.targetsPerCompany, { companyId: 0, targetIndex: start.frame.board.companies[0]!.simpleUp[0], side: 'up' });
     async function barrier() {
       await new Promise<void>((resolve, reject) => { const timer = setTimeout(() => { reject(new Error('socket barrier timeout')); }, 3000);
         socket!.once('pong', () => { clearTimeout(timer); resolve(); }); socket!.ping(); });
     }
-    async function sample(): Promise<Frame> {
+    async function sample(ms = 0): Promise<Frame> {
       await barrier(); const before = received.length;
-      await act(async () => { child.stdin.write('0\n'); await waitFor(() => { expect(received.length).toBeGreaterThan(before); }); });
+      await act(async () => { child.stdin.write(`${String(ms)}\n`); await waitFor(() => { expect(received.length).toBeGreaterThan(before); }); });
       const frame = received.at(-1); if (frame?.t !== 'frame') throw new Error('missing sample'); return frame;
     }
+    const today = atFinal ? await sample(720000) : start.frame;
+    if (today.board === null) throw new Error('missing daily board');
+    const id = contractId(today.board.targetsPerCompany, { companyId: 0, targetIndex: today.board.companies[0]!.simpleUp[0], side: 'up' });
     feed.send({ t: 'draft', contractId: id, spendCents: 100000 });
     const priced = await sample(); if (priced.draft?.ticket === undefined) throw new Error('missing quote');
     const quoted = fixed({ ...priced.draft.ticket, spendCents: 100000 });
-    feed.send({ t: 'buy', commandId: 'buy-before-sale', day: 1, contractId: id, spendCents: 100000, seenPriceCents: priced.draft.ticket.priceCents });
+    feed.send({ t: 'buy', commandId: 'buy-before-sale', day, contractId: id, spendCents: 100000, seenPriceCents: priced.draft.ticket.priceCents });
     await barrier();
     const bought = await sample();
     expect(bought.positions).toHaveLength(1);
-    const view = render(createElement(Ticket, { flow, freshness, quoted }));
+    const view = render(createElement(Ticket, { flow, freshness, quoted, day }));
     fireEvent.click(view.getByRole('button', { name: 'Cash out' }));
     expect(view.getByRole('status').textContent).toBe('Pending...');
     await barrier();
     if (fault === 'lost reply') expect(withheld).toMatchObject({ t: 'reply', receipt: { outcome: 'accepted' } });
     expect(flow.transaction.get()?.outcome).toBeUndefined();
+    const settled = atFinal ? await sample(180000) : null;
+    if (atFinal) {
+      expect(settled?.clock.phase).toBe('final');
+      expect(settled?.positions[0]?.exit?.kind).toBe('bell');
+      view.rerender(createElement(TradeNotice, { transaction: flow.transaction, day: 5, phase: 'final',
+        line: freshness.get().line, retryOffered: false, onRetry: () => { flow!.retry(); } }));
+    }
     act(() => { feed!.simulateDrop(); });
     expect(view.getByRole('status').textContent).toBe('Checking...');
     const beforeResume = received.length;
     await act(async () => { schedule.runNext(); await waitFor(() => { expect(received.length).toBeGreaterThan(beforeResume); }); });
+    expect(JSON.parse(hellos.at(-1)!) as unknown).toMatchObject({ t: 'hello', session: bought.session });
     expect(sales).toHaveLength(1);
     expect(view.queryByRole('button', { name: 'Retry safely' })).toBeNull();
-    expect(freshness.get().line).toBe('stale');
+    expect(freshness.get().line).toBe(atFinal ? 'live' : 'stale');
     if (fault === 'lost reply') {
       expect(flow.transaction.get()?.outcome?.outcome).toBe('accepted');
       expect(view.getByRole('status').textContent).toBe('You cashed out');
     } else {
       expect(flow.transaction.get()?.outcome).toBeUndefined();
       await sample();
+      if (atFinal) view.rerender(createElement(TradeNotice, { transaction: flow.transaction, day: 5, phase: 'final',
+        line: freshness.get().line, retryOffered: flow.availability.get().retryAllowed, onRetry: () => { flow!.retry(); } }));
       expect(sales).toHaveLength(1);
       fireEvent.click(view.getByRole('button', { name: 'Retry safely' }));
       await act(async () => { await barrier(); });
@@ -182,8 +197,13 @@ it.each(['lost reply', 'unsent command'] as const)('recovers a real cash-out %s 
     }
     const final = await sample();
     expect(final.positions).toHaveLength(1);
-    expect(final.account.cashCents).toBe(100000000);
-    expect(final.positions[0]?.exit?.kind).toBe('cashOut');
+    expect(final.account.cashCents).toBe(settled?.account.cashCents ?? 100000000);
+    expect(final.positions[0]?.exit?.kind).toBe(atFinal ? 'bell' : 'cashOut');
+    if (settled !== null) {
+      expect(final.final).toEqual(settled.final);
+      expect(final.days).toEqual(settled.days);
+      expect(final.positions).toEqual(settled.positions);
+    }
     expect(final.receipts.filter((item) => item.kind === 'cashOut')).toHaveLength(1);
   } finally {
     cleanup(); flow?.dispose(); freshness.dispose(); feed?.close(); child.stdin.end('close\n');

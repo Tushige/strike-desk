@@ -299,7 +299,7 @@ describe('the WebSocket feed', () => {
     expect(helloTexts(sockets.last().sent)).toEqual([{ t: 'hello', v: PROTOCOL_VERSION, session: 's-new' }]);
   });
 
-  it('forgets the stored session once the game is over', () => {
+  it('keeps final reconnect in this page while a fresh page starts without the old session', () => {
     const { feed, sockets, scheduler, storage } = harness();
     feed.connect();
     sockets.last().fireOpen();
@@ -317,7 +317,26 @@ describe('the WebSocket feed', () => {
     sockets.last().fireClose();
     scheduler.runNext();
     sockets.last().fireOpen();
+    expect(helloTexts(sockets.last().sent)).toEqual([{ t: 'hello', v: PROTOCOL_VERSION, session: 's-1' }]);
+    expect(storage.held.has(SESSION_KEY)).toBe(false);
+    // Play again reloads the page: the replacement Feed reads only storage.
+    feed.close();
+    const fresh = harness({ storage });
+    fresh.feed.connect(); fresh.sockets.last().fireOpen();
+    expect(helloTexts(fresh.sockets.last().sent)).toEqual([{ t: 'hello', v: PROTOCOL_VERSION }]);
+    fresh.feed.close();
+  });
+
+  it('clears a final session from memory too when the server confirms noSession', () => {
+    const { feed, sockets, scheduler, storage } = harness();
+    feed.connect(); sockets.last().fireOpen();
+    sockets.last().fireMessage(JSON.stringify(testFrame({ session: 's-final', step: 4500,
+      clock: { phase: 'final', day: 5, stepsLeft: 0, priceIndex: 500, pace: 1 } })));
+    sockets.last().fireMessage(JSON.stringify({ t: 'error', code: 'noSession' }));
+    expect(storage.held.has(SESSION_KEY)).toBe(false);
+    sockets.last().fireClose(); scheduler.runNext(); sockets.last().fireOpen();
     expect(helloTexts(sockets.last().sent)).toEqual([{ t: 'hello', v: PROTOCOL_VERSION }]);
+    feed.close();
   });
 
   it('survives a socket error without throwing', () => {

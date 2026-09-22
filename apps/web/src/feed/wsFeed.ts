@@ -212,8 +212,11 @@ export function createWsFeed(options: WsFeedOptions): Feed {
       // A frame arrived, so this connection works: start the waits again.
       attempt = 0;
       boardAsked = null;
-      if (frame.clock.phase === 'final') forgetSession();
-      else rememberSession(frame.session);
+      if (frame.clock.phase === 'final') {
+        // A fresh page starts over, but this page can still check a late trade.
+        forgetSession();
+        sessionId = frame.session;
+      } else rememberSession(frame.session);
     }
     if (message.t === 'error' && message.code === 'noSession') forgetSession();
     if (message.t === 'error' && message.code === 'badMessage' && boardAsked === from) fallBackToPlainGame(from);

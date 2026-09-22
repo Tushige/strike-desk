@@ -4,7 +4,9 @@ import { FinalScreen } from './screens/FinalScreen';
 import { StartScreen } from './screens/StartScreen';
 import { TopBar } from './screens/TopBar';
 import { startWords } from './screens/words';
-import { useFrame } from './store/hooks';
+import { useView, views } from './store/hooks';
+import { GameHelp } from './screens/GameHelp';
+import { RecoveryNotice } from './screens/RecoveryNotice';
 
 /**
  * One page, three screens, chosen by the phase the server says the game is
@@ -13,27 +15,29 @@ import { useFrame } from './store/hooks';
  * and a word.
  */
 export default function App() {
-  const frame = useFrame();
-  const phase = frame?.clock.phase ?? null;
+  const route = useView(views.routing);
+  const phase = route?.phase ?? null;
 
   return (
     <div className="flex min-h-full flex-col lg:h-full lg:min-h-[620px]">
       <TopBar />
-      {frame === null || phase === 'lobby' ? (
-        <StartScreen connected={frame !== null} />
+      <RecoveryNotice />
+      {route === null || phase === 'lobby' ? (
+        <StartScreen connected={route !== null} />
       ) : phase === 'final' ? (
-        <FinalScreen frame={frame} />
+        <FinalScreen />
       ) : (
-        <Desk frame={frame} />
+        <Desk key={route.session} />
       )}
-      {frame === null && (
+      {route === null && (
         <p className="m-0 px-5 pb-4 text-center text-sm text-muted sm:px-12 lg:px-24" role="status">
           {startWords.connecting}
         </p>
       )}
-      <p className="fixed right-3 bottom-1.5 m-0 text-[11px] text-muted/70 tabular-nums">
-        build {VERSION.commit} · {VERSION.buildTime}
-      </p>
+      <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 px-4 py-2 text-xs text-muted">
+        <div className="flex gap-4"><GameHelp /><GameHelp engineering /></div>
+        <span className="text-[11px] tabular-nums">build {VERSION.commit} · {VERSION.buildTime}</span>
+      </footer>
     </div>
   );
 }

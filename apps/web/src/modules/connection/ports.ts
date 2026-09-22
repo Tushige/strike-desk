@@ -1,5 +1,6 @@
 import type { Feed } from '@strike-desk/shared/feed';
 import type { Command, Frame, Receipt } from '@strike-desk/shared/protocol';
+import type { SavedIntent } from './journal';
 
 /**
  * The connection, as the rest of the page sees it: a feed that also knows
@@ -185,7 +186,9 @@ export interface Connection extends Feed {
    * - A command pressed in one game is never sent into another: when a frame
    *   names a different session, what was pending under the old one is `lost`.
    */
-  submit(command: Command): Promise<CommandOutcome>;
+  submit(command: Command, intent?: SavedIntent): Promise<CommandOutcome>;
+  /** Register a persisted intent without sending, even if the socket is live. */
+  restore(intent: SavedIntent, ageMs: number): Promise<CommandOutcome>;
   /**
    * Send a pending command again, with the same id, when live. Does nothing
    * for an unknown id.
@@ -197,6 +200,8 @@ export interface Connection extends Feed {
 
 export interface ConnectionOptions {
   seam: TransportSeam;
+  /** Read-only workloads have a slower complete-frame cadence. Normal trading keeps 1500 ms. */
+  staleAfterMs?: number;
   /**
    * The key the session id is kept under in the seam's storage. The block
    * holds no key of its own: whoever assembles a page hands its key in, so a

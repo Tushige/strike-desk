@@ -217,11 +217,11 @@ export function describeFeedContract(name: string, make: (seam: TransportSeam) =
       expect(transport.stored()).toBe('s-1');
     });
 
-    it('forgets the session once the game is over', () => {
+    it('retains the session once the game is over', () => {
       const { transport } = liveRig();
       transport.last().fireMessage(fakeFrameText({ step: 4500, clock: FINAL_CLOCK }));
 
-      expect(transport.stored()).toBeNull();
+      expect(transport.stored()).not.toBeNull();
     });
 
     it('forgets the session when the server says the game is gone', () => {

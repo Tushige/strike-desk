@@ -162,8 +162,7 @@ export function createSocketFeed(seam: TransportSeam, sessionKey: string, board?
       // board size asked for, if any, was granted.
       attempt = 0;
       boardAskedOn = null;
-      if (frame.clock.phase === 'final') forgetSession();
-      else rememberSession(frame.session);
+      rememberSession(frame.session);
     }
     if (message.t === 'error' && message.code === 'noSession') forgetSession();
     // The server would not build the board size asked for: ask once more,

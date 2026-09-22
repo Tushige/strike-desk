@@ -7,6 +7,7 @@ import { HEALTH_PATH, WS_PATH } from '@strike-desk/shared/paths';
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   build: {
+    manifest: true,
     rolldownOptions: {
       input: {
         main: fileURLToPath(new URL('index.html', import.meta.url)),

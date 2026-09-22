@@ -18,7 +18,8 @@
     "smoke": "node scripts/smoke.mjs",
     "check:bundle": "node scripts/check-web-bundle.mjs",
     "check:css": "node scripts/check-web-css.mjs",
-    "measure:ws": "node scripts/measure-ws-idle.mjs"
+    "measure:ws": "node scripts/measure-ws-idle.mjs",
+    "simulate": "pnpm --filter @strike-desk/server exec tsx scripts/simulate-strategies.ts"
   },
   "devDependencies": {
     "@types/node": "24.13.6",

@@ -139,17 +139,17 @@ export const COLUMNS: ColDef<ContractRow>[] = [
     type: 'rightAligned',
     cellClass: VALUE_CELL_CLASS,
     flex: 1,
-    minWidth: 88,
+    minWidth: 110,
   },
   {
-    headerName: 'Cost & most you can lose',
+    headerName: 'Cost / max loss',
     field: 'costCents',
     valueGetter: shownCost,
     cellRenderer: ValueCell,
     type: 'rightAligned',
     cellClass: VALUE_CELL_CLASS,
     flex: 1,
-    minWidth: 174,
+    minWidth: 135,
   },
   // The price, told in its two parts. Neither flashes: the price is the one
   // number the eye should be pulled to, and these two are what the player

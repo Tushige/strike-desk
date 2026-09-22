@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { MouseEvent } from 'react';
 import type { Frame } from '@strike-desk/shared/protocol';
 import { lineStateOf } from '../../modules/connection/index';
-import { useConnectionState } from '../../store/hooks';
+import { useConnectionState, useView, views } from '../../store/hooks';
 import { goToNextDay, ringOpeningBell, skipToClosingBell } from '../commands';
 import { clock, secondsFor } from '../format';
 import { GhostButton, PrimaryButton } from '../ui';
@@ -66,6 +66,7 @@ export function SkipToBellButton({ frame, compact = false }: { frame: Frame; com
 
 export function NextDayButton({ frame }: { frame: Frame }) {
   const [busy, run] = useSend();
+  const clockValue = useView(views.clock) ?? frame.clock;
   const last = frame.clock.day >= DAYS;
   return (
     <>
@@ -80,7 +81,7 @@ export function NextDayButton({ frame }: { frame: Frame }) {
       </PrimaryButton>
       <div className="text-center text-[13px] text-muted">
         {last ? 'Final score in ' : 'Next day starts in '}
-        {clock(secondsFor(frame.clock.stepsLeft, frame.clock.pace))}
+        {clock(secondsFor(clockValue.stepsLeft, clockValue.pace))}
       </div>
     </>
   );

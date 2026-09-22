@@ -1,9 +1,10 @@
 import { useMemo, useRef, useState } from 'react';
-import type { Frame, Side } from '@strike-desk/shared/protocol';
+import type { Side } from '@strike-desk/shared/protocol';
 import { decodeContractId } from '@strike-desk/shared/protocol';
 import { ContractBoard } from '../../board/ContractBoard';
 import type { ContractRow } from '../../store/contractRows';
 import { ChoiceButton, CompanyTile, cx } from '../ui';
+import { useView, views } from '../../store/hooks';
 import { choicesFor } from './pick';
 
 /**
@@ -13,28 +14,33 @@ import { choicesFor } from './pick';
  * picking a row fills the ticket on the right. The six simple choices of the
  * selected company are highlighted, so the table and the builder agree.
  *
- * A filter never touches the ticket: the chosen contract stays chosen when
- * its row is filtered out of view.
+ * A company chip also selects the company shown by the chart and builder.
+ * Side and affordability filters only narrow rows; All keeps the current
+ * chart company while showing every company's contracts.
  */
 
 const CHIP = 'flex h-8 items-center gap-1.5 rounded-lg border-2 px-2 text-[12px] font-semibold';
 const chipTone = (on: boolean): string => (on ? 'border-sun bg-sun text-ink' : 'border-line text-cloud');
 
 export function CompareOptions({
-  frame,
   companyId,
   selectedContractId,
   onPick,
+  onChooseCompany,
+  companyLocked,
   stale,
 }: {
-  frame: Frame;
   /** The selected company, whose simple choices are highlighted. */
   companyId: number;
   selectedContractId: number | null;
   onPick: (contractId: number) => void;
+  onChooseCompany: (companyId: number) => void;
+  companyLocked: boolean;
   stale: boolean;
 }) {
-  const [company, setCompany] = useState<number | null>(null);
+  const frame = useView(views.comparison);
+  const [filterCompany, setFilterCompany] = useState(false);
+  const company = filterCompany ? companyId : null;
   const [side, setSide] = useState<Side | null>(null);
   const [affordable, setAffordable] = useState(false);
 
@@ -42,7 +48,8 @@ export function CompareOptions({
   // the filter and the highlight are rebuilt when the day (or the game)
   // changes, not five times a second: a rebuilt filter makes the table
   // re-filter and re-sort every row, flashes included.
-  const boardRef = useRef(frame.board);
+  const boardRef = useRef(frame?.board ?? null);
+  if (frame === null) throw new Error('Comparison needs a frame');
   boardRef.current = frame.board;
   const boardKey = frame.board === null ? '' : `${frame.session}:${String(frame.clock.day)}:${String(frame.board.targetsPerCompany)}`;
   const { cashCents, capCents } = frame.account;
@@ -73,13 +80,14 @@ export function CompareOptions({
   }, [boardKey, companyId]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
+    <div className="flex h-full min-h-0 flex-1 flex-col gap-2">
+      <p className="m-0 text-xs text-muted">Price, real and hope value are per ticket.{frame.stress ? " Read-only workload; complete scenarios refresh about every 1.5 seconds." : " Cost / max loss uses your current budget."} Scroll inside the table for more columns.</p>
       <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filters">
-        <ChoiceButton selected={company === null} className={cx(CHIP, chipTone(company === null))} onClick={() => { setCompany(null); }}>
+        <ChoiceButton selected={company === null} className={cx(CHIP, chipTone(company === null))} onClick={() => { setFilterCompany(false); }}>
           All
         </ChoiceButton>
         {frame.companies.map((one, id) => (
-          <ChoiceButton key={one.ticker} selected={company === id} className={cx(CHIP, 'pl-1', chipTone(company === id))} onClick={() => { setCompany(id); }}>
+          <ChoiceButton key={one.ticker} selected={company === id} disabled={companyLocked} className={cx(CHIP, 'pl-1', chipTone(company === id))} onClick={() => { setFilterCompany(true); onChooseCompany(id); }}>
             <CompanyTile companyId={id} size="xs" />
             {one.ticker}
           </ChoiceButton>

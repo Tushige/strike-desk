@@ -2,7 +2,7 @@ import type { Frame } from '@strike-desk/shared/protocol';
 import { GAME_STEPS } from '@strike-desk/shared/time';
 import { connection, devControls } from '../boot';
 import { lineStateOf } from '../modules/connection/index';
-import { useConnectionState, useFrame } from '../store/hooks';
+import { useConnectionState, useView, views } from '../store/hooks';
 import { clock, money, secondsFor } from './format';
 import { cx, GhostButton, Label, LogoMark } from './ui';
 import { DAYS, LINE_WORDS, topBarWords } from './words';
@@ -51,7 +51,7 @@ function timeLeft(frame: Frame | null): string {
 }
 
 export function TopBar() {
-  const frame = useFrame();
+  const frame = useView(views.top);
   const line = lineStateOf(useConnectionState().phase);
   const account = frame?.account ?? null;
 
@@ -79,27 +79,25 @@ export function TopBar() {
         )}
       </div>
 
-      <div className="hidden items-center gap-3.5 md:flex">
+      <div className="hidden items-center gap-3.5 lg:flex">
         <span className="text-sm text-muted">{dayLabel(frame)}</span>
         <DayPips frame={frame} />
       </div>
 
-      <div className="flex items-center justify-end gap-5 sm:gap-8 lg:w-[460px]">
-        <div className="flex flex-col items-end gap-0.5">
+      <div className="topbar-metrics">
+        <div className="flex min-w-0 flex-col items-end gap-0.5">
           <Label>{topBarWords.timeLeft}</Label>
-          <span className="font-display text-lg font-bold tabular-nums">{timeLeft(frame)}</span>
+          <span className="w-full whitespace-nowrap text-right font-display text-lg font-bold tabular-nums">{timeLeft(frame)}</span>
         </div>
-        <div className={cx('flex flex-col items-end gap-0.5 transition-opacity', line === 'live' ? 'opacity-100' : 'opacity-60')}>
+        <div className={cx('flex min-w-0 flex-col items-end gap-0.5 transition-opacity', line === 'live' ? 'opacity-100' : 'opacity-60')}>
           <Label>{topBarWords.worth}</Label>
-          <div className="flex items-baseline gap-2.5">
-            <span className="font-display text-xl font-extrabold text-sun tabular-nums sm:text-2xl">
+          <div className="flex w-full min-w-0 flex-col items-end gap-0.5">
+            <span className="topbar-worth w-full whitespace-nowrap text-right font-display text-xl font-extrabold text-sun tabular-nums sm:text-2xl">
               {account === null ? '—' : money(account.worthCents)}
             </span>
-            {account !== null && account.worthCents !== account.cashCents && (
-              <span className="hidden text-sm font-semibold text-muted tabular-nums sm:inline">
-                {topBarWords.cash} {money(account.cashCents)}
-              </span>
-            )}
+            <span className="h-4 whitespace-nowrap text-xs font-semibold text-muted tabular-nums">
+              {account !== null && account.cashCents !== account.worthCents ? `${topBarWords.cash} ${money(account.cashCents)}` : ''}
+            </span>
           </div>
         </div>
       </div>

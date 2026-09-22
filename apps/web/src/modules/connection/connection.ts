@@ -1,5 +1,7 @@
 import type { FeedEvent, FeedStatus } from '@strike-desk/shared/feed';
 import type { Command, Frame, Receipt, ServerMessage } from '@strike-desk/shared/protocol';
+import { isNewerFrame } from '@strike-desk/shared/protocol';
+import type { FrameOrder } from '@strike-desk/shared/protocol';
 import { STALE_AFTER_MS } from './ports';
 import type {
   CommandOutcome,
@@ -10,6 +12,8 @@ import type {
   ReadSlice,
 } from './ports';
 import { createSocketFeed, frameOf, throwAll } from './socketFeed';
+import { intentEligible } from './journal';
+import type { SavedIntent } from './journal';
 
 /**
  * The connection: the block's feed, plus an honest account of where the line
@@ -74,6 +78,8 @@ function createSlice<T>(initial: T, watching?: Watching): Slice<T> {
 
 /** One command without an answer: what callers see of it, and what only the connection needs. */
 interface Entry {
+  intent?: SavedIntent;
+  restored?: boolean;
   /** A new object whenever a member changes. */
   view: PendingCommand;
   /** Built once, at the press. Every send hands over this text and no other. */
@@ -135,6 +141,8 @@ export const createConnection: CreateConnection = (options) => {
   let droppedSinceFrame = false;
   /** The session the last frame named; null before any, and once that game is known to be over or gone. */
   let session: string | null = null;
+  let latestFrame: Frame | null = null;
+  let heldOrder: FrameOrder | null = null;
   /** What went wrong inside a handler, thrown once everyone has been told. */
   let raised: unknown[] = [];
 
@@ -181,7 +189,7 @@ export const createConnection: CreateConnection = (options) => {
   function staleBy(): number | null {
     const { phase, lastMessageAt } = state.get();
     if (!expectsData(phase) || lastMessageAt === null) return null;
-    return STALE_AFTER_MS - (seam.now() - lastMessageAt);
+    return (options.staleAfterMs ?? STALE_AFTER_MS) - (seam.now() - lastMessageAt);
   }
 
   /** For a reader nobody told: stale by now is stale, and there is no one to tell. */
@@ -253,7 +261,7 @@ export const createConnection: CreateConnection = (options) => {
     for (const commandId of [...entries.keys()]) end(commandId, { outcome: 'lost' });
   }
 
-  function submit(command: Command): Promise<CommandOutcome> {
+  function submit(command: Command, restored?: { intent: SavedIntent; ageMs: number }, intent?: SavedIntent): Promise<CommandOutcome> {
     const already = entries.get(command.commandId);
     if (already !== undefined) return already.promise;
 
@@ -263,16 +271,18 @@ export const createConnection: CreateConnection = (options) => {
     });
     const entry: Entry = {
       // The caller's object is theirs to change; what was pressed is kept apart from it.
-      view: { command: Object.freeze({ ...command }), status: 'checking', sentAt: seam.now(), sends: 0 },
+      view: { command: Object.freeze({ ...command }), status: 'checking', sentAt: seam.now() - (restored?.ageMs ?? 0), sends: 0 },
       text: JSON.stringify(command),
-      session,
+      session: restored?.intent.session ?? session,
       promise,
       settle,
+      ...(intent === undefined ? {} : { intent }),
+      ...(restored === undefined ? {} : { intent: restored.intent, restored: true }),
     };
     entries.set(command.commandId, entry);
     // Anywhere but live it waits as `checking`: nobody knows whether a line
     // that is down, silent or still settling would carry it.
-    if (phaseNow() === 'live') handOver(entry);
+    if (restored === undefined && phaseNow() === 'live') handOver(entry);
     publishPending();
     try {
       flush();
@@ -286,6 +296,7 @@ export const createConnection: CreateConnection = (options) => {
   function resend(commandId: string): void {
     const entry = entries.get(commandId);
     if (entry === undefined || phaseNow() !== 'live') return;
+    if (entry.intent !== undefined && (latestFrame === null || !intentEligible(entry.intent, latestFrame))) return;
     if (handOver(entry)) publishPending();
     flush();
   }
@@ -320,6 +331,8 @@ export const createConnection: CreateConnection = (options) => {
   function markClosed(): void {
     droppedSinceFrame = false;
     session = null;
+    heldOrder = null;
+    latestFrame = null;
     callOffStaleCheck();
     loseAll();
     publishPending();
@@ -327,22 +340,31 @@ export const createConnection: CreateConnection = (options) => {
   }
 
   function onFrame(frame: Frame, receivedAt: number): void {
+    latestFrame = frame;
     const resuming = droppedSinceFrame;
     droppedSinceFrame = false;
 
-    for (const receipt of frame.receipts) end(receipt.commandId, outcomeOf(receipt));
+    for (const receipt of frame.receipts) {
+      const entry = entries.get(receipt.commandId);
+      if (entry?.session === null || entry?.session === frame.session) end(receipt.commandId, outcomeOf(receipt));
+    }
 
     // A command pressed in one game is never sent into another.
     for (const [commandId, entry] of [...entries]) {
       if (entry.session !== null && entry.session !== frame.session) end(commandId, { outcome: 'lost' });
     }
-    // The feed forgets a game that is over; so does this.
-    session = frame.clock.phase === 'final' ? null : frame.session;
+    session = frame.session;
 
-    if (resuming) {
+    for (const [id, entry] of [...entries]) {
+      if (entry.intent !== undefined && !intentEligible(entry.intent, frame)) end(id, { outcome: 'lost' });
+    }
+
+    if (resuming || [...entries.values()].some((entry) => entry.restored)) {
       // The first frame after a reconnect, and only that one: each command
       // still unanswered is asked about once.
       for (const entry of [...entries.values()]) {
+        if (!resuming && !entry.restored) continue;
+        entry.restored = false;
         let again = false;
         try {
           // Called on the options it came with: whoever wrote the policy may have written it as a method.
@@ -387,12 +409,21 @@ export const createConnection: CreateConnection = (options) => {
       return;
     }
 
-    if (message.t === 'reply') end(message.receipt.commandId, outcomeOf(message.receipt));
+    if (message.t === 'reply') {
+      const entry = entries.get(message.receipt.commandId);
+      if (entry?.session === null || entry?.session === message.frame.session) end(message.receipt.commandId, outcomeOf(message.receipt));
+      publishPending();
+    }
 
     const frame = frameOf(message);
     if (frame !== null) {
+      if (!isNewerFrame(heldOrder, frame)) return;
+      heldOrder = { session: frame.session, rev: frame.rev, step: frame.step };
       onFrame(frame, receivedAt);
     } else {
+      if (message.t !== 'quotes' || latestFrame === null || message.session !== latestFrame.session ||
+        message.rev !== latestFrame.rev || message.day !== latestFrame.clock.day || !isNewerFrame(heldOrder, message)) return;
+      heldOrder = { session: message.session, rev: message.rev, step: message.step };
       // A batch of quotes: newer data, and no news about where the line stands
       // until a frame has said the server is there.
       const { phase } = state.get();
@@ -447,7 +478,8 @@ export const createConnection: CreateConnection = (options) => {
       get: () => pending.get(),
       subscribe: (listener) => pending.subscribe(listener),
     },
-    submit,
+    submit: (command, intent) => submit(command, undefined, intent),
+    restore: (intent, ageMs) => submit(intent.command, { intent, ageMs }),
     resend,
     dismissGameGone: () => {
       change({ gameGone: false });

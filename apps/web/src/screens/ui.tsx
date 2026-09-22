@@ -15,7 +15,7 @@ export function PrimaryButton({ className, ...props }: ButtonProps) {
   return (
     <button
       type="button"
-      className={cx('rounded-2xl bg-sun px-8 font-display font-extrabold text-ink', pressable, focusRing, className)}
+      className={cx('rounded-2xl bg-sun px-8 font-display font-extrabold text-ink tabular-nums', pressable, focusRing, className)}
       {...props}
     />
   );
@@ -70,6 +70,14 @@ export const Bulb = ({ className }: { className?: string }) => (
     <path d="M9 18h6" />
     <path d="M10 21h4" />
     <path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z" />
+  </svg>
+);
+
+export const InfoIcon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" className={className} strokeWidth="2" {...stroke} aria-hidden="true">
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 11v6" />
+    <circle cx="12" cy="7" r="1" fill="currentColor" stroke="none" />
   </svg>
 );
 
@@ -176,11 +184,11 @@ export function CompanyTile({ companyId, size = 'md' }: { companyId: number; siz
 }
 
 /**
- * Bottom-of-panel actions. Sticks to the bottom of a scrolling panel so the
- * main button is always reachable on short screens.
+ * Bottom-of-panel actions stay in the document flow so they cannot cover
+ * the ticket controls when space is tight.
  */
 export const ActionDock = ({ children }: { children: ReactNode }) => (
-  <div className="sticky bottom-0 -mb-6 mt-auto flex flex-col gap-2.5 bg-panel pt-3 pb-6">{children}</div>
+    <div className="action-dock mt-auto flex flex-col gap-2.5 bg-panel pt-3 pb-1">{children}</div>
 );
 
 export const Label = ({ className, children }: { className?: string; children: ReactNode }) => (

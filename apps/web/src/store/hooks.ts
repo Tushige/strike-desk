@@ -5,6 +5,18 @@ import type { ConnectionState, PendingCommand } from '../modules/connection/inde
 import type { RowSource } from '../modules/live-grid/index';
 import type { ContractRow } from './contractRows';
 import type { PriceSeries } from './gameStore';
+import { deriveSlice, sameFields } from './derive';
+import { createGameViews } from './views';
+
+export const views = createGameViews(store);
+export function useView<T>(slice: { subscribe: (listener: () => void) => () => void; get: () => T }): T {
+  return useSyncExternalStore(slice.subscribe, slice.get);
+}
+export function useScreenFrame(kind: 'desk' | 'ticket' | 'chart' | 'review'): Frame {
+  const frame = useView(views[kind]);
+  if (frame === null) throw new Error('A game screen needs an accepted frame');
+  return frame;
+}
 
 /**
  * The only file under `store/` that imports React, and the one place the
@@ -83,8 +95,10 @@ export function useCompanies(): readonly CompanyView[] {
   return useSyncExternalStore(subscribeCompanies, snapshotCompanies);
 }
 
-const subscribeConnection = (listener: () => void): (() => void) => connection.state.subscribe(listener);
-const snapshotConnection = (): ConnectionState => connection.state.get();
+// Message timestamps change every tick; UI status only changes when the line does.
+const connectionView = deriveSlice(connection.state, (s) => ({ ...s, lastMessageAt: null }), sameFields);
+const subscribeConnection = (listener: () => void): (() => void) => connectionView.subscribe(listener);
+const snapshotConnection = (): ConnectionState => connectionView.get();
 
 /** Where the connection stands: live, stale, reconnecting, and so on. */
 export function useConnectionState(): ConnectionState {

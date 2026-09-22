@@ -1,6 +1,6 @@
 import { useEffect, useReducer, useRef, useState, useSyncExternalStore } from 'react';
 import type { Frame } from '@strike-desk/shared/protocol';
-import { connection, newCommandId, store } from '../../boot';
+import { connection, newCommandId, store, submitTrade, restoredIntent, restoredOutcome } from '../../boot';
 import { lineStateOf } from '../../modules/connection/index';
 import { createDraftPacer, createLatestState, createTicketHandlers, initialTicketState, ticketReducer } from '../../modules/order-ticket/index';
 import type { TicketContract, TicketHandlers, TicketSnapshot, TicketState, TradingTicketProps } from '../../modules/order-ticket/index';
@@ -26,7 +26,10 @@ export interface TicketMachine {
 export const SPEND_CHIPS = [5_000_000, 10_000_000, 25_000_000] as const;
 
 function startingState(seed: { day: number; contractId: number | null; held: boolean }): TicketState {
-  return initialTicketState({ day: seed.day, contractId: seed.contractId, spendCents: null, held: seed.held });
+  const initial = initialTicketState({ day: seed.day, contractId: seed.contractId, spendCents: null, held: seed.held });
+  if (restoredIntent === null) return initial;
+  return { ...initial, form: 'checking', spendCents: restoredIntent.command.t === 'buy' ? restoredIntent.command.spendCents : null,
+    command: { id: restoredIntent.command.commandId, kind: restoredIntent.command.t, day: restoredIntent.day } };
 }
 
 export function useTicketMachine(frame: Frame, contract: TicketContract | null, onPick: (contractId: number) => void): TicketMachine {
@@ -36,6 +39,7 @@ export function useTicketMachine(frame: Frame, contract: TicketContract | null, 
   const connectionPhase = useConnectionState().phase;
   const line = lineStateOf(connectionPhase);
   const day = frame.clock.day;
+  const handedDay = useRef(day);
   const contractId = contract?.contractId ?? null;
 
   const [state, dispatch] = useReducer(ticketReducer, { day, contractId, held: position !== null }, startingState);
@@ -60,7 +64,7 @@ export function useTicketMachine(frame: Frame, contract: TicketContract | null, 
       store.setRequestedDraft(draft);
       connection.send({ t: 'draft', contractId: draft.contractId, spendCents: draft.spendCents });
     },
-    submit: (command) => connection.submit(command),
+    submit: submitTrade,
     newCommandId,
   };
   const latestProps = useRef(props);
@@ -76,6 +80,12 @@ export function useTicketMachine(frame: Frame, contract: TicketContract | null, 
     createTicketHandlers({ state: latest.state, props: () => latestProps.current, send: latest.send }),
   );
   const { send } = latest;
+  useEffect(() => {
+    if (restoredOutcome !== null && restoredIntent !== null) {
+      const id = restoredIntent.command.commandId;
+      void restoredOutcome.then((outcome) => { send({ type: 'outcome', commandId: id, outcome }); });
+    }
+  }, [send]);
 
   // What the desk and the server say, handed to the machine as it changes.
   useEffect(() => {
@@ -92,6 +102,8 @@ export function useTicketMachine(frame: Frame, contract: TicketContract | null, 
   }, [position, send]);
   useEffect(() => {
     send({ type: 'day', day });
+    if (day !== handedDay.current) send({ type: 'spend', spendCents: null });
+    handedDay.current = day;
   }, [day, send]);
 
   /**

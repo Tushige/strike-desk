@@ -43,6 +43,8 @@ export function previewFrame(source: Frame): Frame {
         revealed: item.revealed,
       };
       if (item.revealed && item.revealIndex !== undefined) news.revealIndex = item.revealIndex;
+      const complete = item.day < source.clock.day || source.clock.phase === 'debrief' || source.clock.phase === 'final';
+      if (complete && item.wasTrue !== undefined) news.wasTrue = item.wasTrue;
       return news;
     }),
     account: {

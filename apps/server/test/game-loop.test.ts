@@ -41,7 +41,10 @@ function preview(frame: Frame): void {
     });
     expect(frame.positions).toEqual([]);
     expect(frame.days).toEqual(days.slice(0, frame.days.length));
-    for (const news of frame.news) expect(news).not.toHaveProperty("wasTrue");
+    for (const news of frame.news) {
+        if (frame.clock.phase === 'debrief' || frame.clock.phase === 'final') expect(news.wasTrue).toBeTypeOf('boolean');
+        else expect(news).not.toHaveProperty('wasTrue');
+    }
     if (frame.clock.phase !== "final") {
         expect(frame).not.toHaveProperty("final");
         expect(JSON.stringify(frame)).not.toContain("marketCode");

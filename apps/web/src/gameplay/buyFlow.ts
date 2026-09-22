@@ -16,6 +16,7 @@ export interface BuyTransaction {
   sent: boolean;
   retryAllowed: boolean;
   gameGone: boolean;
+  afterBell?: boolean;
   outcome?: SubmitOutcome;
   purchase?: BuyPurchase;
 }
@@ -67,7 +68,12 @@ export function createBuyFlow(feed: Feed, freshness: ReadSlice<{ line: LineState
   function finish(outcome: SubmitOutcome, gameGone = false): void {
     const record = transaction.get();
     if (record === null || record.outcome !== undefined) return;
-    transaction.set({ ...record, outcome, retryAllowed: false, gameGone });
+    const position = outcome.outcome === 'accepted' ? current?.positions.find((item) =>
+      item.id === outcome.receipt.positionId && item.day === record.command.day) : undefined;
+    const afterBell = current?.session === record.session && (current.clock.day > record.command.day ||
+      (current.clock.day === record.command.day && (current.clock.phase === 'debrief' || current.clock.phase === 'final')) || position?.status === 'settled');
+    transaction.set({ ...record, outcome, retryAllowed: false, gameGone, afterBell,
+      ...(position === undefined || current === null ? {} : { purchase: bought(current, position) }) });
     pending?.resolve(outcome);
     publish();
   }
@@ -122,22 +128,27 @@ export function createBuyFlow(feed: Feed, freshness: ReadSlice<{ line: LineState
     if (message.t !== 'frame' && message.t !== 'reply') return;
     const frame = message.t === 'reply' ? message.frame : message;
     if (retired.has(frame.session)) return;
-    // Receipt evidence may arrive behind the current display watermark.
-    if (message.t === 'reply') answer([message.receipt], frame.session);
-    if (!isNewerFrame(held, frame)) return;
+    // Receipt evidence may arrive behind the current display watermark, but
+    // the answer's presentation always uses the newest accepted state.
+    if (!isNewerFrame(held, frame)) {
+      if (message.t === 'reply') answer([message.receipt], frame.session);
+      return;
+    }
     if (held !== null && held.session !== frame.session) {
       retired.add(held.session);
       finish({ outcome: 'lost' });
     }
     held = { session: frame.session, rev: frame.rev, step: frame.step };
     current = frame;
+    if (message.t === 'reply') answer([message.receipt], frame.session);
     answer(frame.receipts, frame.session);
     const position = frame.positions.find((item) => item.day === frame.clock.day);
     const nextPurchase = position === undefined ? null : bought(frame, position);
     if (!samePurchase(purchase.get(), nextPurchase)) purchase.set(nextPurchase);
     const record = transaction.get();
     if (record?.session === frame.session && record.outcome?.outcome === 'accepted') {
-      const original = frame.positions.find((item) => item.day === record.command.day && item.contractId === record.command.contractId);
+      const positionId = record.outcome.receipt.positionId;
+      const original = frame.positions.find((item) => item.day === record.command.day && item.id === positionId);
       if (original !== undefined) {
         const retained = bought(frame, original);
         if (!samePurchase(record.purchase ?? null, retained)) transaction.set({ ...record, purchase: retained });

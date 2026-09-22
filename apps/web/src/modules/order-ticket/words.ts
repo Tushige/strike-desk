@@ -78,6 +78,11 @@ export const ACCEPTED_WORDS = {
 export const REJECTED_LEAD = 'Rejected.';
 export const REJECTED_NO_REASON = 'The game said no to that one. Check your ticket and press again.';
 export const LOST_WORDS = 'No answer came back for that one. Check your cash and your ticket, then press again if you still want it.';
+export const GAME_GONE_WORDS = 'The previous game is no longer available. That buy cannot be checked.';
+export const LATE_ACCEPTED_WORDS = (day: number): string => `Your Day ${String(day)} buy was accepted. That ticket has settled at the closing bell.`;
+export const LATE_REJECTED_WORDS = (day: number): string => `Your Day ${String(day)} buy was rejected.`;
+export const BOUGHT_FOR_LABEL = 'Bought for';
+export const BELL_PAID_LABEL = 'Paid at the bell';
 
 /** A plain reason for every way the server can say no. */
 export const REJECT_WORDS: Record<RejectReason, string> = {

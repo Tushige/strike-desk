@@ -6,9 +6,14 @@ import { createDraftPacer } from './draftPacer';
 import { createLatestState, createTicketHandlers } from './handlers';
 import { breakEvenStopIndex, buyBlocker, cashOutBlocker, commandKindOf, initialTicketState, quoteEchoes, retryAllowed, stopAt, ticketReducer } from './machine';
 import type { CommandKind, TicketNotice, TicketSnapshot, TicketState } from './machine';
-import type { BuyTransaction, OpenTicket, OrderTicketProps, ReadSlice, SimpleChoice, TicketAccount, TicketContract, TicketDraft, TicketPreviewProps, TicketQuote } from './ports';
+import type { BuyPurchase, BuyTransaction, OpenTicket, OrderTicketProps, ReadSlice, SimpleChoice, TicketAccount, TicketContract, TicketDraft, TicketPreviewProps, TicketQuote } from './ports';
 import {
   ACCEPTED_WORDS,
+  BOUGHT_FOR_LABEL,
+  BELL_PAID_LABEL,
+  GAME_GONE_WORDS,
+  LATE_ACCEPTED_WORDS,
+  LATE_REJECTED_WORDS,
   BLOCKER_WORDS,
   BREAK_EVEN_LABEL,
   BUY_LABEL,
@@ -86,6 +91,16 @@ function statusWords(state: TicketState): string | null {
   if (state.form === 'pending') return PENDING_WORDS;
   if (state.form === 'checking') return CHECKING_WORDS;
   return state.notice === null ? null : noticeWords(state.notice);
+}
+
+function buyStatusWords(state: TicketState, transaction: BuyTransaction | null): string | null {
+  if (state.form === 'pending' || state.form === 'checking' || state.notice === null || transaction?.outcome === undefined) return statusWords(state);
+  if (transaction.gameGone) return GAME_GONE_WORDS;
+  if (transaction.afterBell) {
+    if (transaction.outcome.outcome === 'accepted') return LATE_ACCEPTED_WORDS(transaction.command.day);
+    if (transaction.outcome.outcome === 'rejected') return `${LATE_REJECTED_WORDS(transaction.command.day)} ${transaction.outcome.receipt.reason === undefined ? REJECTED_NO_REASON : REJECT_WORDS[transaction.outcome.receipt.reason]}`;
+  }
+  return statusWords(state);
 }
 
 /** A profit is said in the UP colour and a loss in the DOWN colour; the sign says it too. */
@@ -322,6 +337,29 @@ function AccountLine({ account }: { account: TicketAccount }): ReactElement {
   );
 }
 
+function SettlementNumbers({ purchase }: { purchase: BuyPurchase }): ReactElement | null {
+  const { position } = purchase;
+  if (position.status !== 'settled' || position.exit?.kind !== 'bell') return null;
+  const profit = profitText(position.profitCents);
+  return <dl className="m-0 grid grid-cols-2 gap-2 text-sm">
+    <Figure label={BELL_PAID_LABEL}>{formatCents(position.exit.proceedsCents)}</Figure>
+    <Figure label={WHAT_IF_RESULT_LABEL} className={profit.className}>{profit.text}</Figure>
+  </dl>;
+}
+
+function PurchaseNumbers({ purchase }: { purchase: BuyPurchase }): ReactElement {
+  const { position } = purchase;
+  return <>
+    <TicketHead ticket={{ ...position, companyName: purchase.companyName, ticker: purchase.ticker }} />
+    <dl className="m-0 grid grid-cols-2 gap-2 text-sm">
+      <Figure label={PRICE_LABEL}>{formatCents(position.entryPriceCents)}</Figure>
+      <Figure label={QUANTITY_LABEL}>{position.quantity.toLocaleString('en-US')}</Figure>
+      <Figure label={BOUGHT_FOR_LABEL} className="text-2xl font-medium text-gold">{formatCents(position.costCents)}</Figure>
+    </dl>
+    <SettlementNumbers purchase={purchase} />
+  </>;
+}
+
 export interface TicketViewProps {
   state: TicketState;
   snapshot: TicketSnapshot;
@@ -335,6 +373,8 @@ export interface TicketViewProps {
   onRetry: () => void;
   spendEditor?: TicketPreviewProps['spendEditor'];
   staleNoticeId?: string;
+  purchase?: BuyPurchase | null;
+  transaction?: BuyTransaction | null;
 }
 
 /**
@@ -342,7 +382,7 @@ export interface TicketViewProps {
  * panel is ever shorter than the form, is the middle; the action and what it
  * says stay in view.
  */
-export function TicketView({ state, snapshot, choices, spendChoices, retryOffered, onPick, onChooseSpend, onPress, onRetry, spendEditor, staleNoticeId }: TicketViewProps): ReactElement {
+export function TicketView({ state, snapshot, choices, spendChoices, retryOffered, onPick, onChooseSpend, onPress, onRetry, spendEditor, staleNoticeId, purchase = null, transaction = null }: TicketViewProps): ReactElement {
   const whyOffId = useId();
   const retryHintId = useId();
 
@@ -356,7 +396,7 @@ export function TicketView({ state, snapshot, choices, spendChoices, retryOffere
   const blocked = holding ? cashOutOff !== null : buyOff !== null;
   const whyOff = spendEditor !== undefined && line !== 'live' ? BUY_LINE_WORDS[line]
     : holding ? (cashOutOff === null ? null : CASH_OUT_BLOCKER_WORDS[cashOutOff]) : buyOff === null ? null : BLOCKER_WORDS[buyOff];
-  const status = statusWords(state);
+  const status = spendEditor === undefined ? statusWords(state) : buyStatusWords(state, transaction);
   const dimmed = line === 'live' ? '' : 'opacity-60';
 
   return (
@@ -366,7 +406,7 @@ export function TicketView({ state, snapshot, choices, spendChoices, retryOffere
         {line === 'live' || staleNoticeId !== undefined ? null : <p className="m-0 rounded-sm border border-border px-1.5 py-0.5 text-xs text-gold">{LINE_WORDS[line]}</p>}
       </div>
       <div className="grid min-h-0 gap-3 overflow-y-auto px-4 pb-3">
-        {holding ? (
+        {purchase !== null ? <PurchaseNumbers purchase={purchase} /> : holding ? (
           <>
             <TicketHead ticket={position} />
             <div className={dimmed}>
@@ -393,7 +433,7 @@ export function TicketView({ state, snapshot, choices, spendChoices, retryOffere
         )}
       </div>
       <div className="grid gap-2 border-t border-border px-4 pt-3 pb-3.5">
-        <button
+        {purchase === null ? <button
           type="button"
           className={ACTION}
           disabled={blocked}
@@ -403,8 +443,8 @@ export function TicketView({ state, snapshot, choices, spendChoices, retryOffere
           }}
         >
           {drawnAs === 'cashOut' ? CASH_OUT_LABEL : BUY_LABEL}
-        </button>
-        {whyOff === null ? null : (
+        </button> : null}
+        {purchase !== null || whyOff === null ? null : (
           <p id={whyOffId} className="m-0 text-xs text-muted-foreground">
             {whyOff}
           </p>
@@ -412,6 +452,8 @@ export function TicketView({ state, snapshot, choices, spendChoices, retryOffere
         <p role="status" aria-live="polite" className="m-0 min-h-5 text-sm">
           {status}
         </p>
+        {purchase === null && status !== null && transaction?.afterBell && transaction.purchase !== undefined && transaction.command.day !== state.day
+          ? <SettlementNumbers purchase={transaction.purchase} /> : null}
         {retryAllowed(state, retryOffered) ? (
           <div className="grid gap-1">
             <button type="button" className={`rounded-md border border-ring px-3 py-2 text-sm ${FOCUS} hover:bg-accent`} aria-describedby={retryHintId} onClick={onRetry}>
@@ -430,9 +472,11 @@ export function TicketView({ state, snapshot, choices, spendChoices, retryOffere
 
 const EMPTY_POSITION: ReadSlice<OpenTicket | null> = { get: () => null, subscribe: () => () => {} };
 const EMPTY_TRANSACTION: ReadSlice<BuyTransaction | null> = { get: () => null, subscribe: () => () => {} };
+const EMPTY_PURCHASE: ReadSlice<BuyPurchase | null> = { get: () => null, subscribe: () => () => {} };
 
 function startingState(props: OrderTicketProps): TicketState {
-  const retained = props.mode === 'buy' ? props.transaction.get() : null;
+  const record = props.mode === 'buy' ? props.transaction.get() : null;
+  const retained = record?.outcome !== undefined && record.command.day !== props.day && !record.afterBell && !record.gameGone ? null : record;
   let state = initialTicketState({ day: retained?.command.day ?? props.day, contractId: props.contract?.contractId ?? null,
     spendCents: props.mode === 'buy' ? props.spendEditor.spendCents : null, held: props.mode === 'buy' ? false : props.position.get() !== null });
   if (retained !== null) {
@@ -451,6 +495,8 @@ const TradingTicket = memo(function TradingTicket(props: OrderTicketProps): Reac
   const position = useSyncExternalStore(positionSlice.subscribe, positionSlice.get, positionSlice.get);
   const transactionSlice = props.mode === 'buy' ? props.transaction : EMPTY_TRANSACTION;
   const transaction = useSyncExternalStore(transactionSlice.subscribe, transactionSlice.get, transactionSlice.get);
+  const purchaseSlice = props.mode === 'buy' ? props.purchase ?? EMPTY_PURCHASE : EMPTY_PURCHASE;
+  const purchase = useSyncExternalStore(purchaseSlice.subscribe, purchaseSlice.get, purchaseSlice.get);
 
   const contractId = props.contract?.contractId ?? null;
   const [state, dispatch] = useReducer(ticketReducer, props, startingState);
@@ -544,6 +590,8 @@ const TradingTicket = memo(function TradingTicket(props: OrderTicketProps): Reac
       onChooseSpend={handlers.onChooseSpend}
       onPress={handlers.onPress}
       onRetry={handlers.onRetry}
+      purchase={purchase?.position.day === props.day ? purchase : null}
+      transaction={transaction}
       {...(props.mode === 'buy' ? { spendEditor: props.spendEditor, ...(props.staleNoticeId === undefined ? {} : { staleNoticeId: props.staleNoticeId }) } : {})}
     />
   );

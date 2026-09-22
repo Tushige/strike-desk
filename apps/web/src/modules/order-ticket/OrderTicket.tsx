@@ -95,6 +95,7 @@ function statusWords(state: TicketState): string | null {
 
 function buyStatusWords(state: TicketState, transaction: BuyTransaction | null): string | null {
   if (state.form === 'pending' || state.form === 'checking' || state.notice === null || transaction?.outcome === undefined) return statusWords(state);
+  if (transaction.command.t !== 'buy') return statusWords(state);
   if (transaction.gameGone) return GAME_GONE_WORDS;
   if (transaction.afterBell) {
     if (transaction.outcome.outcome === 'accepted') return LATE_ACCEPTED_WORDS(transaction.command.day);
@@ -452,7 +453,7 @@ export function TicketView({ state, snapshot, choices, spendChoices, retryOffere
         <p role="status" aria-live="polite" className="m-0 min-h-5 text-sm">
           {status}
         </p>
-        {purchase === null && status !== null && transaction?.afterBell && transaction.purchase !== undefined && transaction.command.day !== state.day
+        {purchase === null && status !== null && transaction?.afterBell && transaction.purchase !== undefined && transaction.command.t === 'buy' && transaction.command.day !== state.day
           ? <SettlementNumbers purchase={transaction.purchase} /> : null}
         {retryAllowed(state, retryOffered) ? (
           <div className="grid gap-1">
@@ -476,8 +477,8 @@ const EMPTY_PURCHASE: ReadSlice<BuyPurchase | null> = { get: () => null, subscri
 
 function startingState(props: OrderTicketProps): TicketState {
   const record = props.mode === 'buy' ? props.transaction.get() : null;
-  const retained = record?.outcome !== undefined && record.command.day !== props.day && !record.afterBell && !record.gameGone ? null : record;
-  let state = initialTicketState({ day: retained?.command.day ?? props.day, contractId: props.contract?.contractId ?? null,
+  const retained = record?.command.t !== 'buy' || (record.outcome !== undefined && record.command.day !== props.day && !record.afterBell && !record.gameGone) ? null : record;
+  let state = initialTicketState({ day: retained?.command.t === 'buy' ? retained.command.day : props.day, contractId: props.contract?.contractId ?? null,
     spendCents: props.mode === 'buy' ? props.spendEditor.spendCents : null, held: props.mode === 'buy' ? false : props.position.get() !== null });
   if (retained !== null) {
     state = ticketReducer(state, { type: 'pressed', commandId: retained.command.commandId, kind: 'buy' });
@@ -528,7 +529,7 @@ const TradingTicket = memo(function TradingTicket(props: OrderTicketProps): Reac
   }, [controlledSpend, send]);
   const observedCommand = useRef(transaction?.command.commandId ?? null);
   useEffect(() => {
-    if (transaction === null) return;
+    if (transaction === null || transaction.command.t !== 'buy') return;
     if (observedCommand.current !== transaction.command.commandId) {
       observedCommand.current = transaction.command.commandId;
       send({ type: 'day', day: transaction.command.day });

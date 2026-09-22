@@ -43,6 +43,7 @@ function FinalBuyOutcome() {
   const retryHintId = useId();
   if (transaction === null || (transaction.outcome !== undefined && !transaction.afterBell && !transaction.gameGone)) return null;
   const { outcome, command, purchase } = transaction;
+  if (command.t !== 'buy') return null;
   let status: string = controlWords.checking;
   if (outcome?.outcome === 'accepted') status = FINAL_BUY_WORDS.accepted(command.day);
   else if (outcome?.outcome === 'rejected') {

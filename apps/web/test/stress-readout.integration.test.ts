@@ -6,7 +6,7 @@ import { createInterface } from 'node:readline';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { createElement } from 'react';
-import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { ServerMessage } from '@strike-desk/shared/protocol';
 import type { Feed, Outbound } from '@strike-desk/shared/feed';
@@ -55,15 +55,24 @@ it('measures real socket workload and a changing visible contract price through 
       live.subscribe((event) => { if (event.type === 'message') messages.push(event.message); });
       return { ...live, send: (message: Outbound) => { outbound.push(message); return live.send(message); } };
     } }));
-    const { store, stressMeasurements } = await import('../src/boot');
+    const { store, comparisonStore, stressMeasurements } = await import('../src/boot');
     const { default: App } = await import('../src/App');
     const view = render(createElement(App));
     fireEvent.click(await view.findByRole('button', { name: 'Start fast (3x)' }));
     await waitFor(() => expect(store.currentRows()).toHaveLength(2508));
-    fireEvent.click(view.getByRole('button', { name: 'Compare options' }));
+    const disclosure = view.getByRole('button', { name: 'Compare options' });
+    fireEvent.click(disclosure);
     const grid = await view.findByRole('grid', { name: 'Contracts' });
     await waitFor(() => expect(grid.querySelector('.ag-row[row-id="0"] [col-id="price"]')).not.toBeNull());
     expect(view.getByText('Records/s')).toBeDefined();
+    fireEvent.click(grid.querySelector('.ag-row[row-id="0"] [col-id="company"]')!);
+    await waitFor(() => expect(comparisonStore.requested.get().contractId).toBe(0));
+    const down = view.getByRole('group', { name: 'DOWN ticket. Pays if the price ends below the target' });
+    fireEvent.click(within(down).getByRole('button', { name: /^Close/ }));
+    const selected = comparisonStore.requested.get().contractId;
+    const spend = view.getByRole('textbox', { name: 'How much to spend' }) as HTMLInputElement;
+    fireEvent.change(spend, { target: { value: '1000.50' } });
+    await waitFor(() => expect(outbound).toContainEqual({ t: 'draft', contractId: selected, spendCents: 100050 }), { timeout: 3000 });
     const before = grid.querySelector('.ag-row[row-id="0"] [col-id="price"]')!.textContent;
     async function sample(ms: number) {
       await new Promise<void>((resolve, reject) => {
@@ -82,11 +91,22 @@ it('measures real socket workload and a changing visible contract price through 
       });
     }
     await sample(1500);
+    const slider = view.getByRole('slider') as HTMLInputElement;
+    fireEvent.change(slider, { target: { value: '0' } });
+    const filter = view.getByRole('combobox', { name: 'Ticket' }) as HTMLSelectElement;
+    fireEvent.change(filter, { target: { value: 'up' } });
     await sample(23000);
     await waitFor(() => expect(grid.querySelector('.ag-row[row-id="0"] [col-id="price"]')!.textContent).not.toBe(before));
     await waitFor(() => expect(typeof stressMeasurements.get().clientDelay).toBe('object'), { timeout: 3000 });
     expect(stressMeasurements.get().records).toBeGreaterThan(0);
     expect(stressMeasurements.get().changes).toBeGreaterThan(0);
+    expect(comparisonStore.requested.get().contractId).toBe(selected);
+    expect(spend.value).toBe('1000.50');
+    expect(filter.value).toBe('up');
+    expect((view.getByRole('slider') as HTMLInputElement).value).toBe('0');
+    fireEvent.click(disclosure); fireEvent.click(disclosure);
+    expect(view.getByRole('textbox', { name: 'How much to spend' })).toBe(spend);
+    expect(comparisonStore.requested.get().contractId).toBe(selected);
     await sample(200);
     expect(messages.some((message) => message.t === 'quotes' && message.changes.length > 0)).toBe(true);
     expect(socketCount).toBe(1);

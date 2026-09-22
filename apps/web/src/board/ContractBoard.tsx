@@ -1,6 +1,7 @@
-import { memo, useEffect, useSyncExternalStore } from 'react';
+import { memo, useEffect, useRef, useSyncExternalStore } from 'react';
 import { stressMeasurements } from '../boot';
 import { StressReadout } from './StressReadout';
+import { watchTable } from './watchTable';
 import { LiveGrid } from '../modules/live-grid/index';
 import type { ContractRow } from '../store/contractRows';
 import { boardRowSource } from '../store/hooks';
@@ -36,15 +37,15 @@ export const ContractBoard = memo(function ContractBoard({ selectedId, onSelect,
   staleNoticeId?: string;
 }) {
   const stress = useSyncExternalStore(stressMeasurements.subscribe, stressMeasurements.isEnabled);
+  const table = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!stress) return;
-    stressMeasurements.setActive(true);
-    return () => { stressMeasurements.setActive(false); };
+    if (!stress || table.current === null) return;
+    return watchTable(table.current, stressMeasurements);
   }, [stress]);
   return (
     <div className="flex h-full min-h-0 flex-col">
     {stress ? <StressReadout measurements={stressMeasurements} /> : null}
-    <div className="min-h-0 flex-1">
+    <div ref={table} className="min-h-0 flex-1">
     <LiveGrid<ContractRow>
       source={boardRowSource}
       columns={COLUMNS}

@@ -35,6 +35,35 @@ function setup() {
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 describe('the ticket preview', () => {
+  it('shares the waiting description and keeps compatible dim numbers editable until the draft changes', () => {
+    const { props, quote } = setup();
+    const view = render(createElement(OrderTicket, props));
+    fireEvent.change(view.getByRole('slider'), { target: { value: '2' } });
+    const stale = { ...props, line: 'stale' as const, staleNoticeId: 'shared-waiting' };
+    view.rerender(createElement(OrderTicket, stale));
+    expect(view.getByRole('region', { name: 'Your ticket' }).getAttribute('aria-describedby')).toBe('shared-waiting');
+    expect(view.queryByText(/Prices have stopped moving/)).toBeNull();
+    expect(view.getByText('Cost & most you can lose').nextElementSibling?.textContent).toBe('$100');
+    expect(view.getByText('Ticket price').closest('.opacity-60')).not.toBeNull();
+    expect(view.getByRole('slider').getAttribute('aria-valuetext')).toBe('$86. Profit or loss +$100');
+    expect((view.getByRole('textbox') as HTMLInputElement).disabled).toBe(false);
+    fireEvent.change(view.getByRole('slider'), { target: { value: '0' } });
+    expect(view.getByRole('slider').getAttribute('aria-valuetext')).toBe('$84. Profit or loss -$100');
+    view.rerender(createElement(OrderTicket, { ...stale, line: 'offline' }));
+    expect(view.getByText('Ticket price').closest('.opacity-60')).not.toBeNull();
+    expect((view.getByRole('textbox') as HTMLInputElement).value).toBe('100.00');
+    view.rerender(createElement(OrderTicket, { ...stale, spendEditor: { ...props.spendEditor, value: '200.', spendCents: 20000 } }));
+    expect(view.queryByText('Cost & most you can lose')).toBeNull();
+    expect(view.queryByRole('slider')).toBeNull();
+    view.rerender(createElement(OrderTicket, { ...stale, contract: { ...props.contract!, contractId: 25 } }));
+    expect(view.queryByText('Cost & most you can lose')).toBeNull();
+    view.rerender(createElement(OrderTicket, stale));
+    act(() => { quote.set(null); });
+    expect(view.queryByText('Cost & most you can lose')).toBeNull();
+    expect(view.queryByRole('slider')).toBeNull();
+    expect(view.queryByRole('button', { name: /Buy ticket|Cash out|Retry/ })).toBeNull();
+  });
+
   it('shows server zero quantity and zero cost without inventing a payoff curve', () => {
     const { props, quote } = setup();
     quote.set({ ...ANSWER, quantity: 0, costCents: 0, whatIf: [] });

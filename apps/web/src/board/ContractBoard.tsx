@@ -1,4 +1,7 @@
-import { memo } from 'react';
+import { memo, useEffect, useRef, useSyncExternalStore } from 'react';
+import { stressMeasurements } from '../boot';
+import { StressReadout } from './StressReadout';
+import { watchTable } from './watchTable';
 import { LiveGrid } from '../modules/live-grid/index';
 import type { ContractRow } from '../store/contractRows';
 import { boardRowSource } from '../store/hooks';
@@ -25,13 +28,22 @@ const LABEL = 'Contracts';
  */
 const isDimmed = (row: ContractRow): boolean => row.dimmed;
 
-export const ContractBoard = memo(function ContractBoard({ selectedId, onSelect, filter, isHighlighted }: {
+export const ContractBoard = memo(function ContractBoard({ selectedId, onSelect, filter, isHighlighted, stale = false, staleNoticeId }: {
   selectedId: string | null;
   onSelect: (id: string) => void;
   filter: ((row: ContractRow) => boolean) | null;
   isHighlighted: (row: ContractRow) => boolean;
+  stale?: boolean;
+  staleNoticeId?: string;
 }) {
-  return (
+  const stress = useSyncExternalStore(stressMeasurements.subscribe, stressMeasurements.isEnabled);
+  const table = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const gridElement = table.current?.lastElementChild;
+    if (!stress || !(gridElement instanceof HTMLElement)) return;
+    return watchTable(gridElement, stressMeasurements);
+  }, [stress]);
+  const grid = (
     <LiveGrid<ContractRow>
       source={boardRowSource}
       columns={COLUMNS}
@@ -42,7 +54,12 @@ export const ContractBoard = memo(function ContractBoard({ selectedId, onSelect,
       filter={filter}
       isHighlighted={isHighlighted}
       isDimmed={isDimmed}
-      stale={false}
+      stale={stale}
+      staleNoticeId={staleNoticeId}
     />
   );
+  return stress ? <div ref={table} className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]">
+    <StressReadout measurements={stressMeasurements} />
+    {grid}
+  </div> : grid;
 });

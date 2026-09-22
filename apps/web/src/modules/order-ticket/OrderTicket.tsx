@@ -518,10 +518,10 @@ function PreviewTicket(props: TicketPreviewProps): ReactElement {
   const matching = quote !== null && quote.contractId === contractId && quote.spendCents === spendCents && spendCents !== null ? quote : null;
 
   return (
-    <section aria-label={PANEL_TITLE} className="flex max-h-full w-full max-w-sm flex-col rounded-lg border border-border bg-card text-card-foreground">
+    <section aria-label={PANEL_TITLE} aria-describedby={props.staleNoticeId} className="flex max-h-full w-full max-w-sm flex-col rounded-lg border border-border bg-card text-card-foreground">
       <div className="flex items-center justify-between gap-3 px-4 pt-3.5 pb-2">
         <h3 className={`m-0 font-normal ${LABEL}`}>{PANEL_TITLE}</h3>
-        {props.line === 'live' ? null : <p className="m-0 rounded-sm border border-border px-1.5 py-0.5 text-xs text-gold">{LINE_WORDS[props.line]}</p>}
+        {props.line === 'live' || props.staleNoticeId !== undefined ? null : <p className="m-0 rounded-sm border border-border px-1.5 py-0.5 text-xs text-gold">{LINE_WORDS[props.line]}</p>}
       </div>
       <div className="grid min-h-0 gap-3 overflow-y-auto px-4 pb-3">
         {props.contract === null ? <p className="m-0 text-sm text-muted-foreground">{NOTHING_PICKED}</p> : <TicketHead ticket={props.contract} />}

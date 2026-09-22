@@ -149,7 +149,7 @@ interface InnerProps {
 
 export function LiveGridInner<Row extends GridRow>(props: LiveGridProps<Row> & InnerProps): ReactElement {
   const { source, columns, defaultColDef, label, selectedId, onSelect, filter, isDimmed, isHighlighted, stale } = props;
-  const { onReadout, drawEveryRow = false } = props;
+  const { onReadout, staleNoticeId, drawEveryRow = false } = props;
 
   const rows = useSyncExternalStore(source.subscribe, source.rows, source.rows);
   // The grid wants an array it may keep; the source's is read-only. One copy per row set.
@@ -461,6 +461,7 @@ export function LiveGridInner<Row extends GridRow>(props: LiveGridProps<Row> & I
   return (
     <div
       ref={table}
+      aria-describedby={staleNoticeId}
       className="relative h-full w-full"
       onPointerEnter={onPointerEnter}
       onPointerLeave={onPointerLeave}
@@ -501,7 +502,7 @@ export function LiveGridInner<Row extends GridRow>(props: LiveGridProps<Row> & I
       </div>
       {/* Always here, so that a screen reader hears a notice arrive; empty, it takes no room and catches no pointer. */}
       <div role="status" className="pointer-events-none absolute bottom-2 left-2 z-10 flex gap-1.5">
-        {stale ? <span className={`${NOTICE} text-foreground`}>These prices are old</span> : null}
+        {stale && staleNoticeId === undefined ? <span className={`${NOTICE} text-foreground`}>These prices are old</span> : null}
         {holding ? <span className={`${NOTICE} text-muted-foreground`}>{filter === null ? 'Sorting paused' : 'Sorting and filters paused'}</span> : null}
       </div>
     </div>

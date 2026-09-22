@@ -93,7 +93,8 @@ export function createBuyFlow(feed: Feed, freshness: ReadSlice<{ line: LineState
   function answer(receipts: readonly Receipt[], session: string, evidence?: Frame): void {
     const record = transaction.get();
     if (record === null || record.session !== session || record.outcome !== undefined) return;
-    const receipt = receipts.find((item) => item.kind === record.command.t && item.commandId === record.command.commandId);
+    const receipt = receipts.find((item) => item.kind === record.command.t && item.commandId === record.command.commandId &&
+      (record.command.t !== 'cashOut' || item.outcome !== 'accepted' || item.positionId === record.command.positionId));
     if (receipt !== undefined) finish({ outcome: receipt.outcome, receipt }, false, evidence);
   }
   function bought(frame: Frame, position: PositionView): BuyPurchase {

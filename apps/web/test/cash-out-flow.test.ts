@@ -33,6 +33,32 @@ function harness() {
 }
 
 describe('cash-out transport intent', () => {
+  it('ignores an accepted receipt naming another position, then resolves the original receipt', async () => {
+    const h = harness(); h.receive(h.frame());
+    const pending = h.flow.submitCashOut(command);
+    h.receive({ t: 'reply', frame: h.frame({ rev: 2 }), receipt: { ...receipt, positionId: 'other-ticket' } });
+    expect(h.flow.transaction.get()?.outcome).toBeUndefined();
+    h.receive({ t: 'reply', frame: h.frame({ rev: 3 }), receipt });
+    await expect(pending).resolves.toEqual({ outcome: 'accepted', receipt });
+    expect(h.messages).toEqual([command]); h.flow.dispose();
+  });
+
+  it('does not enable retry from socket-open, wrong identity deltas, or an unrelated receipt', () => {
+    const h = harness(); h.receive(h.frame()); void h.flow.submitCashOut(command); h.drop(); h.fresh('stale');
+    h.listeners.forEach((listener) => { listener({ type: 'status', status: 'live' }); });
+    h.flow.retry(); expect(h.messages).toEqual([command]);
+    h.receive(h.frame({ step: 11, receipts: [{ ...receipt, commandId: 'another-sale' }] }));
+    expect(h.flow.transaction.get()?.retryAllowed).toBe(false);
+    h.fresh('live');
+    for (const invalid of [{ session: 'other' }, { rev: 2 }, { day: 2 }]) {
+      h.receive({ t: 'quotes', session: 'game', rev: 1, step: 12, day: 1, priceIndex: 1, prices: [], changes: [], ...invalid });
+      h.flow.retry(); expect(h.messages).toEqual([command]);
+    }
+    h.receive({ t: 'quotes', session: 'game', rev: 1, step: 12, day: 1, priceIndex: 1, prices: [], changes: [] });
+    expect(h.flow.transaction.get()?.retryAllowed).toBe(true);
+    h.flow.retry(); h.flow.retry(); expect(h.messages).toEqual([command, command]); h.flow.dispose();
+  });
+
   it('never queues an unsent request and derives cash-out availability only from an ordinary current open position', async () => {
     const h = harness();
     await expect(h.flow.submitCashOut(command)).resolves.toEqual({ outcome: 'lost' });

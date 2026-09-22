@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { expect, it } from 'vitest';
 import { CAST } from '../src/cast';
-import { NAME_MARK, PRODUCT_MARK, SITUATIONS, SOURCES, writeHeadlines } from '../src/news';
-import type { HeadlineSlot, WriteHeadlines } from '../src/news';
+import { createHeadlineWriter, EVENTS, NAME_MARK, PRODUCT_MARK, SOURCES, writeHeadlines } from '../src/news';
+import type { HeadlineSlot, NewsPool, WriteHeadlines } from '../src/news';
 import { createStream } from '../src/rng';
 
 /** Legal public inputs only: no market construction or price paths. */
@@ -20,12 +20,15 @@ function slotsFor(seed: number): HeadlineSlot[] {
   return slots;
 }
 
-const renderedPool = CAST.map((company) => SITUATIONS.map((event, index) => {
+function renderPool(pool: NewsPool) {
+  return CAST.map((company) => pool.events.filter((event) => event.kinds.includes(company.kind)).flatMap((event) => {
   const expand = (text: string): string => text.replaceAll(NAME_MARK, company.name).replaceAll(PRODUCT_MARK, company.product);
-  return { index, direction: event.direction, title: expand(event.title), body: expand(event.body) };
-}));
+  return (event.wordings[company.kind] ?? []).map((variant) => ({ id: event.id, direction: event.direction, title: expand(variant.title), body: expand(variant.body) }));
+  }));
+}
+const renderedPool = renderPool({ events: EVENTS, sources: SOURCES });
 
-function checkGame(seed: number, writer: WriteHeadlines): number {
+function checkGame(seed: number, writer: WriteHeadlines, rendered = renderedPool): number {
   const slots = slotsFor(seed);
   const words = writer(slots, CAST, createStream(seed, 'newsWording'));
   const label = `seed ${seed}`;
@@ -43,7 +46,7 @@ function checkGame(seed: number, writer: WriteHeadlines): number {
   for (const company of CAST) {
     assert.ok(slots.filter((slot) => slot.companyId === company.id).length <= 5, label);
     for (const direction of ['up', 'down']) {
-      assert.ok((renderedPool[company.id]?.filter((event) => event.direction === direction).length ?? 0) >= 5,
+      assert.ok(new Set(rendered[company.id]?.filter((event) => event.direction === direction).map((event) => event.id)).size >= 5,
         `${label}: five-day capacity for company ${company.id}, ${direction}`);
     }
   }
@@ -54,17 +57,17 @@ function checkGame(seed: number, writer: WriteHeadlines): number {
       assert.ok(text.trim().length > 0, `${label}: nonempty words`);
     }
     assert.deepEqual(([1, 2, 3] as const).filter((trust) => SOURCES[trust].includes(word.source)), [slot.trust], `${label}: source trust`);
-    const pool = renderedPool[slot.companyId] ?? [];
+    const pool = rendered[slot.companyId] ?? [];
     const matches = pool.filter((event) => event.title === word.title && event.body === word.body);
-    assert.equal(matches.length, 1, `${label}: exactly one event fits the company`);
+    assert.equal(new Set(matches.map((event) => event.id)).size, 1, `${label}: exactly one event fits the company`);
     const event = matches[0];
     assert.ok(event, label);
     assert.equal(event.direction, slot.direction, `${label}: event direction`);
     // The accepted company-specific set must still offer a fitting unused
     // event even after the game's globally unused set runs out.
-    assert.ok(pool.some((candidate) => candidate.direction === slot.direction && !pairs.has(`${slot.companyId}:${candidate.index}`)),
+    assert.ok(pool.some((candidate) => candidate.direction === slot.direction && !pairs.has(`${slot.companyId}:${candidate.id}`)),
       `${label}: unused fitting event remains`);
-    const pair = `${slot.companyId}:${event.index}`;
+    const pair = `${slot.companyId}:${event.id}`;
     assert.ok(!pairs.has(pair), `${label}: repeated event-company pair`);
     pairs.add(pair);
   });
@@ -107,22 +110,53 @@ it('rejects a writer that assigns a source from the wrong trust level', () => {
   expect(() => checkGame(0, wrongSource)).toThrow(/source trust/);
 });
 
+it('recognises another variant of a used situation as a repeat', () => {
+  const varied: NewsPool = { sources: SOURCES, events: EVENTS.map((event) => ({ ...event,
+    wordings: Object.fromEntries(event.kinds.map((kind) => [kind, [
+      { title: `{name} ${event.id} first`, body: 'First wording.' },
+      { title: `{name} ${event.id} second`, body: 'Second wording.' },
+    ]])),
+  })) };
+  const real = createHeadlineWriter(varied);
+  const rendered = renderPool(varied);
+  const mutant: WriteHeadlines = (slots, cast, random) => {
+    const words = real(slots, cast, random);
+    for (const [index, slot] of slots.entries()) {
+      const earlier = slots.findIndex((other, i) => i < index && other.companyId === slot.companyId && other.direction === slot.direction);
+      if (earlier < 0) continue;
+      const previous = words[earlier];
+      const current = words[index];
+      const event = rendered[slot.companyId]?.find((row) => row.title === previous?.title);
+      const other = rendered[slot.companyId]?.find((row) => row.id === event?.id && row.title !== previous?.title);
+      assert.ok(current && other);
+      words[index] = { source: current.source, title: other.title, body: other.body };
+      break;
+    }
+    return words;
+  };
+  expect(() => checkGame(0, mutant, rendered)).toThrow('repeated event-company pair');
+});
+
 const writerUnderTest: WriteHeadlines = writeHeadlines;
-let gamesChecked = 0;
-let headlinesChecked = 0;
-it.each([0, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000])('checks 1000 legal games beginning at seed %i', (first) => {
+const blocks = [0, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000];
+const results = new Map<number, number>();
+function checkBlock(first: number): number {
+  const known = results.get(first);
+  if (known !== undefined) return known;
   let count = 0;
   for (let seed = first; seed < first + 1000; seed += 1) {
     count += checkGame(seed, writerUnderTest);
-    gamesChecked += 1;
   }
+  results.set(first, count);
+  return count;
+}
+it.each(blocks)('checks 1000 legal games beginning at seed %i', (first) => {
   // 1,000 games × 15 headlines = 15,000 headlines in each diagnostic block.
-  expect(count).toBe(15000);
-  headlinesChecked += count;
+  expect(checkBlock(first)).toBe(15000);
 });
 
 it('completes all 10000 games and 150000 headlines', () => {
   // Ten blocks × 1,000 games × 15 headlines = 150,000 checked headlines.
-  expect(gamesChecked).toBe(10000);
-  expect(headlinesChecked).toBe(150000);
+  expect(blocks.reduce((total, first) => total + checkBlock(first), 0)).toBe(150000);
+  expect(results.size * 1000).toBe(10000);
 });

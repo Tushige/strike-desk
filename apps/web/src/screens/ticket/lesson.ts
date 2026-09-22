@@ -16,10 +16,12 @@ export function lessonFor(ticket: PositionView | null, openingCents: number | nu
   const profit = ticket.profitCents;
 
   if (ticket.status !== 'cashedOut') {
-    const wentTheOtherWay =
-      openingCents !== null && bellCents !== null && (ticket.side === 'up' ? bellCents < openingCents : bellCents > openingCents);
-    if (got === 0 && wentTheOtherWay) return 'The price went the other way and your tickets ended at $0. This is why shaky news is risky to trust.';
-    if (got === 0) return 'Right direction, but the price never reached your target before the bell. Closer targets cost more for a reason.';
+    const known = openingCents !== null && bellCents !== null;
+    const wentTheOtherWay = known && (ticket.side === 'up' ? bellCents < openingCents : bellCents > openingCents);
+    const wentYourWay = known && (ticket.side === 'up' ? bellCents > openingCents : bellCents < openingCents);
+    if (got === 0 && wentTheOtherWay) return 'The price went the other way and your tickets ended at $0. A ticket that misses its target pays nothing, whatever the news said.';
+    if (got === 0 && wentYourWay) return 'Right direction, but the price never reached your target before the bell. Closer targets cost more for a reason.';
+    if (got === 0) return 'The price never reached your target before the bell, so the tickets ended at $0. Closer targets cost more for a reason.';
     if (profit < 0) return 'The price passed your target, but not by enough to win back what you paid for the tickets.';
     return 'You held your nerve to the bell. Every dollar the price finished past your target was yours.';
   }

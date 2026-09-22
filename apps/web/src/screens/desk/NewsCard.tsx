@@ -9,8 +9,8 @@ import { TRUST_NAMES } from '../words';
  * moved, today's headline and how much to trust it. Tapping a card selects
  * the company for the chart and the ticket.
  *
- * Before the bell the change is against yesterday's close; from the opening
- * bell on it is against the opening price.
+ * Before the bell the price stands still, so the card shows it without a
+ * change; from the opening bell on the change is against the opening price.
  */
 
 function TrustDots({ level }: { level: 1 | 2 | 3 }) {

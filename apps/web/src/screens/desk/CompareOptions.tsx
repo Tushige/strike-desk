@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { Frame, Side } from '@strike-desk/shared/protocol';
 import { decodeContractId } from '@strike-desk/shared/protocol';
 import { ContractBoard } from '../../board/ContractBoard';
@@ -38,7 +38,13 @@ export function CompareOptions({
   const [side, setSide] = useState<Side | null>(null);
   const [affordable, setAffordable] = useState(false);
 
-  const board = frame.board;
+  // The board is a new object in every frame but the same board all day, so
+  // the filter and the highlight are rebuilt when the day (or the game)
+  // changes, not five times a second: a rebuilt filter makes the table
+  // re-filter and re-sort every row, flashes included.
+  const boardRef = useRef(frame.board);
+  boardRef.current = frame.board;
+  const boardKey = frame.board === null ? '' : `${frame.session}:${String(frame.clock.day)}:${String(frame.board.targetsPerCompany)}`;
   const { cashCents, capCents } = frame.account;
   const { minTicketCents } = frame;
   const buyable = frame.clock.phase === 'preBell' || frame.clock.phase === 'open';
@@ -49,6 +55,7 @@ export function CompareOptions({
       if (company !== null && row.companyId !== company) return false;
       if (side !== null && row.side !== side) return false;
       if (!affordable) return true;
+      const board = boardRef.current;
       if (board === null || !buyable) return false;
       const ref = decodeContractId(board.targetsPerCompany, row.contractId);
       const offers = board.companies[row.companyId];
@@ -57,12 +64,13 @@ export function CompareOptions({
       // One ticket must be buyable: on offer, not too cheap to trade, and within both the cash and today's cap.
       return offered && row.priceCents >= minTicketCents && row.priceCents <= cashCents && row.priceCents <= capCents;
     };
-  }, [company, side, affordable, board, buyable, cashCents, capCents, minTicketCents]);
+    // boardKey stands in for the board itself, which is read through the ref.
+  }, [company, side, affordable, boardKey, buyable, cashCents, capCents, minTicketCents]);
 
   const isHighlighted = useMemo(() => {
-    const ids = new Set(choicesFor(board, companyId).map((choice) => choice.contractId));
+    const ids = new Set(choicesFor(boardRef.current, companyId).map((choice) => choice.contractId));
     return (row: ContractRow): boolean => ids.has(row.contractId);
-  }, [board, companyId]);
+  }, [boardKey, companyId]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">

@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import type { CompanyView, Frame } from '@strike-desk/shared/protocol';
 import { connection, store } from '../boot';
-import type { ConnectionState } from '../modules/connection/index';
+import type { ConnectionState, PendingCommand } from '../modules/connection/index';
 import type { RowSource } from '../modules/live-grid/index';
 import type { ContractRow } from './contractRows';
 import type { PriceSeries } from './gameStore';
@@ -89,6 +89,14 @@ const snapshotConnection = (): ConnectionState => connection.state.get();
 /** Where the connection stands: live, stale, reconnecting, and so on. */
 export function useConnectionState(): ConnectionState {
   return useSyncExternalStore(subscribeConnection, snapshotConnection);
+}
+
+const subscribePending = (listener: () => void): (() => void) => connection.pending.subscribe(listener);
+const snapshotPending = (): readonly PendingCommand[] => connection.pending.get();
+
+/** Every command without an answer yet, oldest first. */
+export function usePendingCommands(): readonly PendingCommand[] {
+  return useSyncExternalStore(subscribePending, snapshotPending);
 }
 
 const subscribeBoardRows = (listener: () => void): (() => void) => store.boardRows.subscribe(listener);

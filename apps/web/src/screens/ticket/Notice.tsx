@@ -23,7 +23,7 @@ export function Notice({ machine }: { machine: TicketMachine }) {
         <p className="m-0 text-sm font-semibold text-sun">{CHECKING_WORDS}</p>
         {retryAllowed(state, true) && (
           <>
-            <GhostButton tone="sun" className="h-11" onClick={handlers.onRetry}>
+            <GhostButton tone="sun" className="h-11" disabled={machine.snapshot.line !== 'live'} onClick={handlers.onRetry}>
               {RETRY_LABEL}
             </GhostButton>
             <p className="m-0 text-xs text-muted">{RETRY_HINT}</p>

@@ -33,7 +33,8 @@ export function useTicketMachine(frame: Frame, contract: TicketContract | null, 
   const quote = useSyncExternalStore(ticketSlices.quote.subscribe, ticketSlices.quote.get);
   const account = useSyncExternalStore(ticketSlices.account.subscribe, ticketSlices.account.get);
   const position = useSyncExternalStore(ticketSlices.position.subscribe, ticketSlices.position.get);
-  const line = lineStateOf(useConnectionState().phase);
+  const connectionPhase = useConnectionState().phase;
+  const line = lineStateOf(connectionPhase);
   const day = frame.clock.day;
   const contractId = contract?.contractId ?? null;
 
@@ -105,6 +106,14 @@ export function useTicketMachine(frame: Frame, contract: TicketContract | null, 
     handedOn.current = { contractId: state.contractId, spendCents: state.spendCents };
     pacer.change(handedOn.current);
   }, [pacer, state.contractId, state.spendCents]);
+  // The server keeps a draft per socket and forgets it when the socket goes.
+  // `resumed` is the first frame on a new socket: say the draft again, at
+  // once, or the quote would never come back and the buy would stay off.
+  useEffect(() => {
+    if (connectionPhase !== 'resumed') return;
+    if (handedOn.current.contractId === null && handedOn.current.spendCents === null) return;
+    latestProps.current.onDraftChange(handedOn.current);
+  }, [connectionPhase]);
 
   return {
     state,

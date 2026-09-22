@@ -58,7 +58,7 @@ function summaryOf(machine: TicketMachine, pick: Pick): string {
   if (quote.quantity < 1) return 'That is not enough for even one ticket. Spend more or pick a cheaper target.';
   const { contract } = snapshot;
   const side = contract.side === 'up' ? 'UP' : 'DOWN';
-  return `You get ${count(quote.quantity)} ${side} tickets for ${money(quote.costCents)}.`;
+  return `You get ${count(quote.quantity)} ${side} tickets for ${money(quote.costCents)}. Still buys if a ticket costs up to ${money(quote.limitPriceCents)}.`;
 }
 
 /**
@@ -165,7 +165,7 @@ export function TicketBuilder({
           <div className="flex h-[58px] items-center justify-between rounded-2xl border-2 border-sun bg-raised px-4 text-left text-cloud short:h-[46px]">
             <span className="flex flex-col gap-px">
               <span className="text-[15px] font-bold">From the table</span>
-              <span className="text-xs text-muted">Your own target.</span>
+              <span className="text-xs text-muted">{snapshot.contract.ticker} {snapshot.contract.side === 'up' ? 'UP' : 'DOWN'}, your own target.</span>
             </span>
             <span className="flex flex-col items-end gap-px tabular-nums">
               <span className="text-[15px] font-bold">{price(snapshot.contract.targetCents)}</span>
@@ -192,6 +192,8 @@ export function TicketBuilder({
                 key={half ? 'half' : amount}
                 selected={selected}
                 disabled={tooMuch || locked}
+                title={half ? `Half your cash: ${money(cap)}` : undefined}
+                aria-label={half ? `Half your cash, ${money(cap)}` : undefined}
                 onClick={() => { handlers.onChooseSpend(amount); }}
                 className={cx(
                   'h-12 rounded-[14px] border-2 text-[15px] font-bold short:h-10',
@@ -207,7 +209,7 @@ export function TicketBuilder({
       </div>
 
       <ActionDock>
-        <div className="flex min-h-[60px] flex-col gap-1.5 rounded-[14px] bg-raised px-3.5 py-3 text-sm leading-snug short:min-h-[52px] short:py-2.5 short:text-[13px]" aria-live="polite">
+        <div className="flex min-h-[60px] flex-col gap-1.5 rounded-[14px] bg-raised px-3.5 py-3 text-sm leading-snug short:min-h-[52px] short:py-2.5 short:text-[13px]">
           <p className="m-0">{summaryOf(machine, pick)}</p>
           {quote !== null && quote.quantity > 0 && quote.whatIf.length > 0 && snapshot.contract !== null && (
             <WhatIf quote={quote} ticker={snapshot.contract.ticker} />

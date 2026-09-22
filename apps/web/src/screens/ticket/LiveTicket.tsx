@@ -12,10 +12,10 @@ import type { TicketMachine } from './useTicketMachine';
  * button. Every amount is the server's; the bar only draws proportions.
  */
 
-function BigMoney({ label, value, paid, profit }: { label: string; value: number; paid: number; profit: number }) {
+function BigMoney({ label, value, paid, profit, dim = false }: { label: string; value: number; paid: number; profit: number; dim?: boolean }) {
   const good = profit >= 0;
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className={cx('flex flex-col gap-1.5 transition-opacity', dim && 'opacity-60')}>
       <Label>{label}</Label>
       <div className={cx('font-display text-[38px] leading-tight font-extrabold tabular-nums short:text-[32px]', good ? 'text-mint' : 'text-coral')}>{money(value)}</div>
       <div className="flex items-center justify-between">
@@ -97,7 +97,7 @@ export function LiveTicket({ frame, position, machine }: { frame: Frame; positio
     <div className="flex min-h-full flex-col gap-[18px] short:gap-3.5">
       <h2 className="m-0 font-display text-xl font-bold short:text-lg">Your ticket</h2>
       <TicketSummary frame={frame} position={position} />
-      <BigMoney label="Worth right now" value={position.valueCents} paid={position.costCents} profit={position.profitCents} />
+      <BigMoney label="Worth right now" value={position.valueCents} paid={position.costCents} profit={position.profitCents} dim={machine.snapshot.line !== 'live'} />
       <ValueBar position={position} />
       <ActionDock>
         <PrimaryButton className="h-16 short:h-[52px]" disabled={blocker !== null} onClick={() => { machine.handlers.onPress('cashOut'); }}>

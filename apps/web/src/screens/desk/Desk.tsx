@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { Frame, Side } from '@strike-desk/shared/protocol';
 import { lineStateOf } from '../../modules/connection/index';
-import { useConnectionState, usePrice, useSeries } from '../../store/hooks';
+import { useConnectionState, usePendingCommands, usePrice, useSeries } from '../../store/hooks';
 import { clock, percentChange, price, secondsFor } from '../format';
 import { TicketPanel } from '../ticket/TicketPanel';
 import { Bulb, CompanyTile, cx, GhostButton, Label } from '../ui';
@@ -41,8 +41,9 @@ function targetFor(frame: Frame, companyId: number, draftContractId: number | nu
     if (ticket.companyId !== companyId) return null;
     return { side: ticket.side, targetCents: ticket.targetCents, breakEvenCents: ticket.breakEvenCents };
   }
+  if (draftContractId === null || companyOf(frame, draftContractId) !== companyId) return null;
   const draft = contractFor(frame, draftContractId);
-  const breakEvenCents = draftContractId === null ? undefined : frame.quoteBreakEvens[draftContractId];
+  const breakEvenCents = frame.quoteBreakEvens[draftContractId];
   if (draft === null || breakEvenCents === undefined) return null;
   return { side: draft.side, targetCents: draft.targetCents, breakEvenCents };
 }
@@ -83,16 +84,23 @@ export function Desk({ frame }: { frame: Frame }) {
   const [choice, setChoice] = useState<{ key: string; companyId: number } | null>(null);
   const byDefault = (frame.clock.phase === 'debrief' ? ticket?.companyId : undefined) ?? headlines[0]?.companyId ?? 0;
   const selected = choice !== null && choice.key === selectionKey ? choice.companyId : byDefault;
-  const select = (companyId: number): void => {
-    setChoice({ key: selectionKey, companyId });
-  };
 
   // The ticket being built: a side and a simple choice that follow the
-  // player from company to company, or an exact row from the table.
+  // player from company to company, or an exact row from the table. While
+  // a buy or a cash-out is unanswered the pick is frozen, so what is on
+  // screen is always the order that was pressed.
   const [pickState, setPickState] = useState<{ day: number; pick: Pick }>({ day, pick: NO_PICK });
   const pick = pickState.day === day ? pickState.pick : NO_PICK;
+  const orderInFlight = usePendingCommands().some((pending) => pending.command.t === 'buy' || pending.command.t === 'cashOut');
   const setPick = (next: Pick): void => {
+    if (orderInFlight) return;
     setPickState({ day, pick: next });
+  };
+  const select = (companyId: number): void => {
+    if (orderInFlight) return;
+    setChoice({ key: selectionKey, companyId });
+    // An exact row from the table belongs to one company; on another, only the side and the choice carry over.
+    if (pick.contractId !== null && companyOf(frame, pick.contractId) !== companyId) setPick({ ...pick, contractId: null });
   };
   const chooseSide = (side: Side): void => {
     setPick({ side, choice: pick.choice ?? 'close', contractId: null });
@@ -101,9 +109,10 @@ export function Desk({ frame }: { frame: Frame }) {
     setPick({ side: pick.side ?? 'up', choice: simple, contractId: null });
   };
   const pickContract = (contractId: number): void => {
-    setPick(pickFromTable(frame, contractId));
+    if (orderInFlight) return;
     const company = companyOf(frame, contractId);
-    if (company !== null) select(company);
+    if (company !== null) setChoice({ key: selectionKey, companyId: company });
+    setPick(pickFromTable(frame, contractId));
   };
   const draftContractId = contractIdFor(frame, selected, pick);
   const contract = contractFor(frame, draftContractId);

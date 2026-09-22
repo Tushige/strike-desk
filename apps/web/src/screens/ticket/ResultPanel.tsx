@@ -3,6 +3,7 @@ import { useSeries } from '../../store/hooks';
 import { NextDayButton } from '../desk/PhaseActions';
 import { money, percentChange, signedMoney } from '../format';
 import { ActionDock, cx, Label } from '../ui';
+import { headlineFor } from '../desk/tips';
 import { lessonFor } from './lesson';
 import { todaysTicket } from './sources';
 
@@ -27,7 +28,7 @@ export function ResultPanel({ frame, companyId }: { frame: Frame; companyId: num
       <h2 className="m-0 font-display text-xl font-bold short:text-lg">Closing bell</h2>
 
       <div className="flex flex-col gap-1 rounded-2xl bg-raised px-4 py-3.5 short:py-2.5">
-        <div className="font-bold">Did the {company?.name ?? ''} news come true?</div>
+        <div className="font-bold">{headlineFor(frame, shown) === null ? `${company?.name ?? ''} had no news today.` : `Did the ${company?.name ?? ''} news come true?`}</div>
         <div className="text-sm text-muted">
           {opening !== null && bell !== null ? `${company?.ticker ?? ''} moved ${percentChange(opening, bell)} today.` : 'The price says enough.'}
         </div>

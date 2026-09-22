@@ -134,11 +134,17 @@ export function createSocketFeed(seam: TransportSeam, sessionKey: string, board?
     emit({ type: 'status', status: next });
   }
 
+  /**
+   * The board size is asked for only when a new game is being made: the
+   * server reads it when it creates a session and never when it resumes one,
+   * so a resume that named it would risk being refused and losing the game.
+   */
   function sendHello(target: SocketLike, withBoard: boolean): void {
     const hello: Hello = { t: 'hello', v: PROTOCOL_VERSION };
     if (sessionId !== null) hello.session = sessionId;
-    if (withBoard && board !== undefined) hello.board = board;
-    boardAskedOn = withBoard && board !== undefined ? target : null;
+    const asking = withBoard && board !== undefined && sessionId === null;
+    if (asking) hello.board = board;
+    boardAskedOn = asking ? target : null;
     target.send(JSON.stringify(hello));
   }
 
@@ -152,8 +158,10 @@ export function createSocketFeed(seam: TransportSeam, sessionKey: string, board?
 
     const frame = frameOf(message);
     if (frame !== null) {
-      // A frame arrived, so this line works: start the waits again.
+      // A frame arrived, so this line works: start the waits again. The
+      // board size asked for, if any, was granted.
       attempt = 0;
+      boardAskedOn = null;
       if (frame.clock.phase === 'final') forgetSession();
       else rememberSession(frame.session);
     }

@@ -23,12 +23,14 @@ export function deriveSlice<S, T>(source: Slice<S>, pick: (value: S) => T, same:
   return {
     get: current,
     subscribe(listener) {
-      // Take the value now, so the first change is measured against it.
-      current();
+      // Each listener remembers the last value it was told, so a second
+      // listener is told about a change the first one already absorbed.
+      let told = current();
       return source.subscribe(() => {
-        const before = held;
-        const after = current();
-        if (before === null || before.value !== after) listener();
+        const next = current();
+        if (next === told) return;
+        told = next;
+        listener();
       });
     },
   };

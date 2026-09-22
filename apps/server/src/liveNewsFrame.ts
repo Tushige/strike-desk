@@ -8,7 +8,7 @@ export function withDraft(frame: Frame, request: DraftRequest | undefined): Fram
   return draft === null ? frame : { ...frame, draft };
 }
 
-/** Public news beside the live board and game results, with trading disabled. */
+/** Public news beside the live board and authoritative game results. */
 export function liveNewsFrameFor(session: Session, playerId: string, nowMs: number, history = false): { session: Session; frame: Frame } {
   const projected = frameFor(session, playerId, nowMs, { history, sections: 'full' });
   return { session: projected.session, frame: previewFrame(projected.frame) };
@@ -49,9 +49,9 @@ export function previewFrame(source: Frame): Frame {
       cashCents: source.account.cashCents,
       worthCents: source.account.worthCents,
       capCents: source.account.capCents,
-      canBuy: false,
+      canBuy: source.account.canBuy,
     },
-    positions: [],
+    positions: source.positions,
     receipts: source.receipts,
     days: source.days,
     stress: source.stress,

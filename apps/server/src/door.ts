@@ -1,4 +1,4 @@
-import type { ClockCommand, DraftRequest, Hello, ServerMessage, StartCommand } from '@strike-desk/shared/engine';
+import type { BuyCommand, ClockCommand, DraftRequest, Hello, ServerMessage, StartCommand } from '@strike-desk/shared/engine';
 import { FIRST_PLAYER_ID, PROTOCOL_VERSION, parseClientMessage } from '@strike-desk/shared/engine';
 import { liveNewsFrameFor, previewFrame } from './liveNewsFrame';
 import { handle } from './modules/command-path/index';
@@ -11,7 +11,7 @@ import type { SessionRegistry } from './sessions';
  * The door: every inbound message is parsed here and routed from here.
  * `hello` makes or resumes a session; clock commands move the game. A `draft`
  * only replaces this connection's preview request for the next whole frame.
- * Trading commands are refused by name and never reach the game rules.
+ * Buys reach the game rules; cashing out remains unavailable.
  */
 
 export interface Connection {
@@ -120,8 +120,8 @@ function hello(options: DoorOptions, connection: Connection, message: Hello): vo
   answer(connection, frame, options.registry);
 }
 
-/** Only clock controls reach the command path; previews never place trades. */
-function clockCommand(options: DoorOptions, connection: Connection, command: StartCommand | ClockCommand): void {
+/** Enabled commands share the authoritative command path. */
+function enabledCommand(options: DoorOptions, connection: Connection, command: StartCommand | ClockCommand | BuyCommand): void {
   const entry = connection.sessionId === null ? undefined : options.registry.get(connection.sessionId);
   const playerId = connection.playerId;
   if (entry === undefined || playerId === null) {
@@ -173,9 +173,9 @@ export function handleInbound(options: DoorOptions, connection: Connection, text
     case 'openBell':
     case 'skipToBell':
     case 'nextDay':
-      clockCommand(options, connection, message);
-      return;
     case 'buy':
+      enabledCommand(options, connection, message);
+      return;
     case 'cashOut':
       answer(connection, { t: 'error', code: 'badMessage', commandId: message.commandId });
       return;

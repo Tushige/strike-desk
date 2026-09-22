@@ -5,6 +5,7 @@ import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ColDef, ValueFormatterParams } from 'ag-grid-community';
 import { LiveGridInner } from '../src/modules/live-grid/LiveGrid';
+import { LiveGrid } from '../src/modules/live-grid/index';
 import { createFakeRowSource } from '../src/modules/live-grid/fake';
 import type { FakeRow } from '../src/modules/live-grid/fake';
 import { COLUMNS as CONTRACT_COLUMNS, DEFAULT_COL_DEF } from '../src/board/columns';
@@ -52,6 +53,41 @@ function valueOf(container: HTMLElement, id: string): string | null {
 }
 
 afterEach(cleanup);
+
+it('links stale values to one shared notice while keeping selection, focus and explicit filters usable', async () => {
+  const source = createFakeRowSource({ rowCount: 3, seed: 7 });
+  const props = { source, columns: COLUMNS, label: 'Shared freshness table', selectedId: 'r0',
+    onSelect: vi.fn(), filter: null, stale: false, staleNoticeId: 'shared-waiting' };
+  const view = render(createElement(LiveGrid<FakeRow>, props));
+  await waitFor(() => expect(valueOf(view.container, 'r0')).toBe('10,000'));
+  const grid = view.getByRole('grid', { name: 'Shared freshness table' });
+  fireEvent.click(view.container.querySelector('[col-id="value"] .ag-header-cell-label')!);
+  await waitFor(() => expect(view.container.querySelector('[col-id="value"][aria-sort="ascending"]')).not.toBeNull());
+  const cell = rowOf(view.container, 'r0')!.querySelector<HTMLElement>('[col-id="value"]')!;
+  act(() => { cell.focus(); });
+  fireEvent.pointerOver(cell, { pointerType: 'mouse' });
+  view.rerender(createElement(LiveGrid<FakeRow>, { ...props, stale: true }));
+  expect(grid.closest('[aria-describedby]')?.getAttribute('aria-describedby')).toBe('shared-waiting');
+  expect(grid.closest('.opacity-60')).not.toBeNull();
+  expect(view.queryByText('These prices are old')).toBeNull();
+  expect(view.getByText('Sorting paused')).toBeTruthy();
+  expect(document.activeElement).toBe(cell);
+  expect(rowOf(view.container, 'r0')?.getAttribute('aria-selected')).toBe('true');
+  act(() => { for (let i = 0; i < 101; i += 1) source.changeRows(['r0']); });
+  await waitFor(() => expect(valueOf(view.container, 'r0')).toBe('10,101'));
+  expect(displayedIds(view.container)).toEqual(['r0', 'r1', 'r2']);
+  view.rerender(createElement(LiveGrid<FakeRow>, { ...props, stale: true, filter: onlyG1 }));
+  await waitFor(() => expect(shownIds(view.container)).toEqual(['r1']));
+  view.rerender(createElement(LiveGrid<FakeRow>, { ...props, stale: true }));
+  await waitFor(() => expect(rowOf(view.container, 'r0')?.getAttribute('aria-selected')).toBe('true'));
+  expect(valueOf(view.container, 'r0')).toBe('10,101');
+  expect(props.onSelect).not.toHaveBeenCalled();
+  view.rerender(createElement(LiveGrid<FakeRow>, { ...props, stale: true, staleNoticeId: undefined }));
+  expect(view.queryByText('These prices are old')).not.toBeNull();
+  view.rerender(createElement(LiveGrid<FakeRow>, props));
+  expect(grid.closest('.opacity-60')).toBeNull();
+});
+
 
 describe('the live grid, filtered while its values stream', () => {
   it('keeps the selected row selected through a filter that hides it, and shows its latest value when it returns', async () => {

@@ -25,11 +25,13 @@ const LABEL = 'Contracts';
  */
 const isDimmed = (row: ContractRow): boolean => row.dimmed;
 
-export const ContractBoard = memo(function ContractBoard({ selectedId, onSelect, filter, isHighlighted }: {
+export const ContractBoard = memo(function ContractBoard({ selectedId, onSelect, filter, isHighlighted, stale = false, staleNoticeId }: {
   selectedId: string | null;
   onSelect: (id: string) => void;
   filter: ((row: ContractRow) => boolean) | null;
   isHighlighted: (row: ContractRow) => boolean;
+  stale?: boolean;
+  staleNoticeId?: string;
 }) {
   return (
     <LiveGrid<ContractRow>
@@ -42,7 +44,8 @@ export const ContractBoard = memo(function ContractBoard({ selectedId, onSelect,
       filter={filter}
       isHighlighted={isHighlighted}
       isDimmed={isDimmed}
-      stale={false}
+      stale={stale}
+      staleNoticeId={staleNoticeId}
     />
   );
 });

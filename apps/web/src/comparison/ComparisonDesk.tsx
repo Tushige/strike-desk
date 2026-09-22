@@ -139,7 +139,8 @@ function DayComparison({ comparison, game, overview, companyFocus, onContractCom
             className="accent-primary focus-visible:outline-2 focus-visible:outline-ring" />Affordable for me
         </label>
       </div>
-      <div className="board min-h-0 flex-1"><ContractBoard selectedId={selectedId === null ? null : String(selectedId)} onSelect={onSelect} filter={filter} isHighlighted={isHighlighted} /></div>
+      <div className="board min-h-0 flex-1"><ContractBoard selectedId={selectedId === null ? null : String(selectedId)} onSelect={onSelect} filter={filter} isHighlighted={isHighlighted}
+        stale={line !== 'live'} staleNoticeId="comparison-freshness" /></div>
     </div>
     <div className="min-h-0 overflow-y-auto">
       <OrderTicket mode="preview" day={overview.day} contract={contract} choices={choices} onPick={onPick}

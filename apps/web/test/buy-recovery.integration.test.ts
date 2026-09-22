@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// @vitest-environment-options {"url":"http://localhost:5173"}
 /// <reference types="node" />
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
@@ -6,9 +7,9 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { createElement, useState, useSyncExternalStore } from 'react';
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { contractId } from '@strike-desk/shared/protocol';
-import type { BuyCommand, Frame, ServerMessage } from '@strike-desk/shared/protocol';
+import type { BuyCommand, Frame, PositionView, Receipt, ServerMessage } from '@strike-desk/shared/protocol';
 import { OrderTicket } from '../src/modules/order-ticket/index';
 import type { OrderTicketProps } from '../src/modules/order-ticket/index';
 import { createBuyFlow } from '../src/gameplay/buyFlow';
@@ -174,3 +175,95 @@ it.each(['lost reply', 'unsent command'] as const)('recovers a real %s with rece
     lines.close();
   }
 }, 45000);
+
+it.each([
+  ['accepted', true], ['rejected', true], ['accepted', false], ['noSession', false],
+] as const)('keeps the unanswered last-day buy visible at the final result (%s, manual retry: %s)', async (outcome, retry) => {
+  vi.resetModules();
+  const absent = new Set(['--ag-grid-size', '--ag-active-color', '--ag-alpine-active-color', '--ag-balham-active-color',
+    '--ag-material-primary-color', '--ag-header-foreground-color', '--ag-control-panel-background-color',
+    '--ag-cell-horizontal-border', '--ag-header-column-separator-color']);
+  const computedStyle = globalThis.getComputedStyle;
+  vi.spyOn(globalThis, 'getComputedStyle').mockImplementation((element, pseudo) => {
+    const style = computedStyle(element, pseudo);
+    return new Proxy(style, { get(target, key): unknown {
+      if (key === 'getPropertyValue') return (name: string) => absent.has(name) ? '' : target.getPropertyValue(name);
+      const value: unknown = Reflect.get(target, key, target); return typeof value === 'function' ? value.bind(target) : value;
+    } });
+  });
+  const sockets = createSocketFactory(); const reconnect = createManualScheduler();
+  const feed = createWsFeed({ url: 'ws://test', createSocket: (url) => sockets.create(url),
+    schedule: (run, ms) => reconnect.schedule(run, ms), now: () => performance.now() });
+  vi.doMock('../src/feed/wsFeed', () => ({ createWsFeed: () => feed }));
+  const boot = await import('../src/boot');
+  const { GameDesk } = await import('../src/gameplay/GameDesk');
+  const receive = (message: ServerMessage) => { act(() => { sockets.last().fireMessage(JSON.stringify(message)); }); };
+  const sentBuys = () => sockets.made.flatMap((socket) => socket.sent.filter((text) => (JSON.parse(text) as { t: string }).t === 'buy'));
+  const original: BuyCommand = { t: 'buy', commandId: 'last-day-buy', day: 5, contractId: 24, spendCents: 2500, seenPriceCents: 1000 };
+  try {
+    sockets.last().fireOpen();
+    const open = testFrame({ session: 'last-day-game', rev: 10, step: 4000,
+      clock: { phase: 'open', day: 5, priceIndex: 100, stepsLeft: 400, pace: 1 } });
+    receive(open);
+    const view = render(createElement(GameDesk, { loop: boot.gameLoop, game: boot.store, comparison: boot.comparisonStore, news: boot.newsStore }));
+    act(() => { void boot.buyFlow.submit(original); feed.simulateDrop(); });
+    expect(view.getAllByText('Checking...').length).toBeGreaterThan(0);
+    act(() => { reconnect.runNext(); sockets.last().fireOpen(); });
+    const debrief: Frame = { ...open, rev: 11, step: 4400,
+      clock: { phase: 'debrief', day: 5, priceIndex: 500, stepsLeft: 100, pace: 1 } };
+    receive(debrief); receive(debrief);
+    fireEvent.click(view.getByRole('button', { name: 'See your final result' }));
+    const nextDay = JSON.parse(sockets.last().sent.at(-1)!) as { commandId: string };
+    const final: Frame = { ...debrief, rev: 12, step: 4500,
+      clock: { phase: 'final', day: 5, priceIndex: 500, stepsLeft: 0, pace: 1 },
+      final: { finalCents: 99998000, changeCents: -2000, marketCode: 'FINISHED-GAME', engine: 'test-engine', content: 'test-content' } };
+    receive({ t: 'reply', frame: final, receipt: { commandId: nextDay.commandId, kind: 'nextDay', outcome: 'accepted', step: 4500 } });
+    expect(view.getByRole('heading', { name: 'That was the final bell!' })).toBeTruthy();
+    expect(view.getByText('You finished with').nextElementSibling?.textContent).toBe('$999,980');
+    expect(view.getAllByRole('status').some((status) => status.textContent === 'Checking...')).toBe(true);
+    expect(view.queryByRole('textbox')).toBeNull();
+    expect(view.queryByRole('button', { name: 'Buy ticket' })).toBeNull();
+    expect(view.queryByRole('button', { name: 'Cash out' })).toBeNull();
+    expect(sentBuys()).toEqual([JSON.stringify(original)]);
+    act(() => { feed.simulateDrop(); reconnect.runNext(); sockets.last().fireOpen(); });
+    expect(view.queryByRole('button', { name: 'Retry safely' })).toBeNull();
+    const position: PositionView = { id: 'last-position', day: 5, contractId: 24, companyId: 0, side: 'up', targetCents: 8400,
+      quantity: 2, entryPriceCents: 1000, costCents: 2000, entryStep: 4000, entryPriceIndex: 100, breakEvenCents: 9400,
+      status: 'settled', valueCents: 0, profitCents: -2000, realCents: 0, hopeCents: 0,
+      exit: { kind: 'bell', step: 4400, priceIndex: 500, priceCents: 0, proceedsCents: 0 } };
+    const receipt: Receipt = outcome === 'rejected'
+      ? { commandId: original.commandId, kind: 'buy', outcome: 'rejected', reason: 'marketClosed', step: 4500 }
+      : { commandId: original.commandId, kind: 'buy', outcome: 'accepted', positionId: position.id, step: 4000 };
+    const answered: Frame = { ...final, rev: 13, receipts: [receipt], positions: outcome === 'accepted' ? [position] : [] };
+    if (retry) {
+      receive(final);
+      expect(view.queryByRole('button', { name: 'Retry safely' })).toBeNull();
+      receive(final);
+      const action = view.getByRole('button', { name: 'Retry safely' });
+      action.focus(); expect(document.activeElement).toBe(action);
+      expect(view.getByText('Send the same request again. It will not happen twice.')).toBeTruthy();
+      expect(sentBuys()).toEqual([JSON.stringify(original)]);
+      act(() => { action.click(); action.click(); });
+      expect(sentBuys()).toEqual([JSON.stringify(original), JSON.stringify(original)]);
+      receive({ t: 'reply', receipt, frame: answered });
+    } else if (outcome === 'noSession') receive({ t: 'error', code: 'noSession' });
+    else receive(answered);
+    const expected = outcome === 'accepted' ? 'Your Day 5 buy was accepted. That ticket has settled at the closing bell.'
+      : outcome === 'rejected' ? 'Your Day 5 buy was rejected. Market closed. The closing bell has rung.'
+      : 'The previous game is no longer available. That buy cannot be checked.';
+    expect(view.getAllByRole('status').some((status) => status.textContent === expected)).toBe(true);
+    expect(view.queryByRole('button', { name: 'Retry safely' })).toBeNull();
+    expect(view.getByText('You finished with').nextElementSibling?.textContent).toBe('$999,980');
+    expect(view.getByRole('button', { name: 'Play again' })).toBeTruthy();
+    expect(view.queryByRole('button', { name: 'Buy ticket' })).toBeNull();
+    expect(view.queryByRole('button', { name: 'Cash out' })).toBeNull();
+    if (!retry) expect(sentBuys()).toEqual([JSON.stringify(original)]);
+    if (outcome === 'accepted') {
+      expect(view.getByText('Paid at the bell').nextElementSibling?.textContent).toBe('$0');
+      expect(view.getByText('Profit or loss').nextElementSibling?.textContent).toBe('-$20');
+    }
+  } finally {
+    cleanup(); boot.buyFlow.dispose(); boot.gameLoop.dispose(); boot.deskFreshness.dispose(); feed.close();
+    vi.doUnmock('../src/feed/wsFeed'); vi.restoreAllMocks();
+  }
+});

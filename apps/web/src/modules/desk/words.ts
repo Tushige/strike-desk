@@ -87,20 +87,20 @@ const START_WORDS: Record<Pace, string> = {
 
 export const lobbyWords = {
   heading: 'Ready for the opening bell?',
-  body: (days: number): string => `${days === 5 ? 'Five' : String(days)} trading days. Read the news, follow prices, and explore tickets.`,
+  body: (days: number): string => `${days === 5 ? 'Five' : String(days)} trading days. Read the news, buy tickets, and see how you finish.`,
   paceHint: 'Pick a speed to start. The rules are the same at every speed.',
   start: (pace: Pace): string => START_WORDS[pace],
 } as const;
 
 export const preBellWords = {
   heading: (day: number): string => `Day ${String(day)}: before the bell`,
-  body: 'Read the news and explore tickets. Prices stand still until the opening bell.',
+  body: 'Read the news and build a ticket. Prices stand still until the opening bell.',
   action: 'Ring the opening bell',
 } as const;
 
 export const openWords = {
   heading: (day: number): string => `Day ${String(day)}: the market is open`,
-  body: 'Prices are moving. Compare tickets and explore what they could pay.',
+  body: 'Prices are moving. You can buy one ticket today, until the closing bell.',
   action: 'Skip to the closing bell',
 } as const;
 
@@ -139,7 +139,8 @@ export const stripWords = {
 } as const;
 
 export const controlWords = {
-  preview: 'Ticket preview only. Buying and cashing out are not available.',
+  preview: 'Tickets settle at the closing bell. Cashing out is not available yet.',
+  bought: 'Your ticket is bought. Follow prices until the closing bell.',
   checking: 'Checking...',
   retry: 'Retry safely',
   retryHint: 'Send the same request again. It will not happen twice.',

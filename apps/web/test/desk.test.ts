@@ -1,7 +1,13 @@
+// @vitest-environment jsdom
+// @vitest-environment-options {"url":"http://localhost:5173"}
 import { createElement } from 'react';
 import type { ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render } from '@testing-library/react';
+import type { Feed, FeedEvent, Outbound } from '@strike-desk/shared/feed';
+import type { Frame, PositionView } from '@strike-desk/shared/protocol';
+import { testFrame } from './fakeSocket';
 import { RECORDED_LABELS } from '../src/fixtures/recordedGame';
 import { deskPropsAt } from '../src/modules/desk/fake';
 import { signedCentsText, timeLeftText } from '../src/modules/desk/format';
@@ -452,6 +458,28 @@ describe('a signed amount', () => {
 describe('the phase screens', () => {
   const inside = createElement('p', null, 'the desk of the day');
 
+  it('accepts plain instruction overrides without changing its phase action or focus', () => {
+    const onOpenBell = vi.fn();
+    const view = render(createElement(PhaseScreen, { phase: 'preBell', day: 1, canAct: true, onOpenBell,
+      instruction: 'Your ticket is bought. Follow prices until the closing bell.', children: inside }));
+    expect(view.getByText('Your ticket is bought. Follow prices until the closing bell.')).toBeTruthy();
+    expect(view.queryByText('Read the news and build a ticket. Prices stand still until the opening bell.')).toBeNull();
+    const action = view.getByRole('button', { name: 'Ring the opening bell' });
+    action.focus(); expect(document.activeElement).toBe(action);
+    fireEvent.click(action); expect(onOpenBell).toHaveBeenCalledTimes(1);
+    expect(action.className).toContain('focus-visible:outline');
+    view.rerender(createElement(PhaseScreen, { phase: 'open', day: 1, canAct: false, onSkipToBell: onOpenBell,
+      instruction: 'Buying is switched off while the stress test runs.', children: inside }));
+    expect(view.getByText('Buying is switched off while the stress test runs.')).toBeTruthy();
+    fireEvent.click(view.getByRole('button', { name: 'Skip to the closing bell' }));
+    expect(onOpenBell).toHaveBeenCalledTimes(1);
+    view.rerender(createElement(PhaseScreen, { phase: 'lobby', paces: [1], canStart: true, onStart: nothing,
+      instruction: 'Buying is switched off while the stress test runs.' }));
+    expect(view.getByText('Buying is switched off while the stress test runs.')).toBeTruthy();
+    expect(view.queryByText('Five trading days. Read the news, buy tickets, and see how you finish.')).toBeNull();
+    cleanup();
+  });
+
   const lobby = (canStart: boolean): string =>
     markupOf(createElement(PhaseScreen, { phase: 'lobby', paces: [1, 3, 7.5], canStart, onStart: nothing }));
   const preBell = (canAct: boolean): string =>
@@ -481,9 +509,9 @@ describe('the phase screens', () => {
   const disabledOf = (markup: string): number => buttonsOf(markup).filter((button) => button.includes('disabled=""')).length;
 
   it('offers one start button for each pace in the lobby', () => {
-    expect(textOf(lobby(true))).toContain('Five trading days. Read the news, follow prices, and explore tickets.');
-    expect(textOf(preBell(true))).toContain('Read the news and explore tickets. Prices stand still until the opening bell.');
-    expect(textOf(open(true))).toContain('Prices are moving. Compare tickets and explore what they could pay.');
+    expect(textOf(lobby(true))).toContain('Five trading days. Read the news, buy tickets, and see how you finish.');
+    expect(textOf(preBell(true))).toContain('Read the news and build a ticket. Prices stand still until the opening bell.');
+    expect(textOf(open(true))).toContain('Prices are moving. You can buy one ticket today, until the closing bell.');
     const markup = lobby(true);
     const text = textOf(markup);
 
@@ -604,4 +632,58 @@ describe('the phase screens', () => {
       }
     }
   });
+});
+it.each([false, true])('selects mounted desk instructions from accepted purchase and stress state (stress: %s)', async (stress) => {
+  vi.resetModules();
+  window.history.replaceState(null, '', stress ? '/' : '/?board=2500');
+  const absent = new Set(['--ag-grid-size', '--ag-active-color', '--ag-alpine-active-color', '--ag-balham-active-color',
+    '--ag-material-primary-color', '--ag-header-foreground-color', '--ag-control-panel-background-color',
+    '--ag-cell-horizontal-border', '--ag-header-column-separator-color']);
+  const computedStyle = globalThis.getComputedStyle;
+  vi.spyOn(globalThis, 'getComputedStyle').mockImplementation((element, pseudo) => {
+    const style = computedStyle(element, pseudo);
+    return new Proxy(style, { get(target, key): unknown {
+      if (key === 'getPropertyValue') return (name: string) => absent.has(name) ? '' : target.getPropertyValue(name);
+      const value: unknown = Reflect.get(target, key, target); return typeof value === 'function' ? value.bind(target) : value;
+    } });
+  });
+  const listeners = new Set<(event: FeedEvent) => void>();
+  const sent: Outbound[] = [];
+  const feed: Feed = { connect() {}, close() {}, simulateDrop() {}, send(message) { sent.push(message); return true; },
+    subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; } };
+  vi.doMock('../src/feed/wsFeed', () => ({ createWsFeed: () => feed }));
+  const boot = await import('../src/boot');
+  const { GameDesk } = await import('../src/gameplay/GameDesk');
+  const receive = (frame: Frame) => {
+    act(() => { listeners.forEach((listener) => { listener({ type: 'message', message: frame, receivedAt: performance.now() }); }); });
+  };
+  try {
+    receive(testFrame({ stress }));
+    const view = render(createElement(GameDesk, { loop: boot.gameLoop, game: boot.store, comparison: boot.comparisonStore, news: boot.newsStore }));
+    expect(view.getAllByText(stress ? 'Buying is switched off while the stress test runs.'
+      : 'Five trading days. Read the news, buy tickets, and see how you finish.').length).toBeGreaterThan(0);
+    if (!stress) expect(view.getByText('Tickets settle at the closing bell. Cashing out is not available yet.')).toBeTruthy();
+    const preBell = testFrame({ rev: 1, stress, clock: { phase: 'preBell', day: 1, priceIndex: 0, stepsLeft: 300, pace: 1 } });
+    receive(preBell);
+    expect(view.getAllByText(stress ? 'Buying is switched off while the stress test runs.'
+      : 'Read the news and build a ticket. Prices stand still until the opening bell.').length).toBeGreaterThan(0);
+    const position: PositionView = { id: 'one-buy', day: 1, contractId: 0, companyId: 0, side: 'up', targetCents: 8400,
+      quantity: 2, entryPriceCents: 1000, costCents: 2000, entryStep: 1, entryPriceIndex: 0, breakEvenCents: 9400,
+      status: 'open', valueCents: 2000, profitCents: 0, realCents: 0, hopeCents: 1000 };
+    receive({ ...preBell, rev: 2, positions: [position] });
+    expect(view.getAllByText(stress ? 'Buying is switched off while the stress test runs.'
+      : 'Your ticket is bought. Follow prices until the closing bell.').length).toBeGreaterThan(0);
+    expect(view.queryByText('Read the news and build a ticket. Prices stand still until the opening bell.')).toBeNull();
+    receive({ ...preBell, rev: 3, positions: [position], clock: { ...preBell.clock, phase: 'open' } });
+    expect(view.queryByText('Prices are moving. You can buy one ticket today, until the closing bell.')).toBeNull();
+    receive({ ...preBell, rev: 4, positions: [position], clock: { ...preBell.clock, day: 2, phase: 'open' } });
+    expect(view.getAllByText(stress ? 'Buying is switched off while the stress test runs.'
+      : 'Prices are moving. You can buy one ticket today, until the closing bell.').length).toBeGreaterThan(0);
+    expect(view.queryByText('Your ticket is bought. Follow prices until the closing bell.')).toBeNull();
+    expect(sent.filter((message) => message.t === 'buy')).toEqual([]);
+    if (stress) expect(view.queryByText('Tickets settle at the closing bell. Cashing out is not available yet.')).toBeNull();
+  } finally {
+    cleanup(); boot.buyFlow.dispose(); boot.gameLoop.dispose(); boot.deskFreshness.dispose();
+    vi.doUnmock('../src/feed/wsFeed'); vi.restoreAllMocks();
+  }
 });

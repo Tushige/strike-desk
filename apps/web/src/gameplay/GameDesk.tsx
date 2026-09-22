@@ -106,6 +106,12 @@ function DayDesk({ loop, game, comparison, news }: GameDeskProps) {
 export function GameDesk({ loop, game, comparison, news }: GameDeskProps) {
   const screen = useSyncExternalStore(loop.screen.subscribe, loop.screen.get);
   const controls = useSyncExternalStore(loop.controls.subscribe, loop.controls.get);
+  const availability = useSyncExternalStore(buyFlow.availability.subscribe, buyFlow.availability.get);
+  const purchase = useSyncExternalStore(buyFlow.purchase.subscribe, buyFlow.purchase.get);
+  const stress = availability.session === screen?.session && availability.stress;
+  const bought = purchase !== null && purchase.session === screen?.session && purchase.position.day === screen.day;
+  const instruction = stress ? REJECT_WORDS.stressMode : bought ? controlWords.bought : undefined;
+  const instructionProps = instruction === undefined ? {} : { instruction };
   const canAct = controls.ready && !controls.checking;
   const content = useMemo(() => (
     <DayDesk key={`${screen?.session ?? ''}:${String(screen?.day ?? 0)}`} loop={loop} game={game} comparison={comparison} news={news} />
@@ -113,9 +119,9 @@ export function GameDesk({ loop, game, comparison, news }: GameDeskProps) {
   let phase;
   if (screen === null) phase = <p>{controlWords.checking}</p>;
   else switch (screen.phase) {
-    case 'lobby': phase = <PhaseScreen phase="lobby" paces={PACES} canStart={canAct} onStart={loop.start} />; break;
-    case 'preBell': phase = <PhaseScreen phase="preBell" day={screen.day} canAct={canAct} onOpenBell={loop.openBell}>{content}</PhaseScreen>; break;
-    case 'open': phase = <PhaseScreen phase="open" day={screen.day} canAct={canAct} onSkipToBell={loop.skipToBell}>{content}</PhaseScreen>; break;
+    case 'lobby': phase = <PhaseScreen phase="lobby" {...instructionProps} paces={PACES} canStart={canAct} onStart={loop.start} />; break;
+    case 'preBell': phase = <PhaseScreen phase="preBell" {...instructionProps} day={screen.day} canAct={canAct} onOpenBell={loop.openBell}>{content}</PhaseScreen>; break;
+    case 'open': phase = <PhaseScreen phase="open" {...instructionProps} day={screen.day} canAct={canAct} onSkipToBell={loop.skipToBell}>{content}</PhaseScreen>; break;
     case 'debrief': phase = <PhaseScreen phase="debrief" day={screen.day} result={screen.days.find((day) => day.day === screen.day) ?? null} canAct={canAct} onNextDay={loop.nextDay}>{content}</PhaseScreen>; break;
     case 'final': phase = screen.final === null ? <p>{controlWords.checking}</p> : <PhaseScreen phase="final" finalCents={screen.final.finalCents} changeCents={screen.final.changeCents} marketCode={screen.final.marketCode} days={screen.days} onPlayAgain={playAgain} />; break;
   }
@@ -123,6 +129,7 @@ export function GameDesk({ loop, game, comparison, news }: GameDeskProps) {
     <div className="flex h-full min-h-0 flex-1 flex-col gap-3">
       <GameTopBar loop={loop} />
       <div className="min-h-0 flex-1">{phase}</div>
+      <p className="m-0 text-xs text-muted-foreground">{stress ? REJECT_WORDS.stressMode : controlWords.preview}</p>
       <div className="flex flex-wrap items-center justify-end gap-2">
         <div role="status" aria-live="polite" className="text-sm text-muted-foreground">
           {controls.checking ? controlWords.checking : controls.reason === null ? null : REJECT_WORDS[controls.reason]}

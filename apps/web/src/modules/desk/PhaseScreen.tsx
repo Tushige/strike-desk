@@ -120,7 +120,7 @@ export const PhaseScreen = memo(function PhaseScreen(props: PhaseScreenProps) {
             <h2 id={headingId} className={HEADING}>
               {lobbyWords.heading}
             </h2>
-            <p className={BODY}>{lobbyWords.body(DAYS)}</p>
+            <p className={BODY}>{props.instruction ?? lobbyWords.body(DAYS)}</p>
             <p className={BODY}>{lobbyWords.paceHint}</p>
             <div className="grid grid-cols-3 gap-2 max-sm:grid-cols-1">
               {paces.map((pace) => (
@@ -146,7 +146,7 @@ export const PhaseScreen = memo(function PhaseScreen(props: PhaseScreenProps) {
       return (
         <DeskScreen
           heading={preBellWords.heading(props.day)}
-          body={preBellWords.body}
+          body={props.instruction ?? preBellWords.body}
           aside={null}
           action={
             <button type="button" disabled={!props.canAct} onClick={props.onOpenBell} className={QUIET_BUTTON}>
@@ -162,7 +162,7 @@ export const PhaseScreen = memo(function PhaseScreen(props: PhaseScreenProps) {
       return (
         <DeskScreen
           heading={openWords.heading(props.day)}
-          body={openWords.body}
+          body={props.instruction ?? openWords.body}
           aside={null}
           action={
             <button type="button" disabled={!props.canAct} onClick={props.onSkipToBell} className={QUIET_BUTTON}>

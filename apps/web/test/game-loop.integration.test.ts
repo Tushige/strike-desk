@@ -55,13 +55,13 @@ it.each([
       const live = createWsFeed({ ...options, url, createSocket: (address) => {
         sockets += 1; return new Socket(address, { origin: window.location.origin });
       } });
-      feed = live;
       live.subscribe((event) => { if (event.type === 'message') messages.push(event.message); });
-      return { ...live,
+      feed = { ...live,
         subscribe: (listener: Parameters<typeof live.subscribe>[0]) => live.subscribe((event) => {
           if (receiveFrames || event.type !== 'message') listener(event);
         }),
         send: (message: Outbound) => { outbound.push(message); return live.send(message); } };
+      return feed;
     } }));
     const { default: App } = await import('../src/App');
     let view = render(createElement(App));
@@ -103,7 +103,18 @@ it.each([
     expect(beforeBell.prices).toEqual(reply.frame.prices);
     fireEvent.click(view.getByRole('button', { name: 'Ring the opening bell' }));
     await view.findByRole('heading', { name: 'Day 1: the market is open' });
-    expect(outbound.at(-1)).toMatchObject({ t: 'openBell', day: 1 });
+    // A comparison request can follow the bell before its assertion runs.
+    // Make that ordering deterministic with the same current draft.
+    expect(feed?.send({ t: 'draft', contractId: 0, spendCents: 100050 })).toBe(true);
+    expect(outbound.at(-1)).toEqual({ t: 'draft', contractId: 0, spendCents: 100050 });
+    const opening = messages.find((message) => message.t === 'reply' && message.receipt.kind === 'openBell');
+    if (opening?.t !== 'reply') throw new Error('missing opening-bell receipt');
+    expect(opening.receipt.outcome).toBe('accepted');
+    expect(opening.receipt.commandId).not.toBe(reply.receipt.commandId);
+    expect(outbound.filter((message) => message.t !== 'draft')).toHaveLength(2);
+    expect(outbound.filter((message) => message.t === 'openBell')).toEqual([
+      { t: 'openBell', day: 1, commandId: opening.receipt.commandId },
+    ]);
     expect(view.getByText('Prices are moving. Compare tickets and explore what they could pay.')).toBeTruthy();
     const chartFrame = await sample(400);
     const chart = view.queryByRole('img', { name: chartFrame.companies[0]?.name });

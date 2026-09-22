@@ -1,4 +1,4 @@
-import type { BuyCommand, CashOutCommand, Receipt, Side } from '@strike-desk/shared/protocol';
+import type { BuyCommand, CashOutCommand, PositionView, Receipt, Side } from '@strike-desk/shared/protocol';
 
 /**
  * The order ticket: the one form that buys today's ticket and cashes it out.
@@ -197,7 +197,7 @@ export interface TicketDraft {
 }
 
 /** Everything the order ticket is given. Every callback is a plain function and may be passed on by itself. */
-export interface OrderTicketProps {
+export interface TradingTicketProps {
   mode?: 'trade';
   /** Today, 1 to 5. Goes into the buy command. */
   day: number;
@@ -233,6 +233,36 @@ export interface OrderTicketProps {
   /** A fresh command id. Called once, at the press; a retry reuses the id. */
   newCommandId: () => string;
 }
+
+export interface BuyPurchase {
+  session: string;
+  companyName: string;
+  ticker: string;
+  position: PositionView;
+}
+
+export interface BuyTransaction {
+  session: string;
+  command: Readonly<BuyCommand>;
+  interrupted: boolean;
+  sent: boolean;
+  retryAllowed: boolean;
+  gameGone: boolean;
+  outcome?: SubmitOutcome;
+  purchase?: BuyPurchase;
+}
+
+/** A controlled buy form; an accepted purchase never becomes a cash-out action. */
+export interface BuyTicketProps extends Omit<TradingTicketProps, 'mode' | 'spendChoices' | 'position' | 'submit'> {
+  mode: 'buy';
+  spendEditor: TicketPreviewProps['spendEditor'];
+  submit: (command: BuyCommand) => Promise<SubmitOutcome>;
+  transaction: ReadSlice<BuyTransaction | null>;
+  purchase?: ReadSlice<BuyPurchase | null>;
+  staleNoticeId?: string;
+}
+
+export type OrderTicketProps = TradingTicketProps | BuyTicketProps;
 
 /** A controlled comparison form. It can request prices, but has no command path. */
 export interface TicketPreviewProps extends Pick<OrderTicketProps, 'day' | 'contract' | 'choices' | 'onPick' | 'quote' | 'account' | 'line' | 'onDraftChange'> {

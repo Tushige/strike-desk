@@ -34,7 +34,7 @@ export function snapshotOf(props: OrderTicketProps): TicketSnapshot {
     contract: props.contract,
     quote: props.quote.get(),
     account: props.account.get(),
-    position: props.position.get(),
+    position: props.mode === 'buy' ? null : props.position.get(),
     line: props.line,
   };
 }
@@ -68,6 +68,11 @@ export function createTicketHandlers(source: TicketHandlerSource): TicketHandler
     /** The one place a command leaves the form. */
     onPress: (drawnAs) => {
       const now = source.props();
+      if (now.mode === 'buy') {
+        const retained = now.transaction.get();
+        if (retained !== null && retained.outcome === undefined) return;
+        source.send({ type: 'spend', spendCents: now.spendEditor.spendCents });
+      }
       const snapshot = snapshotOf(now);
       // The ticket can arrive or go between the drawing of the button and the press. A press sends what its button said, or nothing.
       if (commandKindOf(snapshot) !== drawnAs) return;
@@ -75,7 +80,11 @@ export function createTicketHandlers(source: TicketHandlerSource): TicketHandler
       if (press === null) return;
       source.send(press.event);
       const { commandId } = press.command;
-      void now.submit(press.command).then((outcome) => {
+      if (now.mode === 'buy' && press.command.t !== 'buy') return;
+      const outcome = now.mode === 'buy' && press.command.t === 'buy' ? now.submit(press.command)
+        : now.mode !== 'buy' ? now.submit(press.command) : null;
+      if (outcome === null) return;
+      void outcome.then((outcome) => {
         source.send({ type: 'outcome', commandId, outcome });
       });
     },

@@ -6,12 +6,14 @@ import { createDraftPacer } from './draftPacer';
 import { createLatestState, createTicketHandlers } from './handlers';
 import { breakEvenStopIndex, buyBlocker, cashOutBlocker, commandKindOf, initialTicketState, quoteEchoes, retryAllowed, stopAt, ticketReducer } from './machine';
 import type { CommandKind, TicketNotice, TicketSnapshot, TicketState } from './machine';
-import type { OpenTicket, OrderTicketProps, SimpleChoice, TicketAccount, TicketContract, TicketDraft, TicketPreviewProps, TicketQuote } from './ports';
+import type { BuyTransaction, OpenTicket, OrderTicketProps, ReadSlice, SimpleChoice, TicketAccount, TicketContract, TicketDraft, TicketPreviewProps, TicketQuote } from './ports';
 import {
   ACCEPTED_WORDS,
   BLOCKER_WORDS,
   BREAK_EVEN_LABEL,
   BUY_LABEL,
+  BUY_LINE_WORDS,
+  BUY_RETRY_HINT,
   CAP_LABEL,
   CASH_LABEL,
   CASH_OUT_BLOCKER_WORDS,
@@ -331,6 +333,8 @@ export interface TicketViewProps {
   /** Told which command the pressed button was drawn for, so that a press can never send the other one. */
   onPress: (drawnAs: CommandKind) => void;
   onRetry: () => void;
+  spendEditor?: TicketPreviewProps['spendEditor'];
+  staleNoticeId?: string;
 }
 
 /**
@@ -338,7 +342,7 @@ export interface TicketViewProps {
  * panel is ever shorter than the form, is the middle; the action and what it
  * says stay in view.
  */
-export function TicketView({ state, snapshot, choices, spendChoices, retryOffered, onPick, onChooseSpend, onPress, onRetry }: TicketViewProps): ReactElement {
+export function TicketView({ state, snapshot, choices, spendChoices, retryOffered, onPick, onChooseSpend, onPress, onRetry, spendEditor, staleNoticeId }: TicketViewProps): ReactElement {
   const whyOffId = useId();
   const retryHintId = useId();
 
@@ -346,19 +350,20 @@ export function TicketView({ state, snapshot, choices, spendChoices, retryOffere
   const drawnAs = commandKindOf(snapshot);
   const holding = position !== null;
   // The choices are open in `draft`, and in `rejected`, where changing one is a way back to `draft`. An accepted form waits for the server.
-  const locked = state.form !== 'draft' && state.form !== 'rejected';
+  const locked = state.form !== 'draft' && state.form !== 'rejected' && !(spendEditor !== undefined && state.command?.day !== state.day);
   const buyOff = buyBlocker(state, snapshot);
   const cashOutOff = cashOutBlocker(state, snapshot);
   const blocked = holding ? cashOutOff !== null : buyOff !== null;
-  const whyOff = holding ? (cashOutOff === null ? null : CASH_OUT_BLOCKER_WORDS[cashOutOff]) : buyOff === null ? null : BLOCKER_WORDS[buyOff];
+  const whyOff = spendEditor !== undefined && line !== 'live' ? BUY_LINE_WORDS[line]
+    : holding ? (cashOutOff === null ? null : CASH_OUT_BLOCKER_WORDS[cashOutOff]) : buyOff === null ? null : BLOCKER_WORDS[buyOff];
   const status = statusWords(state);
   const dimmed = line === 'live' ? '' : 'opacity-60';
 
   return (
-    <section aria-label={PANEL_TITLE} className="flex max-h-full w-full max-w-sm flex-col rounded-lg border border-border bg-card text-card-foreground">
+    <section aria-label={PANEL_TITLE} aria-describedby={staleNoticeId} className="flex max-h-full w-full max-w-sm flex-col rounded-lg border border-border bg-card text-card-foreground">
       <div className="flex items-center justify-between gap-3 px-4 pt-3.5 pb-2">
         <h3 className={`m-0 font-normal ${LABEL}`}>{holding ? OPEN_TICKET_TITLE : PANEL_TITLE}</h3>
-        {line === 'live' ? null : <p className="m-0 rounded-sm border border-border px-1.5 py-0.5 text-xs text-gold">{LINE_WORDS[line]}</p>}
+        {line === 'live' || staleNoticeId !== undefined ? null : <p className="m-0 rounded-sm border border-border px-1.5 py-0.5 text-xs text-gold">{LINE_WORDS[line]}</p>}
       </div>
       <div className="grid min-h-0 gap-3 overflow-y-auto px-4 pb-3">
         {holding ? (
@@ -372,7 +377,8 @@ export function TicketView({ state, snapshot, choices, spendChoices, retryOffere
           <>
             {contract === null ? <p className="m-0 text-sm text-muted-foreground">{NOTHING_PICKED}</p> : <TicketHead ticket={contract} />}
             <Choices choices={choices} chosenId={contract?.contractId ?? null} locked={locked} onPick={onPick} />
-            <Spends spendChoices={spendChoices} chosen={state.spendCents} locked={locked} onChoose={onChooseSpend} />
+            {spendEditor === undefined ? <Spends spendChoices={spendChoices} chosen={state.spendCents} locked={locked} onChoose={onChooseSpend} />
+              : <SpendEditor editor={spendEditor} locked={locked} description={whyOff === null ? undefined : whyOffId} />}
             {contract !== null && quoteEchoes(state, quote) && quote.spendCents !== null ? (
               <div className={`grid gap-3 ${dimmed}`}>
                 <QuoteNumbers quote={quote} side={contract.side} />
@@ -408,7 +414,7 @@ export function TicketView({ state, snapshot, choices, spendChoices, retryOffere
               {RETRY_LABEL}
             </button>
             <p id={retryHintId} className="m-0 text-xs text-muted-foreground">
-              {RETRY_HINT}
+              {spendEditor === undefined ? RETRY_HINT : BUY_RETRY_HINT}
             </p>
           </div>
         ) : null}
@@ -418,13 +424,32 @@ export function TicketView({ state, snapshot, choices, spendChoices, retryOffere
   );
 }
 
+const EMPTY_POSITION: ReadSlice<OpenTicket | null> = { get: () => null, subscribe: () => () => {} };
+const EMPTY_TRANSACTION: ReadSlice<BuyTransaction | null> = { get: () => null, subscribe: () => () => {} };
+
+function startingState(props: OrderTicketProps): TicketState {
+  const retained = props.mode === 'buy' ? props.transaction.get() : null;
+  let state = initialTicketState({ day: retained?.command.day ?? props.day, contractId: props.contract?.contractId ?? null,
+    spendCents: props.mode === 'buy' ? props.spendEditor.spendCents : null, held: props.mode === 'buy' ? false : props.position.get() !== null });
+  if (retained !== null) {
+    state = ticketReducer(state, { type: 'pressed', commandId: retained.command.commandId, kind: 'buy' });
+    state = ticketReducer(state, { type: 'day', day: props.day });
+    if (retained.interrupted) state = ticketReducer(state, { type: 'line', line: 'offline' });
+    if (retained.outcome !== undefined) state = ticketReducer(state, { type: 'outcome', commandId: retained.command.commandId, outcome: retained.outcome });
+  }
+  return state;
+}
+
 const TradingTicket = memo(function TradingTicket(props: OrderTicketProps): ReactElement {
   const quote = useSyncExternalStore(props.quote.subscribe, props.quote.get, props.quote.get);
   const account = useSyncExternalStore(props.account.subscribe, props.account.get, props.account.get);
-  const position = useSyncExternalStore(props.position.subscribe, props.position.get, props.position.get);
+  const positionSlice = props.mode === 'buy' ? EMPTY_POSITION : props.position;
+  const position = useSyncExternalStore(positionSlice.subscribe, positionSlice.get, positionSlice.get);
+  const transactionSlice = props.mode === 'buy' ? props.transaction : EMPTY_TRANSACTION;
+  const transaction = useSyncExternalStore(transactionSlice.subscribe, transactionSlice.get, transactionSlice.get);
 
   const contractId = props.contract?.contractId ?? null;
-  const [state, dispatch] = useReducer(ticketReducer, { day: props.day, contractId, spendCents: null, held: position !== null }, initialTicketState);
+  const [state, dispatch] = useReducer(ticketReducer, props, startingState);
 
   const latestProps = useRef(props);
   useEffect(() => {
@@ -447,6 +472,15 @@ const TradingTicket = memo(function TradingTicket(props: OrderTicketProps): Reac
   useEffect(() => {
     send({ type: 'contract', contractId });
   }, [contractId, send]);
+  const controlledSpend = props.mode === 'buy' ? props.spendEditor.spendCents : undefined;
+  useEffect(() => {
+    if (controlledSpend !== undefined) send({ type: 'spend', spendCents: controlledSpend });
+  }, [controlledSpend, send]);
+  useEffect(() => {
+    if (transaction === null) return;
+    if (transaction.interrupted) send({ type: 'line', line: 'offline' });
+    if (transaction.outcome !== undefined) send({ type: 'outcome', commandId: transaction.command.commandId, outcome: transaction.outcome });
+  }, [transaction, send]);
 
   // What the server and the desk say, handed to the machine as it changes. These are what move the form back to `draft`.
   useEffect(() => {
@@ -493,19 +527,32 @@ const TradingTicket = memo(function TradingTicket(props: OrderTicketProps): Reac
       state={state}
       snapshot={{ day: props.day, contract: props.contract, quote, account, position, line: props.line }}
       choices={props.choices}
-      spendChoices={props.spendChoices}
+      spendChoices={props.mode === 'buy' ? [] : props.spendChoices}
       retryOffered={props.retryOffered}
       onPick={handlers.onPick}
       onChooseSpend={handlers.onChooseSpend}
       onPress={handlers.onPress}
       onRetry={handlers.onRetry}
+      {...(props.mode === 'buy' ? { spendEditor: props.spendEditor, ...(props.staleNoticeId === undefined ? {} : { staleNoticeId: props.staleNoticeId }) } : {})}
     />
   );
 });
 
-function PreviewTicket(props: TicketPreviewProps): ReactElement {
+function SpendEditor({ editor, locked = false, description }: { editor: TicketPreviewProps['spendEditor']; locked?: boolean; description?: string | undefined }): ReactElement {
   const inputId = useId();
   const errorId = useId();
+  const describedBy = [editor.error === null ? null : errorId, description].filter(Boolean).join(' ') || undefined;
+  return <div className="grid gap-1.5">
+    <label htmlFor={inputId} className={LABEL}>{SPEND_LABEL}</label>
+    <input id={inputId} type="text" inputMode="decimal" autoComplete="off" value={editor.value} disabled={locked}
+      className={`min-w-0 rounded-md border border-border bg-background px-2.5 py-2 text-sm tabular-nums ${FOCUS}`}
+      aria-invalid={editor.error !== null} aria-describedby={describedBy}
+      onChange={(event) => { editor.onChange(event.currentTarget.value); }} />
+    {editor.error === null ? null : <p id={errorId} className="m-0 text-xs text-down">{editor.error}</p>}
+  </div>;
+}
+
+function PreviewTicket(props: TicketPreviewProps): ReactElement {
   const quote = useSyncExternalStore(props.quote.subscribe, props.quote.get, props.quote.get);
   const account = useSyncExternalStore(props.account.subscribe, props.account.get, props.account.get);
   const contractId = props.contract?.contractId ?? null;
@@ -526,14 +573,7 @@ function PreviewTicket(props: TicketPreviewProps): ReactElement {
       <div className="grid min-h-0 gap-3 overflow-y-auto px-4 pb-3">
         {props.contract === null ? <p className="m-0 text-sm text-muted-foreground">{NOTHING_PICKED}</p> : <TicketHead ticket={props.contract} />}
         <Choices choices={props.choices} chosenId={contractId} locked={false} onPick={props.onPick} />
-        <div className="grid gap-1.5">
-          <label htmlFor={inputId} className={LABEL}>{SPEND_LABEL}</label>
-          <input id={inputId} type="text" inputMode="decimal" autoComplete="off" value={props.spendEditor.value}
-            className={`min-w-0 rounded-md border border-border bg-background px-2.5 py-2 text-sm tabular-nums ${FOCUS}`}
-            aria-invalid={props.spendEditor.error !== null} aria-describedby={props.spendEditor.error === null ? undefined : errorId}
-            onChange={(event) => { props.spendEditor.onChange(event.currentTarget.value); }} />
-          {props.spendEditor.error === null ? null : <p id={errorId} className="m-0 text-xs text-down">{props.spendEditor.error}</p>}
-        </div>
+        <SpendEditor editor={props.spendEditor} />
         <div className={`grid gap-3 ${props.line === 'live' ? '' : 'opacity-60'}`}>
           {matching !== null && props.contract !== null ? <QuoteNumbers quote={matching} side={props.contract.side} /> : null}
           <WhatIf key={`${String(contractId)}:${String(spendCents)}`} quote={matching} />

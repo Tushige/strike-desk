@@ -1,5 +1,6 @@
 import { memo, useCallback, useId, useMemo, useState, useSyncExternalStore } from 'react';
 import type { CompanyView } from '@strike-desk/shared/protocol';
+import { formatCents } from '@strike-desk/shared/money';
 import { OPEN_STEPS, PACES } from '@strike-desk/shared/time';
 import { PriceChart } from '../modules/price-chart/index';
 import type { ChartLine, ChartMarker } from '../modules/price-chart/index';
@@ -26,6 +27,45 @@ function GameTopBar({ loop }: { loop: GameLoop }) {
 }
 
 function playAgain(): void { window.location.reload(); }
+
+const FINAL_BUY_WORDS = {
+  accepted: (day: number) => `Your Day ${String(day)} buy was accepted. That ticket has settled at the closing bell.`,
+  rejected: (day: number) => `Your Day ${String(day)} buy was rejected.`,
+  noReason: 'The game said no to that one. Check your ticket and press again.',
+  gameGone: 'The previous game is no longer available. That buy cannot be checked.',
+  lost: 'No answer came back for that one. Check your cash and your ticket, then press again if you still want it.',
+  paid: 'Paid at the bell',
+  profit: 'Profit or loss',
+};
+
+function FinalBuyOutcome() {
+  const transaction = useSyncExternalStore(buyFlow.transaction.subscribe, buyFlow.transaction.get);
+  const retryHintId = useId();
+  if (transaction === null || (transaction.outcome !== undefined && !transaction.afterBell && !transaction.gameGone)) return null;
+  const { outcome, command, purchase } = transaction;
+  let status: string = controlWords.checking;
+  if (outcome?.outcome === 'accepted') status = FINAL_BUY_WORDS.accepted(command.day);
+  else if (outcome?.outcome === 'rejected') {
+    status = `${FINAL_BUY_WORDS.rejected(command.day)} ${outcome.receipt.reason === undefined ? FINAL_BUY_WORDS.noReason : REJECT_WORDS[outcome.receipt.reason]}`;
+  } else if (outcome?.outcome === 'lost') status = transaction.gameGone ? FINAL_BUY_WORDS.gameGone : FINAL_BUY_WORDS.lost;
+  const position = outcome?.outcome === 'accepted' ? purchase?.position : undefined;
+  return <div className="grid shrink-0 gap-2 rounded-md border border-border bg-card p-3 text-sm">
+    <p role="status" aria-live="polite" className="m-0">{status}</p>
+    {position?.status === 'settled' && position.exit?.kind === 'bell' ? <dl className="m-0 flex flex-wrap gap-x-6 gap-y-2">
+      <div><dt className="text-xs text-muted-foreground">{FINAL_BUY_WORDS.paid}</dt>
+        <dd className="m-0 tabular-nums">{formatCents(position.exit.proceedsCents)}</dd></div>
+      <div><dt className="text-xs text-muted-foreground">{FINAL_BUY_WORDS.profit}</dt>
+        <dd className="m-0 tabular-nums">{position.profitCents > 0 ? '+' : ''}{formatCents(position.profitCents)}</dd></div>
+    </dl> : null}
+    {transaction.retryAllowed ? <div className="flex flex-wrap items-center gap-2">
+      <button type="button" onClick={() => { buyFlow.retry(); }} aria-describedby={retryHintId}
+        className="rounded-md border border-border px-4 py-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+        {controlWords.retry}
+      </button>
+      <p id={retryHintId} className="m-0 text-xs text-muted-foreground">{controlWords.retryHint}</p>
+    </div> : null}
+  </div>;
+}
 
 const NO_LINES: readonly ChartLine[] = [];
 const NO_MARKERS: readonly ChartMarker[] = [];
@@ -129,6 +169,7 @@ export function GameDesk({ loop, game, comparison, news }: GameDeskProps) {
     <div className="flex h-full min-h-0 flex-1 flex-col gap-3">
       <GameTopBar loop={loop} />
       <div className="min-h-0 flex-1">{phase}</div>
+      {screen?.phase === 'final' ? <FinalBuyOutcome /> : null}
       <p className="m-0 text-xs text-muted-foreground">{stress ? REJECT_WORDS.stressMode : controlWords.preview}</p>
       <div className="flex flex-wrap items-center justify-end gap-2">
         <div role="status" aria-live="polite" className="text-sm text-muted-foreground">

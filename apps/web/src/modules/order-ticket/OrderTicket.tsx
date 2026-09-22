@@ -382,9 +382,13 @@ export function TicketView({ state, snapshot, choices, spendChoices, retryOffere
             {contract !== null && quoteEchoes(state, quote) && quote.spendCents !== null ? (
               <div className={`grid gap-3 ${dimmed}`}>
                 <QuoteNumbers quote={quote} side={contract.side} />
-                <WhatIf quote={quote} />
+                {spendEditor === undefined ? <WhatIf quote={quote} /> : null}
               </div>
             ) : null}
+            {spendEditor === undefined ? null : <div className={dimmed}>
+              <WhatIf key={`${String(state.contractId)}:${String(state.spendCents)}`}
+                quote={contract !== null && state.spendCents !== null && quoteEchoes(state, quote) ? quote : null} />
+            </div>}
           </>
         )}
       </div>

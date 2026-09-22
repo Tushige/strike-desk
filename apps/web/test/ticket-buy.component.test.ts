@@ -82,4 +82,17 @@ describe('typed buy-only ticket', () => {
     expect(props.spendEditor.onChange).toHaveBeenCalledWith('200');
     expect(props.submit).not.toHaveBeenCalled(); expect(props.newCommandId).not.toHaveBeenCalled();
   });
+  it('retains the chosen what-if stop when the matching quote temporarily disappears', () => {
+    const { props } = setup();
+    const answer = { ...quote, whatIf: [{ atCents: 8400, profitCents: -10000 }, { atCents: 8500, profitCents: 0 }, { atCents: 8600, profitCents: 10000 }] };
+    const quotes = slice<TicketQuote | null>(answer);
+    const view = render(createElement(OrderTicket, { ...props, quote: quotes }));
+    fireEvent.change(view.getByRole('slider'), { target: { value: '2' } });
+    expect(view.getByRole('slider').getAttribute('aria-valuetext')).toBe('$86. Profit or loss +$100');
+    act(() => { quotes.set(null); });
+    expect(view.queryByRole('slider')).toBeNull();
+    act(() => { quotes.set(answer); });
+    expect(view.getByRole('slider').getAttribute('aria-valuetext')).toBe('$86. Profit or loss +$100');
+    expect(props.submit).not.toHaveBeenCalled();
+  });
 });

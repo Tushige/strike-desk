@@ -51,13 +51,14 @@ export function createBuyFlow(feed: Feed, freshness: ReadSlice<{ line: LineState
   let held: FrameOrder | null = null;
   let current: Frame | null = null;
   let recovered = false;
+  let awaitingRecoveryData = false;
   let disposed = false;
   const retired = new Set<string>();
   let pending: { promise: Promise<SubmitOutcome>; resolve: (outcome: SubmitOutcome) => void } | null = null;
 
   function publish(): void {
     const record = transaction.get();
-    const ready = recovered && held !== null && freshness.get().line === 'live' && !disposed;
+    const ready = recovered && !awaitingRecoveryData && held !== null && freshness.get().line === 'live' && !disposed;
     const retryAllowed = ready && record !== null && record.outcome === undefined && record.interrupted && record.session === held?.session;
     if (record !== null && record.retryAllowed !== retryAllowed) transaction.set({ ...record, retryAllowed });
     availability.set({ session: held?.session ?? null, day: current?.clock.day ?? 0,
@@ -97,7 +98,10 @@ export function createBuyFlow(feed: Feed, freshness: ReadSlice<{ line: LineState
   }
   const unsubscribe = feed.subscribe((event) => {
     if (disposed) return;
-    if (event.type === 'status') { if (event.status !== 'live') interrupt(); return; }
+    if (event.type === 'status') {
+      if (event.status !== 'live') { awaitingRecoveryData = held !== null; interrupt(); }
+      return;
+    }
     const message = event.message;
     if (message.t === 'error') {
       interrupt();
@@ -110,6 +114,7 @@ export function createBuyFlow(feed: Feed, freshness: ReadSlice<{ line: LineState
     if (message.t === 'quotes') {
       if (held !== null && message.session === held.session && message.rev === held.rev && message.day === current?.clock.day && isNewerFrame(held, message)) {
         held = { session: message.session, rev: message.rev, step: message.step };
+        if (recovered) awaitingRecoveryData = false;
         publish();
       }
       return;
@@ -138,6 +143,7 @@ export function createBuyFlow(feed: Feed, freshness: ReadSlice<{ line: LineState
         if (!samePurchase(record.purchase ?? null, retained)) transaction.set({ ...record, purchase: retained });
       }
     }
+    if (recovered) awaitingRecoveryData = false;
     recovered = true;
     publish();
   });

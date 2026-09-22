@@ -480,11 +480,18 @@ const TradingTicket = memo(function TradingTicket(props: OrderTicketProps): Reac
   useEffect(() => {
     if (controlledSpend !== undefined) send({ type: 'spend', spendCents: controlledSpend });
   }, [controlledSpend, send]);
+  const observedCommand = useRef(transaction?.command.commandId ?? null);
   useEffect(() => {
     if (transaction === null) return;
+    if (observedCommand.current !== transaction.command.commandId) {
+      observedCommand.current = transaction.command.commandId;
+      send({ type: 'day', day: transaction.command.day });
+      send({ type: 'pressed', commandId: transaction.command.commandId, kind: 'buy' });
+      send({ type: 'day', day: props.day });
+    }
     if (transaction.interrupted) send({ type: 'line', line: 'offline' });
     if (transaction.outcome !== undefined) send({ type: 'outcome', commandId: transaction.command.commandId, outcome: transaction.outcome });
-  }, [transaction, send]);
+  }, [transaction, props.day, send]);
 
   // What the server and the desk say, handed to the machine as it changes. These are what move the form back to `draft`.
   useEffect(() => {

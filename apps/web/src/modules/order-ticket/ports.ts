@@ -257,6 +257,8 @@ export interface BuyTicketProps extends Omit<TradingTicketProps, 'mode' | 'spend
   mode: 'buy';
   spendEditor: TicketPreviewProps['spendEditor'];
   submit: (command: BuyCommand) => Promise<SubmitOutcome>;
+  /** Survives day-keyed mounts. An unanswered original-day command blocks a
+   * second buy, but never locks today's choices or changes its retry payload. */
   transaction: ReadSlice<BuyTransaction | null>;
   purchase?: ReadSlice<BuyPurchase | null>;
   staleNoticeId?: string;

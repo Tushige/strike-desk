@@ -86,4 +86,32 @@ describe('buy transport intent', () => {
     expect(h.flow.availability.get().session).toBe('replacement');
     h.flow.retry(); expect(h.messages).toHaveLength(1); h.flow.dispose();
   });
+
+  it('ignores bad recovery data and anonymous rate errors without resolving or resending', () => {
+    const h = harness(); h.receive(h.frame()); void h.flow.submit(command); h.drop();
+    h.receive({ t: 'error', code: 'tooManyCommands' });
+    h.fresh('live');
+    h.receive(h.frame({ rev: 0, receipts: [receipt] }));
+    for (const changes of [{ session: 'other' }, { day: 2 }, { rev: 0 }, { step: 9 }]) {
+      h.receive({ t: 'quotes', session: 'game', day: 1, rev: 1, step: 11, priceIndex: 0, prices: [], changes: [], ...changes });
+    }
+    h.flow.retry();
+    expect(h.flow.transaction.get()?.outcome).toBeUndefined();
+    expect(h.flow.transaction.get()?.retryAllowed).toBe(false);
+    expect(h.messages).toEqual([command]);
+    h.flow.dispose();
+  });
+
+  it.each(['noSession', 'badMessage'] as const)('ends only a known terminal %s and never replays into the replacement game', async (code) => {
+    const h = harness(); h.receive(h.frame()); const pending = h.flow.submit(command);
+    if (code === 'badMessage') {
+      h.receive({ t: 'error', code, commandId: 'unrelated-command' });
+      expect(h.flow.transaction.get()?.outcome).toBeUndefined();
+    }
+    h.receive({ t: 'error', code, commandId: command.commandId });
+    await expect(pending).resolves.toEqual({ outcome: 'lost' });
+    expect(h.flow.transaction.get()?.gameGone).toBe(code === 'noSession');
+    h.receive(h.frame({ session: 'replacement' })); h.flow.retry();
+    expect(h.messages).toEqual([command]); h.flow.dispose();
+  });
 });

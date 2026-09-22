@@ -137,6 +137,11 @@ it('keeps age outside the live status and releases freshness timers across stric
     expect(timers).toBeGreaterThan(0);
     view.unmount();
     advance(10000);
+    // The boot-owned unanswered-buy observer survives the form's lifetime.
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+    boot.buyFlow.dispose();
+    expect(vi.getTimerCount()).toBe(0);
+    boot.buyFlow.dispose();
     expect(vi.getTimerCount()).toBe(0);
     boot.deskFreshness.dispose();
     expect(vi.getTimerCount()).toBe(0);
@@ -367,7 +372,8 @@ it('pins a DOWN draft and slider through UP filtering while real server quotes s
     expect(spend.value).toBe('1000.50');
     expect(socketCount).toBe(1);
     expect(outbound.every((message) => message.t === 'start' || message.t === 'draft')).toBe(true);
-    expect(view.queryByRole('button', { name: /Buy ticket|Cash out|Retry/ })).toBeNull();
+    expect(view.getByRole('button', { name: 'Buy ticket' })).toBeTruthy();
+    expect(view.queryByRole('button', { name: /Cash out|Retry/ })).toBeNull();
   } finally {
     cleanup();
     feed?.close();

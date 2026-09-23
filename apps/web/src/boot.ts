@@ -121,10 +121,16 @@ export function submitTrade(command: BuyCommand | CashOutCommand): Promise<Comma
 export const restoredOutcome = restoredIntent === null ? null : track(restoredIntent,
   connection.restore(restoredIntent, Date.now() - restoredIntent.submittedAt));
 
-export function playAgain(): void {
+/** Leave this tab's run behind; a reload must never resume it or retry its trades. */
+export function leaveGame(): void {
   connection.close();
+  stressMeasurements.setActive(false);
   journal.clear();
   try { storage?.removeItem(sessionKey); } catch { /* optional storage */ }
+}
+
+export function playAgain(): void {
+  leaveGame();
   window.location.reload();
 }
 

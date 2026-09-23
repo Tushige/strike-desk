@@ -59,6 +59,8 @@ Use Balance Journey as the live game-over summary, with a finite chart-drawing e
 
 RoboPup appears as the ticket clerk after a confirmed purchase, the bell keeper with recorded daily results, and the receipt-bearing companion beside the final rank. Use the approved landing-matched pose sheet, fixed image space and brief finite reactions. Keep monetary outcomes and trade status in accessible text; reactions are decorative and supportive across wins and losses.
 
+The landing mascot uses the selected Arcade eyes treatment: a ten-second repeating smile, rolling dollar signs, rising mint arrows, and rest. Keep its body still and the illustration footprint fixed. Expressions are decorative, never live market signals. Provide manual pause/resume and pause automatically offscreen or in a hidden tab, preserving the loop position. Retain all three motion studies in scratch. Selected 2026-09-23.
+
 The final-summary lessons use the selected Ticket conveyor: one always-visible lesson on a perforated slip, a peek at the next ticket, and an eight-second reading interval. Include direct lesson selection, previous/next and pause/resume. Pause while hovered, focused, offscreen or in a hidden tab, preserving remaining time. Keep the content height stable and use the existing lesson copy without an accordion.
 
 ## Evidence on Hand

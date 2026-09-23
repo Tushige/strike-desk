@@ -10,7 +10,7 @@ import { CompanyTile, LogoMark } from '../ui';
 import { GameHelp } from '../GameHelp';
 import { CompanyRosterSkeleton } from '../LoadingSkeleton';
 import { PACE_WORDS, startWords } from '../words';
-import heroArt from '../../assets/landing-v2/trading-desk.jpg';
+import { ArcadeMascot } from './ArcadeMascot';
 import './landing-v2.css';
 
 const LESSONS = [
@@ -128,10 +128,7 @@ export default function StartScreenV2({ connected }: { connected: boolean }) {
             </div>
           </div>
         </div>
-        <div className="v2-hero-art">
-          <img src={heroArt} width={1254} height={1254} fetchPriority="high" decoding="async"
-            alt="RoboPup beside a yellow market bell and two paper tickets pointing up and down." />
-        </div>
+        <ArcadeMascot />
       </section>
 
       <section className="v2-cast" id="meet-the-market" aria-labelledby="v2-cast-title">

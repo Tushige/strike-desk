@@ -1,4 +1,6 @@
 import { WS_PATH } from '@strike-desk/shared/paths';
+import { initializeAnalytics, trackEvent } from './analytics/umami';
+import { createGameAnalytics } from './analytics/gameAnalytics';
 import { boardFromSearch } from './boardSize';
 import { createStressMeasurements } from './board/stressMeasurements';
 import { createConnection, resendWhileFresh } from './modules/connection/index';
@@ -57,6 +59,8 @@ function safeStorage(): SessionStore | null {
   try { return window.sessionStorage; } catch { return null; }
 }
 const storage = safeStorage();
+initializeAnalytics();
+const analytics = createGameAnalytics(trackEvent, storage);
 const journal = createJournal(storage, `${sessionKey}.journal`);
 export const restoredIntent = journal.read();
 let recoveryValue: { intent: SavedIntent; outcome: CommandOutcome | null } | null = restoredIntent === null ? null : { intent: restoredIntent, outcome: null };
@@ -90,6 +94,10 @@ export const connection = createConnection({
 const unsubscribe = connection.subscribe((event) => {
   if (event.type === 'message') {
     const result = store.ingest(event.message);
+    if (result.accepted && result.kind === 'frame') {
+      const frame = store.frame.get();
+      if (frame !== null) analytics.observe(frame);
+    }
     stressMeasurements.observe(event.message, result, event.receivedAt);
   } else {
     store.setStatus(event.status);
@@ -130,6 +138,7 @@ export function leaveGame(): void {
 }
 
 export function playAgain(): void {
+  trackEvent('replay_clicked');
   leaveGame();
   window.location.reload();
 }

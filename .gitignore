@@ -4,3 +4,6 @@ dist/
 apps/*/src/generated/
 # The prototypes this port was made from stay out of the public repository.
 reference/
+.env
+.env.*
+!.env.example

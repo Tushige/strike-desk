@@ -50,7 +50,11 @@ This Windows session used temporary official Node 24.21.0 and pnpm 12.5.1 becaus
 - Moved-price rejections require a fresh quote and a deliberate new purchase. Repeated commands resolve through receipts without a second debit. Drafts are resent after reconnect because they belong to the socket.
 - Final results survive refresh while the server retains the session. **Play again** clears the corresponding session/journal and reloads with a new connection.
 - Storage is optional and guarded. Without it, same-tab recovery works but refresh recovery is not guaranteed. Normal/workload sessions have separate keys.
-- Sessions live in server memory, with a 30-minute disconnected lifetime. Restart, redeployment and expiry lose games. No database, authentication or multiplayer is implied.
+- Sessions live in server memory, with a 30-minute disconnected lifetime. Restart, redeployment and expiry lose active games. Optional Neon storage saves completed results, not resumable sessions. There is no authentication or multiplayer.
+
+## Analytics and public statistics
+
+Umami tracks visits and gameplay events; Neon stores authoritative completed-game results for public aggregates. Both are optional until configured. See [setup, environments, metric definitions and limitations](docs/ANALYTICS.md). The public data endpoint is `GET /api/stats`; the landing-page presentation will be designed separately.
 
 ## Evidence and limits
 

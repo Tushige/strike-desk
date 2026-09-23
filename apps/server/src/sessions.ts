@@ -1,5 +1,5 @@
 import type { DraftRequest, Frame, Session } from '@strike-desk/shared/engine';
-import { CONTENT_VERSION, DEFAULT_TARGETS_PER_COMPANY, ENGINE_VERSION, createSession, playerOf } from '@strike-desk/shared/engine';
+import { CONTENT_VERSION, DAYS, DEFAULT_TARGETS_PER_COMPANY, ENGINE_VERSION, createSession, playerOf } from '@strike-desk/shared/engine';
 import type { Limits } from './limits';
 import type { FrameSocket } from './sampler';
 
@@ -85,6 +85,7 @@ export interface RegistryOptions {
   drawSeed: () => number;
   drawId: () => string;
   limits: Limits;
+  onCompleted?: (session: Session) => void;
 }
 
 export function createRegistry(options: RegistryOptions): SessionRegistry {
@@ -147,7 +148,11 @@ export function createRegistry(options: RegistryOptions): SessionRegistry {
     },
     replace(id, session) {
       const entry = sessions.get(id);
-      if (entry !== undefined) entry.session = session;
+      if (entry !== undefined) {
+        const completedBefore = entry.session.game.players[0]?.dayEndCents.length === DAYS;
+        entry.session = session;
+        if (!completedBefore && session.game.players[0]?.dayEndCents.length === DAYS) options.onCompleted?.(session);
+      }
     },
     entries: () => sessions.values(),
     sweepOnce(nowMs) {

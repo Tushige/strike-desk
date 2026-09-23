@@ -13,6 +13,7 @@ import { connection, leaveGame, store } from './boot';
 import { lineStateOf } from './modules/connection';
 import { EarlyExitScreen } from './screens/EarlyExitScreen';
 import type { EarlyExit } from './screens/EarlyExitScreen';
+import { trackEvent } from './analytics/umami';
 
 /**
  * One page, three screens, chosen by the phase the server says the game is
@@ -28,6 +29,7 @@ export default function App() {
     const frame = store.frame.get();
     if (frame === null || frame.clock.phase === 'lobby' || frame.clock.phase === 'final') return;
     const snapshot = { frame, pending: connection.pending.get().length > 0, stale: lineStateOf(connection.state.get().phase) !== 'live' };
+    trackEvent('game_ended_early', { day: frame.clock.day, purchases: frame.positions.length, pace: frame.clock.pace ?? 1 });
     leaveGame();
     setExit(snapshot);
   }

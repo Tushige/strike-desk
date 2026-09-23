@@ -16,6 +16,7 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      '/api': 'http://localhost:10000',
       [WS_PATH]: { target: 'ws://localhost:10000', ws: true },
       [HEALTH_PATH]: 'http://localhost:10000',
     },

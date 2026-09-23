@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { restoredIntent, store } from "../../boot";
+import { trackEvent } from '../../analytics/umami';
 import type { Frame, Side } from "@strike-desk/shared/protocol";
 import { lineStateOf } from "../../modules/connection/index";
 import {
@@ -355,6 +356,7 @@ export function Desk() {
                                 className="market-compare-action min-h-11 px-4"
                                 aria-pressed={showBoard}
                                 onClick={() => {
+                                    if (!showBoard) trackEvent('comparison_opened', { day, pace: frame.clock.pace ?? 1 });
                                     setOpened(true);
                                     setComparing(!showBoard);
                                 }}

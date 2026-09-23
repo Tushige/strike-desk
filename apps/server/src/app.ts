@@ -14,6 +14,7 @@ import type { FrameSocket } from './sampler';
 import { sampleSessions } from './sampler';
 import { drawSeed, drawSessionId } from './seed';
 import { createRegistry } from './sessions';
+import type { ResultsService } from './results';
 
 export interface BuildVersion {
   /** First 7 characters of the commit the build was made from. */
@@ -23,6 +24,7 @@ export interface BuildVersion {
 }
 
 export interface AppOptions {
+  results?: ResultsService;
   /** Absolute path of the built web files (apps/web/dist). */
   staticDir: string;
   /**
@@ -167,7 +169,8 @@ export function createApp(options: AppOptions): App {
   const sweepMs = options.sweepMs ?? limits.sweepIntervalMs;
   const helloCheckMs = options.helloCheckMs ?? limits.helloCheckIntervalMs;
 
-  const registry = createRegistry({ drawSeed: options.drawSeed ?? drawSeed, drawId: drawSessionId, limits });
+  const registry = createRegistry({ drawSeed: options.drawSeed ?? drawSeed, drawId: drawSessionId, limits,
+    onCompleted: session => options.results?.completed(session) });
   // One budget for the whole service. Per address would be the wrong shape
   // here: a classroom shares one address, and behind a proxy every visitor
   // appears to come from the same one.
@@ -194,6 +197,23 @@ export function createApp(options: AppOptions): App {
 
   function handleRequest(req: IncomingMessage, res: ServerResponse): void {
     try {
+      if (req.url?.split('?')[0] === '/api/stats') {
+        if (req.method !== 'GET' && req.method !== 'HEAD') {
+          res.writeHead(405, { allow: 'GET, HEAD' });
+          res.end();
+          return;
+        }
+        const unavailable = () => {
+          res.writeHead(503, { 'content-type': 'application/json', 'cache-control': 'no-store', 'retry-after': '60' });
+          res.end(req.method === 'HEAD' ? undefined : JSON.stringify({ error: 'Stats unavailable' }));
+        };
+        if (options.results === undefined) unavailable();
+        else void options.results.stats().then(stats => {
+          res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'public, max-age=60' });
+          res.end(req.method === 'HEAD' ? undefined : JSON.stringify({ ...stats, currency: 'pretend-USD' }));
+        }, unavailable);
+        return;
+      }
       if (req.url === HEALTH_PATH) {
         if (req.method !== 'GET' && req.method !== 'HEAD') {
           res.writeHead(405);
@@ -413,11 +433,13 @@ export function createApp(options: AppOptions): App {
     if (sampleTimer !== null) clearInterval(sampleTimer);
     if (sweepTimer !== null) clearInterval(sweepTimer);
     if (helloCheckTimer !== null) clearInterval(helloCheckTimer);
+    const resultsClosed = options.results?.close();
     for (const ws of connections.keys()) {
       ws.close(1001);
     }
     await new Promise<void>((resolve) => wss.close(() => resolve()));
     await new Promise<void>((resolve) => server.close(() => resolve()));
+    await resultsClosed;
   }
 
   return { server, wss, sampleOnce, heartbeatOnce, sweepOnce, helloDeadlineOnce, close };

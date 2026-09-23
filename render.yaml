@@ -9,3 +9,12 @@ services:
     buildCommand: NODE_ENV=development pnpm install --frozen-lockfile && pnpm run build
     startCommand: node apps/server/dist/server.js
     healthCheckPath: /healthz
+    envVars:
+      - key: VITE_UMAMI_WEBSITE_ID
+        value: b91be93e-848a-4778-a181-c08cdf8c10fc
+      - key: VITE_UMAMI_SCRIPT_URL
+        value: https://cloud.umami.is/script.js
+      - key: VITE_UMAMI_DOMAINS
+        value: strike-desk.onrender.com
+      - key: STATS_ENVIRONMENT
+        value: production

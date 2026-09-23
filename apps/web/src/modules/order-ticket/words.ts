@@ -115,7 +115,7 @@ export const REJECT_WORDS: Record<RejectReason, string> = {
   overCap: "That is over today's spending cap. Pick a smaller amount.",
   marketClosed: 'Market closed. The closing bell has rung.',
   priceMoved: 'The price moved. Check the new price and press again.',
-  alreadyBought: "You already bought today's ticket. It is one ticket a day.",
+  alreadyBought: 'All three purchases are used today. You can still cash out open positions.',
   tooCheap: 'That ticket is too cheap to trade. Pick another target.',
   spendTooSmall: 'That amount does not buy one whole ticket. Pick a bigger amount.',
   unknownContract: 'That ticket is not on the board. Pick another one.',

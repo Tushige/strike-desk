@@ -57,7 +57,7 @@ it('company cards and table chips update the actual chart, header and builder to
   fireEvent.click(screen.getByRole('button', { name: 'View Fizzly chart' }));
   expect(navigation.getByRole('button', { name: 'Market' }).getAttribute('aria-pressed')).toBe('true');
   expect(screen.getByRole('img', { name: 'Price chart, now $104.00' })).toBeTruthy();
-  fireEvent.click(navigation.getByRole('button', { name: 'Your ticket' }));
+  fireEvent.click(navigation.getByRole('button', { name: 'Tickets · 0/3' }));
   expect(within(screen.getByRole('region', { name: 'Your ticket' })).getByRole('button', { name: '$100K' }).getAttribute('aria-pressed')).toBe('true');
   fireEvent.click(cards.getByRole('button', { name: /^RoboPup/ }));
   fireEvent.click(screen.getByRole('button', { name: 'Compare contracts' }));
@@ -83,4 +83,23 @@ it('company cards and table chips update the actual chart, header and builder to
   expect(screen.getByRole('img', { name: 'Price chart, now $84.00' })).toBeTruthy();
   expect(filters.getByRole('button', { name: 'RPUP' }).getAttribute('aria-pressed')).toBe('true');
   expect(filters.getByRole('button', { name: 'FIZZ' }).getAttribute('aria-pressed')).toBe('false');
+
+  // A new purchase focuses the received position, while the existing draft stays intact.
+  const position = { id: 'd1', day: 1, contractId: 0, companyId: 0, side: 'up' as const, targetCents: 8500,
+    quantity: 100, entryPriceCents: 1000, costCents: 100000, entryStep: 1, entryPriceIndex: 0,
+    breakEvenCents: 8510, status: 'open' as const, valueCents: 100000, profitCents: 0, realCents: 0, hopeCents: 1000 };
+  const second = { ...position, id: 'd1-p2', companyId: 1, contractId: 6, targetCents: 10500 };
+  act(() => { sockets.last().fireMessage(JSON.stringify({ ...frame, step: 2, rev: 2, positions: [position, second] })); });
+  expect(screen.getByRole('img', { name: 'Price chart, now $104.00' })).toBeTruthy();
+  expect(panel.getByRole('button', { name: /Inspect purchase 2/ }).getAttribute('aria-pressed')).toBe('true');
+  fireEvent.click(panel.getByRole('button', { name: /New purchase/ }));
+  expect(panel.getByRole('button', { name: '$100K' }).getAttribute('aria-pressed')).toBe('true');
+  expect(screen.getByRole('img', { name: 'Price chart, now $84.00' })).toBeTruthy();
+  fireEvent.click(panel.getByRole('button', { name: /Inspect purchase 1/ }));
+  fireEvent.click(panel.getByRole('button', { name: /Inspect purchase 2/ }));
+  fireEvent.click(panel.getByRole('button', { name: /^Cash out/ }));
+  const commands = sockets.last().sent.map(value => JSON.parse(value) as { t: string; positionId?: string });
+  expect(commands.filter(command => command.t === 'cashOut')).toMatchObject([{ t: 'cashOut', positionId: 'd1-p2' }]);
+  expect(panel.getByRole('button', { name: /New purchase/ }).hasAttribute('disabled')).toBe(true);
+  expect(panel.getByRole('button', { name: /Inspect purchase 1/ }).hasAttribute('disabled')).toBe(true);
 });

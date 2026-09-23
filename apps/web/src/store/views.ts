@@ -9,6 +9,8 @@ function numbers(a: readonly number[], b: readonly number[]): boolean {
   return a === b || a.length === b.length && a.every((value, i) => value === b[i]);
 }
 function days(a: Frame['days'], b: Frame['days']): boolean {
+  const sameReview = (left: Frame['days'][number]['review'], right: Frame['days'][number]['review']) => left === right || left !== undefined && right !== undefined &&
+    sameFields(left.news ?? null, right.news ?? null) && sameFields({ ...left, news: undefined }, { ...right, news: undefined });
   return a === b || a.length === b.length && a.every((day, i) => {
     const other = b[i];
     if (other === undefined) return false;
@@ -17,7 +19,10 @@ function days(a: Frame['days'], b: Frame['days']): boolean {
     if (left !== right && (left === undefined || right === undefined ||
       !sameFields(left.news ?? null, right.news ?? null) ||
       !sameFields({ ...left, news: undefined }, { ...right, news: undefined }))) return false;
-    return sameFields({ ...day, review: undefined }, { ...other, review: undefined });
+    const reviews = day.reviews ?? [];
+    const otherReviews = other.reviews ?? [];
+    if (reviews.length !== otherReviews.length || !reviews.every((review, index) => sameReview(review, otherReviews[index]))) return false;
+    return sameFields({ ...day, review: undefined, reviews: undefined }, { ...other, review: undefined, reviews: undefined });
   });
 }
 function board(a: Frame['board'], b: Frame['board']): boolean {

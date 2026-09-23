@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { isOffered } from '../src/board';
 import { GAME_STEPS } from '../src/clock';
 import type { GameState } from '../src/game';
-import { STARTING_CASH_CENTS, advanceTo, applyCommand, breakEvenCents, newGame, spendCapCents, toleranceLimitCents, withinTolerance } from '../src/game';
+import { STARTING_CASH_CENTS, advanceTo, applyCommand, breakEvenCents, newGame, remainingDaySpendCents, spendCapCents, toleranceLimitCents, withinTolerance } from '../src/game';
 import { boardFor, buildMarket } from '../src/market';
 import { isTradable } from '../src/pricing';
 import type { Command } from '../src/protocol';
@@ -175,12 +175,43 @@ describe('buy', () => {
     expectRejected(startedGame(market), { ...command, commandId: 'later-in-debrief' }, 899, 'marketClosed');
   });
 
-  it('allows one ticket a day, even after cashing it out', () => {
-    const game = bought();
+  it('allows three purchases, with independent IDs, even when buying the same contract', () => {
+    let game = bought();
+    for (let n = 0; n < 2; n += 1) {
+      const next = buyAt(market, game, ME, STEP, 1, INDEX, CONTRACT, SPEND);
+      expect(next.receipt.outcome).toBe('accepted');
+      game = next.game;
+    }
+    expect(me(game).positions.map(position => position.id)).toEqual(['d1', 'd1-p2', 'd1-p3']);
     expectRejected(game, buyCommand({ day: 1, contractId: CONTRACT, spendCents: SPEND, seenPriceCents: PRICE }), STEP + 1, 'alreadyBought');
-    const sold = applyCommand(market, game, ME, cashOut('d1'), STEP + 5).game;
+    const sold = applyCommand(market, game, ME, cashOut('d1-p2'), STEP + 5).game;
+    expect(me(sold).positions.map(position => position.exit?.kind ?? 'open')).toEqual(['open', 'cashOut', 'open']);
     const again = buyCommand({ day: 1, contractId: CONTRACT, spendCents: SPEND, seenPriceCents: priceOf(market, 1, INDEX + 6, CONTRACT) });
     expectRejected(sold, again, STEP + 6, 'alreadyBought');
+    const settled = advanceTo(market, sold, 800);
+    const positions = me(settled).positions;
+    expect(positions.map(position => position.exit?.kind)).toEqual(['bell', 'cashOut', 'bell']);
+    expect(me(settled).cashCents).toBe(STARTING_CASH_CENTS + positions.reduce((total, position) => total + position.exit!.proceedsCents - position.costCents, 0));
+    expect(remainingDaySpendCents(me(settled), 2)).toBe(spendCapCents(me(settled).cashCents));
+    const dayTwoContract = findContract(market, 2, id => isTradable(priceOf(market, 2, 0, id)));
+    expect(buyAt(market, settled, ME, 900, 2, 0, dayTwoContract, 100_000).receipt.outcome).toBe('accepted');
+  });
+
+  it('uses actual costs from one start-of-day allowance and cash-outs do not refill it', () => {
+    const game = bought();
+    const cost = me(game).positions[0]!.costCents;
+    const left = 50_000_000 - cost;
+    expect(remainingDaySpendCents(me(game), 1)).toBe(left);
+    const sold = applyCommand(market, game, ME, cashOut('d1'), STEP).game;
+    expect(remainingDaySpendCents(me(sold), 1)).toBe(left);
+    expectRejected(sold, buyCommand({ day: 1, contractId: CONTRACT, spendCents: left + 1, seenPriceCents: PRICE }), STEP, 'overCap');
+    const command = buyCommand({ day: 1, contractId: CONTRACT, spendCents: left, seenPriceCents: PRICE });
+    const second = applyCommand(market, sold, ME, command, STEP);
+    expect(second.receipt.outcome).toBe('accepted');
+    const duplicate = applyCommand(market, second.game, ME, command, STEP);
+    expect(duplicate.repeat).toBe(true);
+    expect(me(duplicate.game).positions).toHaveLength(2);
+    expect(remainingDaySpendCents(me(second.game), 1)).toBeLessThan(PRICE);
   });
 
   it('refuses a contract that is too cheap to trade', () => {

@@ -49,8 +49,8 @@ function accountOf(frame: Frame | null): TicketAccount {
 }
 
 /** Today's ticket while it is still open, in the shape the form wants. */
-function openTicketOf(frame: Frame | null): OpenTicket | null {
-  const position = todaysTicket(frame);
+export function openTicketOf(frame: Frame | null, positionId?: string | null): OpenTicket | null {
+  const position = positionId === undefined ? todaysTicket(frame) : frame?.positions.find(item => item.id === positionId && item.day === frame.clock.day) ?? null;
   if (position === null || position.status !== 'open') return null;
   const company = frame?.companies[position.companyId];
   return {

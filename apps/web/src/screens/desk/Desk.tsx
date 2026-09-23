@@ -30,7 +30,7 @@ import {
 import type { Pick } from "./pick";
 import { PriceChart } from "./PriceChart";
 import type { TargetLines } from "./PriceChart";
-import { headlineFor, ticketToday, tipFor, twistShowing } from "./tips";
+import { headlineFor, tipFor, twistShowing } from "./tips";
 
 /**
  * The desk separates company navigation from news. Desktop shows the market
@@ -65,9 +65,10 @@ function targetFor(
     frame: Frame,
     companyId: number,
     draftContractId: number | null,
+    positionId: string | null,
 ): TargetLines | null {
-    const ticket = ticketToday(frame);
-    if (ticket !== null) {
+    const ticket = frame.positions.find(position => position.id === positionId);
+    if (ticket !== undefined) {
         if (ticket.companyId !== companyId) return null;
         return {
             side: ticket.side,
@@ -146,7 +147,15 @@ export function Desk() {
     const day = frame.clock.day;
     const headlines = frame.news.filter((item) => item.day === day);
     const picking = frame.clock.phase === "preBell";
-    const ticket = ticketToday(frame);
+    const positions = frame.positions.filter(position => position.day === day);
+    const [positionChoice, setPositionChoice] = useState(() => ({
+        day, count: positions.length,
+        id: restoredIntent?.session === frame.session && restoredIntent.day === day && restoredIntent.command.t === 'cashOut'
+            ? restoredIntent.command.positionId : positions.at(-1)?.id ?? null,
+    }));
+    const selectedPositionId = positionChoice.day === day && positionChoice.count === positions.length
+        ? positionChoice.id : positions.at(-1)?.id ?? null;
+    const ticket = positions.find(position => position.id === selectedPositionId) ?? null;
     // The selection starts over on a new day, and again at the closing bell,
     // where the ticket's company is the one to look at.
     const selectionKey = `${String(day)}:${frame.clock.phase === "debrief" ? "bell" : "day"}`;
@@ -167,6 +176,7 @@ export function Desk() {
         choice !== null && choice.key === selectionKey
             ? choice.companyId
             : byDefault;
+    const viewCompany = ticket?.companyId ?? selected;
 
     // The ticket being built: a side and a simple choice that follow the
     // player from company to company, or an exact row from the table. While
@@ -196,8 +206,13 @@ export function Desk() {
         if (orderInFlight) return;
         setPickState({ day, pick: next });
     };
+    const selectPosition = (id: string | null): void => {
+        if (orderInFlight) return;
+        setPositionChoice({ day, count: positions.length, id });
+    };
     const select = (companyId: number): void => {
         if (orderInFlight) return;
+        selectPosition(null);
         setChoice({ key: selectionKey, companyId });
         // An exact row from the table belongs to one company; on another, only the side and the choice carry over.
         if (
@@ -214,6 +229,7 @@ export function Desk() {
     };
     const pickContract = (contractId: number): void => {
         if (orderInFlight) return;
+        selectPosition(null);
         const company = companyOf(frame, contractId);
         if (company !== null)
             setChoice({ key: selectionKey, companyId: company });
@@ -242,7 +258,7 @@ export function Desk() {
                 {(['market', 'news', 'ticket'] as const).map(view => <button
                     key={view} type="button" aria-pressed={mobileView === view}
                     aria-controls={`desk-${view}`} onClick={() => { setMobileView(view); }}
-                >{view === 'market' ? 'Market' : view === 'news' ? 'News' : 'Your ticket'}</button>)}
+                >{view === 'market' ? 'Market' : view === 'news' ? 'News' : `Tickets · ${String(positions.length)}/3`}</button>)}
             </nav>
             <aside className={cx('desk-sidebar', line !== 'live' && 'opacity-60')}>
                 <section className="market-lineup" aria-label="Companies">
@@ -250,12 +266,12 @@ export function Desk() {
                     <CompanyList>
                         {frame.companies.map((company, companyId) => <MarketCompany
                             key={companyId} companyId={companyId} name={company.name} ticker={company.ticker}
-                            selected={selected === companyId} mine={ticket?.companyId === companyId}
+                            selected={viewCompany === companyId} mine={positions.some(position => position.companyId === companyId)}
                             picking={picking} disabled={orderInFlight} onSelect={() => { select(companyId); }}
                         />)}
                     </CompanyList>
                 </section>
-                <NewsWire frame={frame} selected={selected} disabled={orderInFlight} onSelect={companyId => {
+                <NewsWire frame={frame} selected={viewCompany} disabled={orderInFlight} onSelect={companyId => {
                     select(companyId); setMobileView('market'); setComparing(false);
                 }} />
             </aside>
@@ -268,14 +284,14 @@ export function Desk() {
                 )}
             >
                 <div className="market-panel-heading">
-                    <CompanyHeader frame={frame} companyId={selected} />
+                    <CompanyHeader frame={frame} companyId={viewCompany} />
                     <DeskClock />
                 </div>
 
                 {showBoard && (
                     <div className="comparison-context flex flex-wrap items-center gap-3 text-sm text-muted">
                         <p className="m-0 min-w-0 flex-1 text-xs">
-                            {headlineFor(frame, selected)?.title ??
+                            {headlineFor(frame, viewCompany)?.title ??
                                 "No news for this company today."}
                         </p>
                         <GhostButton
@@ -296,8 +312,9 @@ export function Desk() {
                     </div>
                 )}
                 <ChartRegion
-                    companyId={selected}
+                    companyId={viewCompany}
                     contractId={draftContractId}
+                    positionId={selectedPositionId}
                     compact={showBoard}
                 />
                 {opened && (
@@ -322,12 +339,12 @@ export function Desk() {
                     <div className="market-tip rounded-2xl bg-raised p-4">
                         <Bulb className="size-[26px] shrink-0 text-sun" />
                         <p className="m-0 grow text-[15px] leading-[1.45]">
-                            {headlineFor(frame, selected)?.updateBody ? <NewsUpdate news={headlineFor(frame, selected)!} /> : showBoard
+                            {headlineFor(frame, viewCompany)?.updateBody ? <NewsUpdate news={headlineFor(frame, viewCompany)!} /> : showBoard
                                 ? "Every ticket on the board, repricing live. Click a column header to sort; pick a row to put it on your ticket."
                                 : line === "live"
                                   ? tipFor(
                                         store.frame.get() ?? frame,
-                                        selected,
+                                        viewCompany,
                                         null,
                                     )
                                   : LINE_TIPS[line]}
@@ -350,7 +367,7 @@ export function Desk() {
                     </div>
                 )}
                 <button type="button" className="mobile-ticket-link" onClick={() => { setMobileView('ticket'); }}>
-                    {frame.clock.phase === 'debrief' ? 'Review today' : ticket === null ? 'Build your ticket' : 'View your ticket'} <span aria-hidden="true">→</span>
+                    {frame.clock.phase === 'debrief' ? 'Review today' : `Your tickets · ${String(positions.length)}/3 purchases`} <span aria-hidden="true">→</span>
                 </button>
             </section>
 
@@ -367,6 +384,8 @@ export function Desk() {
                     onPick={pickContract}
                     onChooseSide={chooseSide}
                     onChooseChoice={chooseChoice}
+                    selectedPositionId={selectedPositionId}
+                    onSelectPosition={selectPosition}
                 />
             </section>
         </main>
@@ -398,10 +417,12 @@ function ChartRegion({
     companyId,
     contractId,
     compact,
+    positionId,
 }: {
     companyId: number;
     contractId: number | null;
     compact: boolean;
+    positionId: string | null;
 }) {
     const frame = useScreenFrame("chart");
     const news = headlineFor(frame, companyId);
@@ -412,8 +433,8 @@ function ChartRegion({
             frame={frame}
             companyId={companyId}
             compact={compact}
-            target={targetFor(frame, companyId, contractId)}
-            ticket={ticketToday(frame)}
+            target={targetFor(frame, companyId, contractId, positionId)}
+            ticket={frame.positions.find(position => position.id === positionId) ?? null}
             twist={twistShowing(frame, companyId)}
         />
         {compact && news?.updateBody && <NewsUpdate news={news} />}

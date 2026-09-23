@@ -24,7 +24,8 @@ function DayChoices({ frame, selected, onSelect, layout }: {
       const result = frame.days.find(one => one.day === day);
       const ticket = frame.positions.find(one => one.day === day);
       const company = ticket === undefined ? undefined : frame.companies[ticket.companyId];
-      const label = ticket !== undefined ? `${company?.ticker ?? ''} ${ticket.side === 'up' ? 'UP' : 'DOWN'}` : result === undefined ? finalWords.notPlayed : finalWords.satOut;
+      const purchases = frame.positions.filter(one => one.day === day).length;
+      const label = purchases > 1 ? `${String(purchases)} purchases` : ticket !== undefined ? `${company?.ticker ?? ''} ${ticket.side === 'up' ? 'UP' : 'DOWN'}` : result === undefined ? finalWords.notPlayed : finalWords.satOut;
       const amount = result === undefined ? '—' : result.changeCents === 0 ? '$0' : signedMoney(result.changeCents);
       const compact = result === undefined ? '—' : result.changeCents === 0 ? '$0' : `${result.changeCents < 0 ? '−' : '+'}$${compactMoney.format(Math.abs(result.changeCents) / 100)}`;
       return <button key={day} type="button" className="summary-day" aria-pressed={selected === day}

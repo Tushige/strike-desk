@@ -68,7 +68,7 @@ describe("buying over the game socket", () => {
                 expect(result.frame.account.cashCents).toBeLessThan(
                     lobby.account.cashCents,
                 );
-                expect(result.frame.account.canBuy).toBe(false);
+                expect(result.frame.account.canBuy).toBe(true);
                 client.send({ ...command, contractId: 99999, spendCents: 1 });
                 const duplicate = await client.nextReply();
                 expect(duplicate.receipt).toEqual(result.receipt);

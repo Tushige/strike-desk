@@ -108,7 +108,7 @@ export function describeCommandPathContract(name: string, handle: HandleCommand)
       expect(position.costCents).toBe(position.entryPriceCents * position.quantity);
       expect(position.costCents).toBeLessThanOrEqual(SPEND);
       expect(reply.frame.account.cashCents).toBe(STARTING_CASH - position.costCents);
-      expect(reply.frame.account.canBuy).toBe(false);
+      expect(reply.frame.account.canBuy).toBe(true);
       expect(reply.frame.rev).toBeGreaterThan(before.rev);
       expect(reply.frame.history).toBeDefined();
     });
@@ -182,15 +182,23 @@ export function describeCommandPathContract(name: string, handle: HandleCommand)
       onlyPosition(accepted.reply.frame);
     });
 
-    it('sells one ticket a day', () => {
+    it('accepts three independent purchases and rejects the fourth', () => {
       const { session, nowMs, afterBuy } = holding();
 
       const later = nowMs + 1_000;
       const second = send(session, buy(closeUp(frameAt(session, later))), later);
 
-      expect(second.reply.receipt).toMatchObject({ outcome: 'rejected', reason: 'alreadyBought' });
-      expect(second.reply.frame.account.cashCents).toBe(afterBuy.account.cashCents);
-      onlyPosition(second.reply.frame);
+      expect(second.reply.receipt.outcome).toBe('accepted');
+      expect(second.reply.frame.positions).toHaveLength(2);
+      expect(second.reply.frame.account.cashCents).toBeLessThan(afterBuy.account.cashCents);
+      const third = send(second.session, buy(closeUp(second.reply.frame)), later);
+      expect(third.reply.receipt.outcome).toBe('accepted');
+      expect(third.reply.frame.positions).toHaveLength(3);
+      expect(third.reply.frame.account.canBuy).toBe(false);
+      const fourth = send(third.session, buy(closeUp(third.reply.frame)), later);
+      expect(fourth.reply.receipt).toMatchObject({ outcome: 'rejected', reason: 'alreadyBought' });
+      expect(fourth.reply.frame.account).toEqual(third.reply.frame.account);
+      expect(fourth.reply.frame.positions).toEqual(third.reply.frame.positions);
     });
 
     describe('the price the player saw', () => {

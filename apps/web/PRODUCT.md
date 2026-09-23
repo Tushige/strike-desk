@@ -33,7 +33,7 @@ The following baseline was confirmed during initialization:
 
 Existing implementation facts, grounded in the repository:
 
-- Players may buy at most once per day, spend at most half their available cash, and buy whole tickets. Sitting out is valid.
+- Players may make up to three purchases per day, sharing a spending allowance of half their start-of-day cash, and buy whole tickets. Actual purchase costs reduce the allowance. Cash-outs neither refill it nor restore purchase slots. Each purchase is managed independently, including repeat contracts and opposite directions. Sitting out is valid.
 - UP means call, DOWN means put, target means strike, ticket price means premium, and the closing bell means expiry. Explain the familiar term alongside its financial equivalent.
 - Real value means intrinsic value; hope value means time value. Distinguish payout from profit after premium.
 - What-if results are server-provided scenarios, not forecasts. A headline's follow-up and event prices become public when that event lands; future events stay hidden. Completed days retain the traded company's story for review.

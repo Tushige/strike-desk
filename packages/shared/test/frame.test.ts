@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { isOffered } from '../src/board';
 import { GAME_STEPS, OPEN_STEPS, bellStep, momentAt } from '../src/clock';
 import type { ProjectOptions } from '../src/frame';
 import { projectFrame } from '../src/frame';
@@ -16,6 +17,28 @@ import { TEST_CAST } from './testCast';
 
 const market = testMarket();
 const MARKET_CODE = seedToMarketCode(TEST_SEED);
+
+it('projects all purchases and their own completed-day news without leaking future reviews', () => {
+  let game = startedGame(market);
+  const companyIds = market.days[0]!.news.slice(0, 2).map(item => item.headline.companyId);
+  for (const companyId of companyIds) {
+    const id = findContract(market, 1, id => decodeContractId(game.targetsPerCompany, id).companyId === companyId && isOffered(boardFor(market, 1), id) && isTradable(priceOf(market, 1, 0, id)) && priceOf(market, 1, 0, id) <= 100_000);
+    const bought = applyCommand(market, game, ME, buyCommand({ day: 1, contractId: id, spendCents: 100_000, seenPriceCents: priceOf(market, 1, 0, id) }), 100);
+    expect(bought.receipt.outcome).toBe('accepted');
+    game = bought.game;
+  }
+  const during = project(market, game, 100);
+  expect(during.days).toEqual([]);
+  expect(during.account.canBuy).toBe(true);
+  expect(during.account.capCents).toBe(50_000_000 - me(game).positions.reduce((total, position) => total + position.costCents, 0));
+  expect(project(scrambleFuture(market, 100), game, 100)).toEqual(during);
+  const ended = project(market, advanceTo(market, game, 800), 800);
+  expect(ended.days[0]?.reviews?.map(review => review.positionId)).toEqual(['d1', 'd1-p2']);
+  expect(ended.days[0]?.reviews?.map(review => review.companyId)).toEqual(companyIds);
+  for (const review of ended.days[0]!.reviews!) expect(review.news?.companyId).toBe(review.companyId);
+  expect(frameSchema.parse(JSON.parse(JSON.stringify(ended)))).toEqual(ended);
+  expect(ended.days[0]?.changeCents).toBe(ended.positions.reduce((total, position) => total + position.profitCents, 0));
+});
 
 /**
  * A copy of the market in which everything that has not happened yet at
@@ -324,7 +347,7 @@ describe('projectFrame', () => {
     expect((position?.realCents ?? NaN) + (position?.hopeCents ?? NaN)).toBe(priceOf(market, 3, 100, position?.contractId ?? -1));
     expect(frame.account.cashCents).toBe(me(game).cashCents);
     expect(frame.account.worthCents).toBe(me(game).cashCents + (position?.valueCents ?? NaN));
-    expect(frame.account.canBuy).toBe(false);
+    expect(frame.account.canBuy).toBe(true);
 
     const after = project(market, advanceTo(market, game, 1800 + 800), 1800 + 800);
     expect(after.account.worthCents).toBe(after.account.cashCents);
@@ -345,7 +368,7 @@ describe('projectFrame', () => {
     expect(project(market, game, 100).account.canBuy).toBe(true);
     expect(project(market, game, 799).account.canBuy).toBe(true);
     expect(project(market, advanceTo(market, game, 800), 800).account.canBuy).toBe(false);
-    expect(project(market, gameAt(400), 400).account.canBuy).toBe(false);
+    expect(project(market, gameAt(400), 400).account.canBuy).toBe(true);
     const stress = startedGame(market, { targetsPerCompany: 209 });
     const frame = project(market, stress, 400);
     expect(frame.account.canBuy).toBe(false);

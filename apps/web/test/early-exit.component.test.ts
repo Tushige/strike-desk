@@ -29,8 +29,8 @@ it('keeps an open ticket separate from completed-day results and warns about unr
   });
   render(createElement(EarlyExitScreen, { exit: { frame, pending: true, stale: true } }));
   expect(screen.getByText('$1,050,000')).toBeTruthy();
-  expect(screen.getByText(/Cash \$900,000/).textContent).toContain('Open ticket $150,000');
-  expect(screen.getByText(/did not cash it out or settle it/)).toBeTruthy();
+  expect(screen.getByText(/Cash \$900,000/).textContent).toContain('Open positions $150,000');
+  expect(screen.getByText(/did not cash them out or settle them/)).toBeTruthy();
   expect(screen.getByText(/An order was still being checked/)).toBeTruthy();
   expect(within(screen.getByRole('group', { name: 'Review completed days' })).getAllByRole('button')).toHaveLength(1);
   expect(screen.queryByText('Settled at the bell')).toBeNull();

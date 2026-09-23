@@ -10,7 +10,7 @@ import { DayTickets } from './DayTickets';
 import { EndGameButton } from './EndGameButton';
 
 /**
- * The bar across the top: logo, one ticket per day, the time left, and the
+ * The bar across the top: logo, the five-day strip, the time left, and the
  * money. Total worth is the big number, because it only moves when the
  * market moves: buying a ticket turns cash into a ticket worth the same,
  * not into a loss.

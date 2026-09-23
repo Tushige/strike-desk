@@ -1,11 +1,12 @@
-import { useEffect, useReducer, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react';
 import type { Frame } from '@strike-desk/shared/protocol';
 import { connection, newCommandId, store, submitTrade, restoredIntent, restoredOutcome } from '../../boot';
 import { lineStateOf } from '../../modules/connection/index';
 import { createDraftPacer, createLatestState, createTicketHandlers, initialTicketState, ticketReducer } from '../../modules/order-ticket/index';
 import type { TicketContract, TicketHandlers, TicketSnapshot, TicketState, TradingTicketProps } from '../../modules/order-ticket/index';
 import { useConnectionState } from '../../store/hooks';
-import { ticketSlices } from './sources';
+import { openTicketOf, ticketSlices } from './sources';
+import { deriveSlice, sameFields } from '../../store/derive';
 
 /**
  * The order ticket's state machine, wired to the running game: the slices
@@ -22,7 +23,7 @@ export interface TicketMachine {
   handlers: TicketHandlers;
 }
 
-/** The spend chips, in cents. The last chip is "half your cash", whose amount is the server's cap. */
+/** The spend chips, in cents. The last chip is the server's remaining daily allowance. */
 export const SPEND_CHIPS = [5_000_000, 10_000_000, 25_000_000] as const;
 
 function startingState(seed: { day: number; contractId: number | null; held: boolean }): TicketState {
@@ -32,10 +33,14 @@ function startingState(seed: { day: number; contractId: number | null; held: boo
     command: { id: restoredIntent.command.commandId, kind: restoredIntent.command.t, day: restoredIntent.day } };
 }
 
-export function useTicketMachine(frame: Frame, contract: TicketContract | null, onPick: (contractId: number) => void): TicketMachine {
+export function useTicketMachine(frame: Frame, contract: TicketContract | null, onPick: (contractId: number) => void, positionId: string | null): TicketMachine {
   const quote = useSyncExternalStore(ticketSlices.quote.subscribe, ticketSlices.quote.get);
   const account = useSyncExternalStore(ticketSlices.account.subscribe, ticketSlices.account.get);
-  const position = useSyncExternalStore(ticketSlices.position.subscribe, ticketSlices.position.get);
+  const positionSlice = useMemo(() => {
+    const slice = deriveSlice(store.frame, value => openTicketOf(value, positionId), sameFields);
+    return { get: () => slice.get(), subscribe: (listener: () => void) => slice.subscribe(listener) };
+  }, [positionId]);
+  const position = useSyncExternalStore(positionSlice.subscribe, positionSlice.get);
   const connectionPhase = useConnectionState().phase;
   const line = lineStateOf(connectionPhase);
   const day = frame.clock.day;
@@ -53,7 +58,7 @@ export function useTicketMachine(frame: Frame, contract: TicketContract | null, 
     spendChoices: [...SPEND_CHIPS, account.capCents],
     quote: ticketSlices.quote,
     account: ticketSlices.account,
-    position: ticketSlices.position,
+    position: positionSlice,
     line,
     retryOffered: true,
     onRetry: () => {
@@ -80,6 +85,7 @@ export function useTicketMachine(frame: Frame, contract: TicketContract | null, 
     createTicketHandlers({ state: latest.state, props: () => latestProps.current, send: latest.send }),
   );
   const { send } = latest;
+  useEffect(() => { send({ type: 'editing' }); }, [positionId, send]);
   useEffect(() => {
     if (restoredOutcome !== null && restoredIntent !== null) {
       const id = restoredIntent.command.commandId;

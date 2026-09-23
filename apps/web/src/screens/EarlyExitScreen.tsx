@@ -20,8 +20,8 @@ export function EarlyExitScreen({ exit }: { exit: EarlyExit }) {
   const [selected, setSelected] = useState(frame.days.at(-1)?.day ?? 1);
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => { heading.current?.focus(); }, []);
-  const openTicket = frame.positions.find(position => position.status === 'open');
-  const currentTrade = frame.positions.find(position => position.day === frame.clock.day);
+  const openTickets = frame.positions.filter(position => position.status === 'open');
+  const currentTrades = frame.positions.filter(position => position.day === frame.clock.day);
   const completeToday = frame.days.some(day => day.day === frame.clock.day);
   return <div className="app-shell flex min-h-dvh flex-col">
     <header className="flex min-h-[76px] flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3 sm:px-7">
@@ -41,14 +41,14 @@ export function EarlyExitScreen({ exit }: { exit: EarlyExit }) {
           <div className="summary-balance">
             <span className="summary-caption">Last observed portfolio value</span>
             <div className="summary-total">{money(frame.account.worthCents)}</div>
-            <p className="summary-caption">Cash {money(frame.account.cashCents)}{openTicket && <> · Open ticket {money(openTicket.valueCents)}</>}</p>
+            <p className="summary-caption">Cash {money(frame.account.cashCents)}{openTickets.length > 0 && <> · Open positions {money(openTickets.reduce((sum, position) => sum + position.valueCents, 0))}</>}</p>
           </div>
         </div>
         <div className="summary-journey-body">
           {(exit.pending || exit.stale) && <p className="text-sm text-sun">{exit.pending ? 'An order was still being checked when you left. It will not be retried; this snapshot may not include its result.' : 'The connection was interrupted. These are the last values received, which may be out of date.'}</p>}
           {!completeToday && <section aria-label="Unfinished day" className="mb-6 rounded-xl bg-raised p-4 text-sm leading-relaxed">
             <h2 className="m-0 mb-2 font-semibold">Day {frame.clock.day} · Clocked out early</h2>
-            <p className="m-0 text-muted">{openTicket ? <>Your {frame.companies[openTicket.companyId]?.name} {openTicket.side === 'up' ? 'UP' : 'DOWN'} ticket was still open. Its last value is included above, but ending the game did not cash it out or settle it.</> : currentTrade ? <>You cashed out today for {money(currentTrade.exit?.proceedsCents ?? currentTrade.valueCents)}, a {signedMoney(currentTrade.profitCents)} result. The day was not completed.</> : 'No ticket bought today. This unfinished day is not counted as a completed day.'}</p>
+            <p className="m-0 text-muted">{openTickets.length > 0 ? <>{openTickets.length} {openTickets.length === 1 ? 'position was' : 'positions were'} still open. Their last values are included above, but ending the game did not cash them out or settle them.</> : currentTrades.length > 0 ? <>You cashed out today for {money(currentTrades.reduce((sum, position) => sum + (position.exit?.proceedsCents ?? position.valueCents), 0))}, a {signedMoney(currentTrades.reduce((sum, position) => sum + position.profitCents, 0))} result. The day was not completed.</> : 'No ticket bought today. This unfinished day is not counted as a completed day.'}</p>
           </section>}
           {frame.days.length > 0 ? <>
             <h2 className="text-base font-semibold">The days you completed</h2>

@@ -7,7 +7,7 @@ import type { Cents } from './money';
 import { quantityForSpend, totalCents } from './money';
 import { SHARES_PER_TICKET, isTradable } from './pricing';
 import type { Command, Receipt, RejectReason, Side } from './protocol';
-import { BUY_TOLERANCE_BPS, BUY_TOLERANCE_FLOOR_CENTS, decodeContractId } from './protocol';
+import { BUY_TOLERANCE_BPS, BUY_TOLERANCE_FLOOR_CENTS, MAX_DAILY_PURCHASES, decodeContractId } from './protocol';
 
 /**
  * The rules of a game, as pure functions of the logical step. A game is what
@@ -22,7 +22,7 @@ import { BUY_TOLERANCE_BPS, BUY_TOLERANCE_FLOOR_CENTS, decodeContractId } from '
  */
 
 export const STARTING_CASH_CENTS: Cents = 100_000_000;
-/** At most this share of cash may go on one day's ticket... */
+/** At most this share of start-of-day cash may fund all that day's purchases... */
 export const SPEND_CAP_FRACTION = 0.5;
 /** ...rounded down to a multiple of this. */
 export const SPEND_CAP_ROUND_CENTS: Cents = 100_000;
@@ -122,6 +122,13 @@ export function spendCapCents(cashCents: Cents): Cents {
   return Math.floor(half / SPEND_CAP_ROUND_CENTS) * SPEND_CAP_ROUND_CENTS;
 }
 
+/** Cash-outs never refill the day's purchase allowance. Actual filled costs consume it. */
+export function remainingDaySpendCents(player: PlayerState, day: number): Cents {
+  const opening = day <= 1 ? STARTING_CASH_CENTS : player.dayEndCents[day - 2] ?? player.cashCents;
+  const spent = player.positions.filter(position => position.day === day).reduce((sum, position) => sum + position.costCents, 0);
+  return Math.max(0, Math.min(player.cashCents, spendCapCents(opening) - spent));
+}
+
 /** The share price at which a ticket has earned back what it cost. */
 export function breakEvenCents(targetCents: Cents, ticketPriceCentsPaid: Cents, side: Side): Cents {
   const perShare = Math.round(ticketPriceCentsPaid / SHARES_PER_TICKET);
@@ -195,7 +202,8 @@ function buy(market: Market, game: GameState, player: PlayerState, command: Extr
   if (command.day !== moment.day) return { reason: 'wrongDay' };
   if (game.stress) return { reason: 'stressMode' };
   if (moment.phase !== 'preBell' && moment.phase !== 'open') return { reason: 'marketClosed' };
-  if (player.positions.some((position) => position.day === moment.day)) return { reason: 'alreadyBought' };
+  const purchases = player.positions.filter((position) => position.day === moment.day).length;
+  if (purchases >= MAX_DAILY_PURCHASES) return { reason: 'alreadyBought' };
   const board = boardFor(market, moment.day, game.targetsPerCompany);
   const quote = quoteAt(market, moment.day, moment.priceIndex, board, command.contractId);
   if (quote === null) return { reason: 'unknownContract' };
@@ -203,7 +211,7 @@ function buy(market: Market, game: GameState, player: PlayerState, command: Extr
   if (!isTradable(quote.priceCents)) return { reason: 'tooCheap' };
   // Cash first: the cap is never more than the cash, so the other order would hide this reason.
   if (command.spendCents > player.cashCents) return { reason: 'notEnoughCash' };
-  if (command.spendCents > spendCapCents(player.cashCents)) return { reason: 'overCap' };
+  if (command.spendCents > remainingDaySpendCents(player, moment.day)) return { reason: 'overCap' };
   if (!withinTolerance(quote.priceCents, command.seenPriceCents)) return { reason: 'priceMoved' };
   const quantity = quantityForSpend(command.spendCents, quote.priceCents);
   if (quantity < 1) return { reason: 'spendTooSmall' };
@@ -211,7 +219,7 @@ function buy(market: Market, game: GameState, player: PlayerState, command: Extr
   const ref = decodeContractId(board.targetsPerCompany, command.contractId);
   const costCents = totalCents(quote.priceCents, quantity);
   const position: PositionRecord = {
-    id: `d${moment.day}`,
+    id: purchases === 0 ? `d${moment.day}` : `d${moment.day}-p${purchases + 1}`,
     day: moment.day,
     contractId: command.contractId,
     companyId: ref.companyId,

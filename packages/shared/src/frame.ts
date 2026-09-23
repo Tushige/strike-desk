@@ -2,14 +2,14 @@ import { contractCount } from './board';
 import { quoteDraft } from './draft';
 import { DAYS, GAME_STEPS, OPEN_STEPS, momentAt } from './clock';
 import type { GameState, PositionRecord } from './game';
-import { STARTING_CASH_CENTS, breakEvenCents, playerOf, spendCapCents } from './game';
+import { STARTING_CASH_CENTS, breakEvenCents, playerOf, remainingDaySpendCents, spendCapCents } from './game';
 import type { Market, MarketDay } from './market';
 import { newsResolution } from './newsResolution';
 import { boardFor, marketDay, quoteAt } from './market';
 import { sharePriceCents, totalCents } from './money';
 import { MIN_TICKET_PRICE_CENTS } from './pricing';
 import type { CompanyView, DraftRequest, Frame, NewsView, PositionView } from './protocol';
-import { FRAME_RECEIPTS, decodeContractId } from './protocol';
+import { FRAME_RECEIPTS, MAX_DAILY_PURCHASES, decodeContractId } from './protocol';
 import { seedToMarketCode } from './rng';
 
 /**
@@ -135,10 +135,21 @@ export function projectFrame(market: Market, game: GameState, playerId: string, 
     : player.dayEndCents.map((endCents, index) => {
         const startCents = index === 0 ? STARTING_CASH_CENTS : (player.dayEndCents[index - 1] ?? STARTING_CASH_CENTS);
         const day = index + 1;
-        const position = player.positions.find(item => item.day === day);
+        const trades = player.positions.filter(item => item.day === day);
+        const position = trades[0];
         const data = marketDay(market, day);
         const news = position === undefined ? undefined : projectNews(data, OPEN_STEPS).find(item => item.companyId === position.companyId);
+        const reviews = trades.length < 2 ? undefined : trades.map(trade => {
+          const news = projectNews(data, OPEN_STEPS).find(item => item.companyId === trade.companyId);
+          return {
+            positionId: trade.id, companyId: trade.companyId,
+            openingCents: sharePriceCents(data.paths[trade.companyId]?.[0] ?? 0),
+            closingCents: sharePriceCents(data.paths[trade.companyId]?.[OPEN_STEPS] ?? 0),
+            ...(news === undefined ? {} : { news }),
+          };
+        });
         return { day, startCents, endCents, changeCents: endCents - startCents,
+          ...(reviews === undefined ? {} : { reviews }),
           ...(position === undefined ? {} : { review: {
             companyId: position.companyId,
             openingCents: sharePriceCents(data.paths[position.companyId]?.[0] ?? 0),
@@ -233,7 +244,7 @@ export function projectFrame(market: Market, game: GameState, playerId: string, 
     .filter((position) => position.status === 'open')
     .reduce((sum, position) => sum + position.valueCents, 0);
   const marketIsOpen = moment.phase === 'preBell' || moment.phase === 'open';
-  const boughtToday = player.positions.some((position) => position.day === moment.day);
+  const purchasesToday = player.positions.filter((position) => position.day === moment.day).length;
 
   const frame: Frame = {
     t: 'frame',
@@ -253,8 +264,8 @@ export function projectFrame(market: Market, game: GameState, playerId: string, 
     account: {
       cashCents: player.cashCents,
       worthCents: player.cashCents + openValueCents,
-      capCents: spendCapCents(player.cashCents),
-      canBuy: marketIsOpen && !boughtToday && !game.stress,
+      capCents: remainingDaySpendCents(player, moment.day),
+      canBuy: marketIsOpen && purchasesToday < MAX_DAILY_PURCHASES && !game.stress,
     },
     positions,
     receipts,

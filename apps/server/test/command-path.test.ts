@@ -258,21 +258,23 @@ describe('the input log', () => {
     }
 
     // A day with every kind of thing in it: a start, a buy, the same buy
-    // again, a second buy that is refused, a cash-out in the open market, a
+    // again, two more purchases and a refused fourth, a cash-out in the open market, a
     // skip to the bell and the next day.
     play({ t: 'start', commandId: newId(), pace: 1 }, T0);
     const firstBuy = buy(closeUp(frameAt(session, msAtStep(10))));
     expect(play(firstBuy, msAtStep(10)).reply.receipt.outcome).toBe('accepted');
     expect(play(firstBuy, msAtStep(25)).repeat).toBe(true);
-    expect(play(buy(closeUp(frameAt(session, msAtStep(40)))), msAtStep(40)).reply.receipt).toMatchObject({ outcome: 'rejected', reason: 'alreadyBought' });
+    expect(play(buy(closeUp(frameAt(session, msAtStep(40)))), msAtStep(40)).reply.receipt.outcome).toBe('accepted');
+    expect(play(buy(closeUp(frameAt(session, msAtStep(50)))), msAtStep(50)).reply.receipt.outcome).toBe('accepted');
+    expect(play(buy(closeUp(frameAt(session, msAtStep(60)))), msAtStep(60)).reply.receipt).toMatchObject({ outcome: 'rejected', reason: 'alreadyBought' });
     expect(play({ t: 'cashOut', commandId: newId(), positionId: 'd1' }, msAtStep(350)).reply.receipt.outcome).toBe('accepted');
     expect(play({ t: 'skipToBell', commandId: newId(), day: 1 }, msAtStep(360)).reply.receipt.outcome).toBe('accepted');
     // The skip put the game at the bell, step 800, at that clock reading. Two seconds on is step 810, in the debrief.
     expect(play({ t: 'nextDay', commandId: newId(), day: 1 }, msAtStep(360) + 2_000).reply.receipt.outcome).toBe('accepted');
 
     const log = playerOf(session.game, PLAYER).log;
-    // Six of the seven: all but the repeat, in the order they came, the refused one included.
-    expect(log.map((entry) => entry.step)).toEqual([0, 10, 40, 350, 360, 810]);
+    // All but the repeat, in the order they came, the refused one included.
+    expect(log.map((entry) => entry.step)).toEqual([0, 10, 40, 50, 60, 350, 360, 810]);
     expect(log.map((entry) => entry.command)).toEqual(sent.filter((one) => !one.repeat).map((one) => one.command));
 
     // The log and the market are enough: a fresh game of the same market, fed

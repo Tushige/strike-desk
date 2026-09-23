@@ -218,21 +218,21 @@ export function TicketBuilder({
           {[...SPEND_CHIPS, cap].map((amount, i) => {
             const half = i === SPEND_CHIPS.length;
             const selected = state.spendCents === amount;
-            const tooMuch = half ? cap < 100_000 : amount > cap;
+            const tooMuch = half ? cap < frame.minTicketCents : amount > cap;
             return (
               <ChoiceButton
                 key={half ? 'half' : amount}
                 selected={selected}
                 disabled={tooMuch || locked}
-                title={half ? `Half your cash: ${money(cap)}` : undefined}
-                aria-label={half ? `Half your cash, ${money(cap)}` : undefined}
+                title={half ? `Remaining daily allowance: ${money(cap)}` : undefined}
+                aria-label={half ? `Remaining daily allowance, ${money(cap)}` : undefined}
                 onClick={() => { setCustom(null); setCustomDay(null); handlers.onChooseSpend(amount); }}
                 className={cx(
                   'h-12 rounded-lg border text-[15px] font-bold short:h-10',
                   selected ? 'border-sun bg-sun/10 text-sun' : 'border-line text-cloud',
                 )}
               >
-                {half ? 'Half' : `$${String(amount / 100_000)}K`}
+                {half ? 'Left' : `$${String(amount / 100_000)}K`}
               </ChoiceButton>
             );
           })}

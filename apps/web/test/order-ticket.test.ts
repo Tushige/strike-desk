@@ -65,6 +65,14 @@ function receipt(commandId: string, over: Partial<Receipt>): Receipt {
 }
 
 describe('the order ticket: a buy, from the press to the answer', () => {
+  it('reopens a saved draft for another purchase without releasing an unanswered order', () => {
+    const pending = ticketReducer(chosen(), { type: 'pressed', commandId: 'sale', kind: 'cashOut' });
+    expect(ticketReducer(pending, { type: 'editing' })).toBe(pending);
+    const checking = ticketReducer(pending, { type: 'line', line: 'offline' });
+    expect(ticketReducer(checking, { type: 'editing' })).toBe(checking);
+    const accepted = ticketReducer(pending, { type: 'outcome', commandId: 'sale', outcome: { outcome: 'accepted', receipt: receipt('sale', { kind: 'cashOut' }) } });
+    expect(ticketReducer(accepted, { type: 'editing' })).toMatchObject({ form: 'draft', command: null, contractId: 24, spendCents: 5_000_000 });
+  });
   it('starts in draft with no command in flight and nothing to say', () => {
     expect(initialTicketState({ day: 1, contractId: null, spendCents: null, held: false })).toEqual({
       form: 'draft',

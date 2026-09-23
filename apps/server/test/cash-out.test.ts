@@ -84,7 +84,8 @@ describe('cashing out over the game socket', () => {
       const sold = result.frame.positions[0]!;
       expect(sold).toMatchObject({ id: position.id, status: 'cashedOut', exit: { kind: 'cashOut', proceedsCents: position.valueCents }, ifHeldCents: position.valueCents });
       expect(result.frame.account.cashCents).toBeGreaterThan(bought.frame.account.cashCents);
-      expect(result.frame.account.canBuy).toBe(false);
+      expect(result.frame.account.canBuy).toBe(true);
+      expect(result.frame.account.capCents).toBe(bought.frame.account.capCents);
       expect(result.frame.clock).toEqual(bought.frame.clock);
       for (const repeat of [command, { ...command, positionId: 'another-position' }]) {
         client.send(repeat); const duplicate = await client.nextReply();

@@ -51,6 +51,8 @@ export interface TicketSnapshot {
 }
 
 export type TicketEvent =
+  /** Explicitly switch between a saved draft and an owned position. Pending commands stay locked. */
+  | { type: 'editing' }
   /** The desk selected another contract, or none. */
   | { type: 'contract'; contractId: number | null }
   /** The player chose a spend. */
@@ -137,6 +139,8 @@ function afterOutcome(state: TicketState, command: NonNullable<TicketState['comm
  */
 export function ticketReducer(state: TicketState, event: TicketEvent): TicketState {
   switch (event.type) {
+    case 'editing':
+      return state.form === 'pending' || state.form === 'checking' ? state : backToDraft(state, null);
     case 'contract': {
       if (event.contractId === state.contractId) return state;
       return { ...afterChange(state), contractId: event.contractId };

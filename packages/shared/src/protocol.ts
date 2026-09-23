@@ -311,14 +311,23 @@ export type PositionView = z.infer<typeof positionViewSchema>;
 
 export const accountViewSchema = z.object({
   cashCents: cents,
-  /** Cash plus what the open ticket would sell for right now. */
+  /** Cash plus what all open positions would sell for right now. */
   worthCents: cents,
-  /** The most that may be spent on today's ticket. */
+  /** Remaining daily spending allowance, after actual purchase costs. */
   capCents: cents,
-  /** False when today's ticket is already bought, the market is closed, or the stress setting is on. */
+  /** False after three purchases, when the market is closed, or in the read-only stress setting. */
   canBuy: z.boolean(),
 });
 export type AccountView = z.infer<typeof accountViewSchema>;
+
+export const MAX_DAILY_PURCHASES = 3;
+
+const dayTradeReviewSchema = z.object({
+  companyId: count,
+  openingCents: cents,
+  closingCents: cents,
+  news: newsViewSchema.optional(),
+});
 
 export const dayResultSchema = z.object({
   day,
@@ -327,12 +336,9 @@ export const dayResultSchema = z.object({
   /** What the day changed: `endCents` minus `startCents`. Negative for a losing day. */
   changeCents: cents,
   /** Completed-day context for the company traded; survives later days and refresh. */
-  review: z.object({
-    companyId: count,
-    openingCents: cents,
-    closingCents: cents,
-    news: newsViewSchema.optional(),
-  }).optional(),
+  review: dayTradeReviewSchema.optional(),
+  /** Per-purchase context when a day has multiple purchases. */
+  reviews: z.array(dayTradeReviewSchema.extend({ positionId: z.string() })).optional(),
 });
 export type DayResult = z.infer<typeof dayResultSchema>;
 

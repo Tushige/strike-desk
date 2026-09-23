@@ -502,7 +502,7 @@ describe("authoritative buy boundaries", () => {
         });
         expect(bought.reply.frame.account).toMatchObject({
             cashCents: 99998000,
-            canBuy: false,
+            canBuy: true,
         });
         expect(playerOf(bought.session.game, FIRST_PLAYER_ID).log).toHaveLength(
             3,
@@ -558,10 +558,10 @@ describe("authoritative buy boundaries", () => {
         },
     );
 
-    it("checks an existing daily ticket before an unknown contract, including a settled ticket", () => {
+    it("checks three used purchases before an unknown contract, including a cashed-out position", () => {
         const { session, nowMs } = sessionAt("open");
         const ticket = quotedAt(frameAt(session, nowMs), 1000);
-        const bought = handle({
+        let bought = handle({
             session,
             playerId: FIRST_PLAYER_ID,
             nowMs,
@@ -575,6 +575,11 @@ describe("authoritative buy boundaries", () => {
                 seenPriceCents: 1000,
             },
         });
+        for (const commandId of ['second-ticket', 'third-ticket']) {
+            bought = handle({ session: bought.session, playerId: FIRST_PLAYER_ID, nowMs, draft: null,
+                command: { t: 'buy', commandId, day: 1, contractId: ticket.contractId, spendCents: 2500, seenPriceCents: 1000 } });
+            expect(bought.reply.receipt.outcome).toBe('accepted');
+        }
         const closed = handle({
             session: bought.session,
             playerId: FIRST_PLAYER_ID,
@@ -605,7 +610,7 @@ describe("authoritative buy boundaries", () => {
                 outcome: "rejected",
                 reason: "alreadyBought",
             });
-            expect(result.reply.frame.positions).toHaveLength(1);
+            expect(result.reply.frame.positions).toHaveLength(3);
         }
     });
 

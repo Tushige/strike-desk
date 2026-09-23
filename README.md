@@ -1,6 +1,6 @@
 # Strike Desk
 
-A five-day options game with six fictional companies and $1,000,000 of pretend money. Choose a 15-, 5-, or 2-minute pace, read source-rated news, and buy at most one whole-ticket position each day using at most half your cash. Buy UP/call or DOWN/put, cash out during trading, hold to the bell, or sit out. A paying ticket can still lose money after its premium.
+A five-day options game with six fictional companies and $1,000,000 of pretend money. Choose a 15-, 5-, or 2-minute pace, read source-rated news, and make up to three purchases each day using a shared allowance of half your start-of-day cash. Buy UP/call or DOWN/put, cash out each position independently during trading, hold to the bell, or sit out. Cashing out does not restore purchase slots or spending allowance. A paying ticket can still lose money after its premium.
 
 This is the Fable interface with selected donor improvements. It preserves the numbered builder, company glyphs/colors, real/hope value bar, authoritative what-if scenarios and annotated chart.
 

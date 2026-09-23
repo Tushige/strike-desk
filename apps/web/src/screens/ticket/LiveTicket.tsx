@@ -2,7 +2,7 @@ import type { Frame, PositionView } from '@strike-desk/shared/protocol';
 import { CASH_OUT_BLOCKER_WORDS, cashOutBlocker } from '../../modules/order-ticket/index';
 import { OpeningBellButton, SkipToBellButton } from '../desk/PhaseActions';
 import { count, money, price, signedMoney } from '../format';
-import { ActionDock, cx, Label, PrimaryButton } from '../ui';
+import { ActionDock, cx, Label, GhostButton } from '../ui';
 import { Notice } from './Notice';
 import { RoboPup } from '../mascot/RoboPup';
 import type { TicketMachine } from './useTicketMachine';
@@ -96,18 +96,19 @@ function TicketSummary({ frame, position }: { frame: Frame; position: PositionVi
 
 export function LiveTicket({ frame, position, machine }: { frame: Frame; position: PositionView; machine: TicketMachine }) {
   const blocker = cashOutBlocker(machine.state, machine.snapshot);
+  const purchaseNumber = frame.positions.filter(item => item.day === position.day).findIndex(item => item.id === position.id) + 1;
   return (
     <div className="flex min-h-full flex-col gap-[18px] short:gap-3.5">
-      <h2 className="ticket-panel-heading ticket-mascot-heading m-0">Your ticket <RoboPup pose="stamp" active={machine.state.notice?.kind === 'accepted' && machine.state.notice.of === 'buy'} /></h2>
+      <h2 className="ticket-panel-heading ticket-mascot-heading m-0">Purchase {purchaseNumber} <RoboPup pose="stamp" active={machine.state.notice?.kind === 'accepted' && machine.state.notice.of === 'buy'} /></h2>
       <div className="ticket-content">
       <TicketSummary frame={frame} position={position} />
       <BigMoney label="Worth right now" value={position.valueCents} paid={position.costCents} profit={position.profitCents} dim={machine.snapshot.line !== 'live'} />
       <ValueBar position={position} />
       </div>
       <ActionDock>
-        <PrimaryButton className="live-trade-action h-16 short:h-[52px]" disabled={blocker !== null} onClick={() => { machine.handlers.onPress('cashOut'); }}>
+        <GhostButton tone="line" className="live-trade-action h-16 short:h-[52px]" disabled={blocker !== null} onClick={() => { machine.handlers.onPress('cashOut'); }}>
           <span>Cash out</span><span>{money(position.valueCents)}</span>
-        </PrimaryButton>
+        </GhostButton>
         {blocker !== null && CASH_OUT_BLOCKER_WORDS[blocker] !== null && (
           <p className="m-0 text-xs text-muted" role="status">{CASH_OUT_BLOCKER_WORDS[blocker]}</p>
         )}

@@ -589,3 +589,38 @@
   .topbar-metrics > :first-child { align-items: flex-start; }
   .topbar-metrics > :first-child > span { text-align: left; }
 }
+
+@layer components {
+  .ticket-region > .purchase-panel { display: block; overflow-y: auto; scrollbar-width: thin; }
+  .purchase-allowance { padding: 18px 20px 14px; border-bottom: 1px solid var(--color-line); }
+  .purchase-title, .purchase-budget { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .purchase-title h2 { margin: 0; font-size: 16px; font-weight: 700; }
+  .purchase-title > span, .purchase-budget { font-size: 11px; color: var(--color-muted); }
+  .purchase-budget strong { color: var(--color-cloud); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .purchase-marks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 13px 0; }
+  .purchase-marks span { height: 5px; border-radius: 2px; background: var(--color-line); }
+  .purchase-marks .used { background: var(--color-sun); }
+  .purchase-new { display: flex; align-items: center; justify-content: space-between; width: calc(100% - 40px); min-height: 52px; margin: 16px 20px 0; padding: 12px 14px; border-radius: 8px; background: var(--color-sun); color: var(--color-ink); font-size: 15px; font-weight: 700; cursor: pointer; transition: transform 160ms ease, filter 160ms ease; }
+  .purchase-new > span:last-child { font-size: 12px; font-weight: 500; }
+  .purchase-new:hover:not(:disabled) { filter: brightness(1.06); transform: translateY(-1px); }
+  .purchase-new:active:not(:disabled) { transform: translateY(1px); }
+  .purchase-new:disabled, .purchase-row:disabled { cursor: wait; opacity: .6; }
+  .purchase-new:focus-visible, .purchase-row:focus-visible { outline: 2px solid var(--color-cloud); outline-offset: 3px; }
+  .purchase-holdings { padding: 12px 20px 16px; }
+  .purchase-empty { margin: 6px 0 0; color: var(--color-muted); font-size: 12px; line-height: 1.6; }
+  .purchase-list { display: flex; flex-direction: column; gap: 4px; }
+  .purchase-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 10px; width: 100%; padding: 11px 10px; text-align: left; border: 1px solid transparent; border-bottom-color: var(--color-line); border-radius: 6px; color: var(--color-muted); font-size: 11px; cursor: pointer; transition: background 160ms ease, border-color 160ms ease; }
+  .purchase-row strong { color: var(--color-cloud); font-size: 12px; font-weight: 600; }
+  .purchase-row:hover { background: var(--color-raised); }
+  .purchase-row[aria-pressed="true"] { background: var(--color-raised); border-color: var(--color-line); box-shadow: inset 3px 0 var(--color-sun); }
+  .purchase-number { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .purchase-detail { border-top: 1px solid var(--color-line); }
+  .purchase-detail > div, .purchase-detail > div > div { min-height: 0; }
+  .purchase-panel .ticket-content { overflow: visible; flex: none; }
+  .purchase-panel .live-trade-action { background: transparent; color: var(--color-cloud); border: 1px solid var(--color-line); }
+  @media (min-width: 1024px) {
+    .ticket-region > .purchase-panel { display: flex; flex-direction: column; overflow: hidden; }
+    .purchase-allowance, .purchase-new, .purchase-holdings { flex-shrink: 0; }
+    .purchase-detail { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+  }
+}

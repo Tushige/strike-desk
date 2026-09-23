@@ -142,8 +142,8 @@ export interface OpenTicket {
  * message itself, so it never became a command.
  *
  * After `lost` the form returns to `draft`, and the next press is a new
- * command with a new id. That is safe because the server never buys or pays
- * twice for the same day: a second buy comes back `alreadyBought`, and a
+ * command with a new id. It is a separate purchase, subject to the day's
+ * remaining allowance and three-purchase limit. A
  * second cash-out comes back `alreadyClosed`, or, once the closing bell has
  * already sold the ticket, accepted for that same sale with the money paid
  * once. Only a command that is still unanswered is sent again, and that

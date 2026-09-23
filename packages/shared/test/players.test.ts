@@ -152,7 +152,7 @@ describe('two players in one game share the market and never an account', () => 
     expect(theirs.receipts).not.toEqual(mine.receipts);
     expect(theirs.rev).not.toBe(mine.rev);
 
-    expect(mine).toMatchObject({ rev: 2, account: { cashCents: playerOf(game, 'p1').cashCents, canBuy: false } });
+    expect(mine).toMatchObject({ rev: 2, account: { cashCents: playerOf(game, 'p1').cashCents, canBuy: true } });
     expect(mine.positions).toHaveLength(1);
     expect(mine.receipts).toHaveLength(2);
     expect(theirs).toMatchObject({ rev: 0, positions: [], receipts: [], account: { cashCents: STARTING_CASH_CENTS, worthCents: STARTING_CASH_CENTS, canBuy: true } });

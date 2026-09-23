@@ -20,8 +20,7 @@ const MARKET_CODE = seedToMarketCode(TEST_SEED);
 /**
  * A copy of the market in which everything that has not happened yet at
  * `step` is replaced with something else: the rest of today's prices, the
- * outcome of every headline whose move has not landed (and, until the bell,
- * the truth of those that have), and every later day entirely.
+ * outcome of every headline whose move has not landed, and every later day entirely.
  */
 function scrambleFuture(source: Market, step: number): Market {
   const copy = structuredClone(source);
@@ -38,7 +37,7 @@ function scrambleFuture(source: Market, step: number): Market {
         const firstFuture = today ? priceIndex + 1 : 1;
         item.hidden.revealIndex = item.hidden.revealIndex === firstFuture ? firstFuture + 1 : firstFuture;
       }
-      if (!today || priceIndex < OPEN_STEPS) {
+      if (!landed) {
         item.hidden.wasTrue = !item.hidden.wasTrue;
         item.hidden.move = -3 * item.hidden.move + 0.01;
       }
@@ -133,7 +132,8 @@ describe('projectFrame keeps the future secret', () => {
       expect(frame.positions[0]).toMatchObject({ costCents: 200000, valueCents: 200000, profitCents: 0, ifHeldCents: 400000,
         exit: { kind: 'cashOut', step: 798, proceedsCents: 200000 } });
       expect(frame.account.cashCents).toBe(100000000);
-      expect(frame.days[0]).toEqual({ day: 1, startCents: 100000000, endCents: 100000000, changeCents: 0 });
+      expect(frame.days[0]).toEqual({ day: 1, startCents: 100000000, endCents: 100000000, changeCents: 0,
+        review: { companyId: 0, openingCents: 10000, closingCents: 12000 } });
       expect(project(source, game, step)).toEqual(frame);
       if (step === GAME_STEPS) expect(frame.final).toMatchObject({ finalCents: 100000000, changeCents: 0 });
     }
@@ -792,7 +792,7 @@ describe('projectFrame, live form', () => {
     const step = 1800 + 300 + 100;
     const game = gameAt(step);
     const sealed = sealFuture(market, step);
-    expect(() => project(sealed, game, step, false)).toThrow('a headline\'s wording was read');
+    expect(() => project(sealed, game, step, false)).toThrow('another day\'s headlines was read');
     expect(() => projectLive(sealed, game, step + 1)).toThrow('a price still to come was read');
   });
 

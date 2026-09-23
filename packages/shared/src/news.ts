@@ -33,6 +33,8 @@ export interface HeadlineSlot {
 
 /** What one headline says. */
 export interface HeadlineWords {
+  /** Stable event identity for its later follow-up; carries no outcome. */
+  eventId?: string;
   /** Who is speaking. It belongs to one trust level and to no other. */
   source: string;
   title: string;
@@ -139,6 +141,7 @@ export function createHeadlineWriter(pool: NewsPool): WriteHeadlines {
       const situation = variants?.[Math.floor((selection - index) * variants.length)];
       if (situation === undefined) throw new Error(`missing wording for event ${picked.id}/${company.kind}`);
       return {
+        eventId: picked.id,
         source,
         title: fillIn(situation.title, company),
         body: fillIn(situation.body, company),

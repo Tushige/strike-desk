@@ -3,7 +3,8 @@ import { quoteDraft } from './draft';
 import { DAYS, GAME_STEPS, OPEN_STEPS, momentAt } from './clock';
 import type { GameState, PositionRecord } from './game';
 import { STARTING_CASH_CENTS, breakEvenCents, playerOf, spendCapCents } from './game';
-import type { Market } from './market';
+import type { Market, MarketDay } from './market';
+import { newsResolution } from './newsResolution';
 import { boardFor, marketDay, quoteAt } from './market';
 import { sharePriceCents, totalCents } from './money';
 import { MIN_TICKET_PRICE_CENTS } from './pricing';
@@ -100,6 +101,28 @@ function projectPosition(market: Market, game: GameState, position: PositionReco
   return view;
 }
 
+/** Only landed events are resolved. Completed-day reviews use their own paths. */
+function projectNews(data: MarketDay, priceIndex: number): NewsView[] {
+  return data.news.map(({ headline, hidden }) => {
+    const revealed = priceIndex >= hidden.revealIndex;
+    const view: NewsView = {
+      id: headline.id, day: headline.day, companyId: headline.companyId,
+      trust: headline.trust, source: headline.source, title: headline.title,
+      body: headline.body, direction: headline.direction, revealed,
+    };
+    if (revealed) {
+      view.revealIndex = hidden.revealIndex;
+      Object.assign(view, newsResolution(headline, hidden.wasTrue));
+      view.eventDirection = hidden.move >= 0 ? 'up' : 'down';
+      const path = data.paths[headline.companyId];
+      view.eventBeforeCents = sharePriceCents(path?.[hidden.revealIndex - 1] ?? 0);
+      view.eventAfterCents = sharePriceCents(path?.[hidden.revealIndex] ?? 0);
+    }
+    if (priceIndex >= OPEN_STEPS) view.wasTrue = hidden.wasTrue;
+    return view;
+  });
+}
+
 export function projectFrame(market: Market, game: GameState, playerId: string, step: number, options: ProjectOptions): Frame {
   const player = playerOf(game, playerId);
   const live = options.sections === 'live';
@@ -111,7 +134,18 @@ export function projectFrame(market: Market, game: GameState, playerId: string, 
     ? []
     : player.dayEndCents.map((endCents, index) => {
         const startCents = index === 0 ? STARTING_CASH_CENTS : (player.dayEndCents[index - 1] ?? STARTING_CASH_CENTS);
-        return { day: index + 1, startCents, endCents, changeCents: endCents - startCents };
+        const day = index + 1;
+        const position = player.positions.find(item => item.day === day);
+        const data = marketDay(market, day);
+        const news = position === undefined ? undefined : projectNews(data, OPEN_STEPS).find(item => item.companyId === position.companyId);
+        return { day, startCents, endCents, changeCents: endCents - startCents,
+          ...(position === undefined ? {} : { review: {
+            companyId: position.companyId,
+            openingCents: sharePriceCents(data.paths[position.companyId]?.[0] ?? 0),
+            closingCents: sharePriceCents(data.paths[position.companyId]?.[OPEN_STEPS] ?? 0),
+            ...(news === undefined ? {} : { news }),
+          } }),
+        };
       });
 
   if (!started) {
@@ -192,26 +226,7 @@ export function projectFrame(market: Market, game: GameState, playerId: string, 
     };
   }
 
-  const bellRung = moment.priceIndex >= OPEN_STEPS;
-
-  const news: NewsView[] = data.news.map(({ headline, hidden }) => {
-    const revealed = moment.priceIndex >= hidden.revealIndex;
-    // Field by field: a field added to the internal headline later never reaches the wire by default.
-    const view: NewsView = {
-      id: headline.id,
-      day: headline.day,
-      companyId: headline.companyId,
-      trust: headline.trust,
-      source: headline.source,
-      title: headline.title,
-      body: headline.body,
-      direction: headline.direction,
-      revealed,
-    };
-    if (revealed) view.revealIndex = hidden.revealIndex;
-    if (bellRung) view.wasTrue = hidden.wasTrue;
-    return view;
-  });
+  const news = projectNews(data, moment.priceIndex);
 
   const positions = player.positions.map((position) => projectPosition(market, game, position, step));
   const openValueCents = positions

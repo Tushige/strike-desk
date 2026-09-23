@@ -18,6 +18,7 @@ import { LazyComparison } from "./LazyComparison";
 import { MarketCompany } from "./MarketCompany";
 import { MarketBell } from "./MarketBell";
 import { NewsWire } from "./NewsWire";
+import { NewsUpdate } from "./NewsUpdate";
 import { CompanyList } from "./CompanyList";
 import {
     companyOf,
@@ -321,7 +322,7 @@ export function Desk() {
                     <div className="market-tip rounded-2xl bg-raised p-4">
                         <Bulb className="size-[26px] shrink-0 text-sun" />
                         <p className="m-0 grow text-[15px] leading-[1.45]">
-                            {showBoard
+                            {headlineFor(frame, selected)?.updateBody ? <NewsUpdate news={headlineFor(frame, selected)!} /> : showBoard
                                 ? "Every ticket on the board, repricing live. Click a column header to sort; pick a row to put it on your ticket."
                                 : line === "live"
                                   ? tipFor(
@@ -403,7 +404,9 @@ function ChartRegion({
     compact: boolean;
 }) {
     const frame = useScreenFrame("chart");
+    const news = headlineFor(frame, companyId);
     return (
+        <>
         <PriceChart
             key={companyId}
             frame={frame}
@@ -413,5 +416,7 @@ function ChartRegion({
             ticket={ticketToday(frame)}
             twist={twistShowing(frame, companyId)}
         />
+        {compact && news?.updateBody && <NewsUpdate news={news} />}
+        </>
     );
 }

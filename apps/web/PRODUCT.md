@@ -36,7 +36,7 @@ Existing implementation facts, grounded in the repository:
 - Players may buy at most once per day, spend at most half their available cash, and buy whole tickets. Sitting out is valid.
 - UP means call, DOWN means put, target means strike, ticket price means premium, and the closing bell means expiry. Explain the familiar term alongside its financial equivalent.
 - Real value means intrinsic value; hope value means time value. Distinguish payout from profit after premium.
-- What-if results are server-provided scenarios, not forecasts. Hidden headline outcomes become public only after the corresponding day completes.
+- What-if results are server-provided scenarios, not forecasts. A headline's follow-up and event prices become public when that event lands; future events stay hidden. Completed days retain the traded company's story for review.
 - The server owns time, money, pricing, quantities, and settlement. The browser presents authoritative values and submits intent. Feedback must distinguish pending, confirmed, rejected, stale, and disconnected states without implying a trade succeeded before confirmation.
 - Prices stream while players inspect and compare contracts. Preserve readable values, stable controls, and the current selection during updates.
 - The normal board has 252 contracts; the optional engineering workload has 2,508. Workload trading is blocked by both client and server.
@@ -44,6 +44,8 @@ Existing implementation facts, grounded in the repository:
 - The current product has no database, authentication, multiplayer, live-news dependency, or LLM dependency.
 
 ## Brand Commitments
+
+Explain news events quietly at the chart and in News, keeping the original report and existing confidence labels. Do not add repetitive uncertainty disclaimers, flashing twist banners, or interrupting prompts. Daily and final reviews connect the player's direction and entry/exit timing to the event, then distinguish payout from profit. Requested 2026-09-23.
 
 The product name is Strike Desk. Keep explanations plain and approachable, introduce financial terminology in context, and consistently identify the companies and money as fictional.
 

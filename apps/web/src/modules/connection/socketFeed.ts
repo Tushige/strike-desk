@@ -135,14 +135,15 @@ export function createSocketFeed(seam: TransportSeam, sessionKey: string, board?
   }
 
   /**
-   * The board size is asked for only when a new game is being made: the
-   * server reads it when it creates a session and never when it resumes one,
-   * so a resume that named it would risk being refused and losing the game.
+   * Include the requested size on resumes too: an expired session makes the
+   * server create a replacement immediately. Without the size that replacement
+   * silently becomes a normal game. A refused size retries the same session
+   * without the size, preserving an existing game if server limits changed.
    */
   function sendHello(target: SocketLike, withBoard: boolean): void {
     const hello: Hello = { t: 'hello', v: PROTOCOL_VERSION };
     if (sessionId !== null) hello.session = sessionId;
-    const asking = withBoard && board !== undefined && sessionId === null;
+    const asking = withBoard && board !== undefined;
     if (asking) hello.board = board;
     boardAskedOn = asking ? target : null;
     target.send(JSON.stringify(hello));
@@ -166,9 +167,8 @@ export function createSocketFeed(seam: TransportSeam, sessionKey: string, board?
     }
     if (message.t === 'error' && message.code === 'noSession') forgetSession();
     // The server would not build the board size asked for: ask once more,
-    // for its normal board and a fresh game, on the same socket.
+    // without the size on the same socket, retaining any session to resume.
     if (message.t === 'error' && message.code === 'badMessage' && message.commandId === undefined && boardAskedOn === from) {
-      forgetSession();
       sendHello(from, false);
       return;
     }

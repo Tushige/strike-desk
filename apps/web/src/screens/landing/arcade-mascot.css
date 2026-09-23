@@ -1,0 +1,16 @@
+.arcade-mascot { position:relative; }
+.arcade-mascot-display { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+.arcade-mascot-display :is(.arcade-eye-smile,.arcade-eye-travel) path { fill:none; stroke:currentColor; stroke-width:11; stroke-linecap:round; stroke-linejoin:round; }
+.arcade-mascot-display :is(.arcade-eye-smile,.arcade-eye-dollars,.arcade-eye-arrows) { animation-duration:10s; animation-iteration-count:infinite; animation-timing-function:linear; transform-box:fill-box; transform-origin:center; }
+.arcade-eye-smile { color:#ffeab0; filter:drop-shadow(0 0 6px #ffd44790); animation-name:arcade-mascot-smile; }
+.arcade-eye-dollars { opacity:0; fill:var(--color-mint); filter:drop-shadow(0 0 5px #3ee0a580); animation-name:arcade-mascot-dollar; }
+.arcade-eye-dollars text { font:700 86px 'Bricolage Grotesque',sans-serif; }
+.arcade-eye-arrows { opacity:0; color:var(--color-mint); filter:drop-shadow(0 0 5px #3ee0a580); animation-name:arcade-mascot-arrow; }
+.arcade-eye-travel { animation:arcade-mascot-travel 10s linear infinite; }
+.arcade-mascot[data-running=false] .arcade-mascot-display * { animation-play-state:paused; }
+.arcade-mascot-pause { position:absolute; right:12px; bottom:12px; min-height:44px; padding:10px 14px; border:1px solid var(--color-line); border-radius:8px; background:var(--color-ink); color:var(--color-muted); font-size:11px; transition:color 150ms ease-out,border-color 150ms ease-out; }
+.arcade-mascot-pause:hover { color:var(--color-cloud); border-color:var(--color-muted); }
+@keyframes arcade-mascot-smile { 0%,25% {opacity:1;transform:scaleY(1)} 28% {opacity:1;transform:scaleY(.08)} 30%,91% {opacity:0;transform:scaleY(.08)} 94%,100% {opacity:1;transform:scaleY(1)} }
+@keyframes arcade-mascot-dollar { 0%,30% {opacity:0;transform:translateY(58px)} 34% {opacity:1;transform:translateY(0) scale(1.12)} 37%,54% {opacity:1;transform:translateY(0) scale(1)} 59%,100% {opacity:0;transform:translateY(-58px)} }
+@keyframes arcade-mascot-arrow { 0%,60% {opacity:0} 63%,85% {opacity:1} 89%,100% {opacity:0} }
+@keyframes arcade-mascot-travel { 0%,60% {transform:translateY(48px)} 66%,71% {transform:translateY(0)} 76% {transform:translateY(-48px)} 76.01% {transform:translateY(48px)} 82%,85% {transform:translateY(0)} 90%,100% {transform:translateY(-48px)} }

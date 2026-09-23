@@ -7,6 +7,7 @@ import { clock, money, secondsFor } from './format';
 import { cx, GhostButton, Label, LogoMark } from './ui';
 import { LINE_WORDS, topBarWords } from './words';
 import { DayTickets } from './DayTickets';
+import { EndGameButton } from './EndGameButton';
 
 /**
  * The bar across the top: logo, one ticket per day, the time left, and the
@@ -26,13 +27,13 @@ function timeLeft(frame: Frame | null): string {
   return clock(secondsFor(GAME_STEPS - frame.step, frame.clock.pace));
 }
 
-export function TopBar() {
+export function TopBar({ onEnd }: { onEnd?: () => void }) {
   const frame = useView(views.top);
   const line = lineStateOf(useConnectionState().phase);
   const account = frame?.account ?? null;
 
   return (
-    <header className="game-topbar flex h-[76px] shrink-0 items-center justify-between gap-4 border-b border-line bg-ink px-4 sm:px-7">
+    <header className={cx('game-topbar flex h-[76px] shrink-0 items-center justify-between gap-4 border-b border-line bg-ink px-4 sm:px-7', onEnd !== undefined && 'game-topbar-with-exit')}>
       <div className="topbar-brand flex min-w-0 items-center gap-3">
         <LogoMark />
         <span className="topbar-brand-name brand-wordmark">Strike Desk</span>
@@ -77,6 +78,7 @@ export function TopBar() {
           </div>
         </div>
       </div>
+      {onEnd !== undefined && <div className="topbar-endgame"><EndGameButton onEnd={onEnd} /></div>}
     </header>
   );
 }

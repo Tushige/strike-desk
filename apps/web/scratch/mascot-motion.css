@@ -1,0 +1,59 @@
+@import './summary.css';
+@font-face { font-family:'Brand Bricolage'; src:url('../src/assets/brand/bricolage-grotesque.woff2') format('woff2'); font-weight:200 800; font-display:swap; }
+html { scroll-behavior:smooth; scrollbar-color:var(--line) var(--ink); }
+.brand { display:inline-flex; align-items:center; gap:8px; margin-bottom:32px; color:var(--cloud); text-decoration:none; font:800 20px 'Brand Bricolage',sans-serif; letter-spacing:-.035em; }
+.intro h1 { max-width:760px; }
+.motion-study { display:grid; grid-template-columns:minmax(220px,.65fr) minmax(0,1fr); gap:56px; align-items:center; padding:38px 0 52px; border-top:1px solid var(--line); scroll-margin-top:20px; }
+.study-copy h2 { margin:0 0 18px; font:700 clamp(23px,3vw,30px)/1.25 'Unbounded Variable',sans-serif; letter-spacing:-.025em; }
+.study-copy > p { margin:0 0 22px; max-width:40ch; color:var(--muted); font-size:15px; line-height:1.75; }
+.study-copy .recommendation { color:var(--cloud); font-size:13px; }
+.sequence { display:flex; flex-wrap:wrap; gap:10px 20px; padding:20px 0 0; margin:24px 0 12px; list-style:none; border-top:1px solid var(--line); font-size:12px; color:var(--muted); }
+.sequence li:first-child { color:var(--sun); }
+.study-copy .duration { font-size:12px; }
+.expressions { display:flex; flex-wrap:wrap; gap:6px; }
+.expressions button { padding-inline:12px; font-size:12px; }
+.expressions button[aria-pressed=true] { color:var(--sun); border-color:var(--sun); }
+.preview { min-width:0; }
+.motion-scene { position:relative; margin:0; aspect-ratio:1; overflow:hidden; border-radius:12px; background:var(--ink); }
+.motion-scene > img { display:block; width:100%; height:auto; }
+.led-overlay { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+.expression { opacity:0; animation-duration:var(--loop); animation-iteration-count:infinite; animation-timing-function:linear; transform-box:fill-box; transform-origin:center; }
+.expression path { fill:none; stroke:currentColor; stroke-width:11; stroke-linecap:round; stroke-linejoin:round; }
+.smile { color:#ffeab0; filter:drop-shadow(0 0 6px #ffd44790); animation-name:smile-cycle; }
+.dollars { fill:var(--mint); filter:drop-shadow(0 0 5px #3ee0a580); animation-name:dollar-cycle; }
+.dollars text { font:700 86px 'Brand Bricolage',sans-serif; }
+.arrows { color:var(--mint); filter:drop-shadow(0 0 5px #3ee0a580); animation-name:arrow-cycle; }
+.arrow-scroll { animation:arrow-travel var(--loop) linear infinite; }
+.antenna-light { opacity:0; }
+.preview-caption { display:flex; justify-content:space-between; gap:16px; margin-top:14px; color:var(--muted); font-size:11px; }
+.playback-label { color:var(--sun); }
+.is-paused *, .is-paused *::before { animation-play-state:paused !important; }
+.workbench-footer { padding-top:24px; border-top:1px solid var(--line); font-size:12px; line-height:1.8; color:var(--muted); }
+/* A full expression cycle is authored once; only transforms/opacity change. */
+@keyframes smile-cycle { 0%,29% {opacity:1;transform:scaleY(1)} 31% {opacity:1;transform:scaleY(.08)} 33%,83% {opacity:0;transform:scaleY(.08)} 86%,100% {opacity:1;transform:scaleY(1)} }
+@keyframes dollar-cycle { 0%,33% {opacity:0;transform:translateY(8px)} 36%,55% {opacity:1;transform:translateY(0)} 58%,100% {opacity:0;transform:translateY(-8px)} }
+@keyframes arrow-cycle { 0%,59% {opacity:0} 62%,78% {opacity:1} 82%,100% {opacity:0} }
+@keyframes arrow-travel { 0%,59% {transform:translateY(12px)} 64% {transform:translateY(0)} 76% {transform:translateY(-6px)} 82%,100% {transform:translateY(-18px)} }
+#arcade .smile { animation-name:arcade-smile; }
+#arcade .dollars { animation-name:arcade-dollar; }
+#arcade .arrows { animation-name:arcade-arrow; }
+#arcade .arrow-scroll { animation-name:arcade-travel; }
+@keyframes arcade-smile { 0%,25% {opacity:1;transform:scaleY(1)} 28% {opacity:1;transform:scaleY(.08)} 30%,91% {opacity:0;transform:scaleY(.08)} 94%,100% {opacity:1;transform:scaleY(1)} }
+@keyframes arcade-dollar { 0%,30% {opacity:0;transform:translateY(58px)} 34% {opacity:1;transform:translateY(0) scale(1.12)} 37%,54% {opacity:1;transform:translateY(0) scale(1)} 59%,100% {opacity:0;transform:translateY(-58px)} }
+@keyframes arcade-arrow { 0%,60% {opacity:0} 63%,85% {opacity:1} 89%,100% {opacity:0} }
+@keyframes arcade-travel { 0%,60% {transform:translateY(48px)} 66%,71% {transform:translateY(0)} 76% {transform:translateY(-48px)} 76.01% {transform:translateY(48px)} 82%,85% {transform:translateY(0)} 90%,100% {transform:translateY(-48px)} }
+#companion .smile { animation-name:companion-smile; }
+#companion .right .smile { animation-name:companion-wink; }
+#companion .dollars { animation-name:companion-dollar; }
+#companion .arrows { animation-name:companion-arrow; }
+#companion .antenna-light { animation:antenna-cycle var(--loop) linear infinite; }
+@keyframes companion-smile { 0%,8% {opacity:1;transform:translateX(0) scaleY(1)} 12%,22% {opacity:1;transform:translateX(5px) scaleY(1)} 26%,32% {opacity:1;transform:translateX(0) scaleY(1)} 35%,79% {opacity:0;transform:scaleY(.08)} 82%,100% {opacity:1;transform:scaleY(1)} }
+@keyframes companion-wink { 0%,8% {opacity:1;transform:translateX(0) scaleY(1)} 12%,18% {opacity:1;transform:translateX(5px) scaleY(1)} 20%,23% {opacity:1;transform:translateX(5px) scaleY(.08)} 26%,32% {opacity:1;transform:translateX(0) scaleY(1)} 35%,79% {opacity:0;transform:scaleY(.08)} 82%,100% {opacity:1;transform:scaleY(1)} }
+@keyframes companion-dollar { 0%,35% {opacity:0;transform:scale(.85)} 38%,54% {opacity:1;transform:scale(1)} 57%,100% {opacity:0;transform:scale(.85)} }
+@keyframes companion-arrow { 0%,58% {opacity:0} 62%,74% {opacity:1} 78%,100% {opacity:0} }
+@keyframes antenna-cycle { 0%,58% {opacity:0} 64%,70% {opacity:.85} 78%,100% {opacity:0} }
+.motion-study:not([data-expression=auto]) .expression, .motion-study:not([data-expression=auto]) .arrow-scroll, .motion-study:not([data-expression=auto]) .antenna-light { animation:none !important; opacity:0; transform:none; }
+.motion-study[data-expression=smile] .smile, .motion-study[data-expression=dollars] .dollars, .motion-study[data-expression=arrows] .arrows, .motion-study[data-expression=arrows] .arrow-scroll { opacity:1; }
+.mobile-preview .motion-study { grid-template-columns:1fr; gap:24px; }
+.mobile-preview .study-copy { max-width:600px; }
+@media (max-width:767px) { .workbench { width:calc(100% - 32px); padding-top:24px; } .brand { margin-bottom:24px; } .motion-study { grid-template-columns:1fr; gap:24px; padding-block:28px 36px; } .study-copy h2 { font-size:24px; } .study-copy > p { max-width:55ch; font-size:14px; } .sequence { margin-top:18px; } .sample-note { width:100%; margin:4px 0 0; } .preview { max-width:560px; } }

@@ -8,6 +8,11 @@ import { useView, views } from './store/hooks';
 import { GameHelp } from './screens/GameHelp';
 import { RecoveryNotice } from './screens/RecoveryNotice';
 import StartScreenV2 from './screens/landing/StartScreenV2';
+import { useState } from 'react';
+import { connection, leaveGame, store } from './boot';
+import { lineStateOf } from './modules/connection';
+import { EarlyExitScreen } from './screens/EarlyExitScreen';
+import type { EarlyExit } from './screens/EarlyExitScreen';
 
 /**
  * One page, three screens, chosen by the phase the server says the game is
@@ -18,6 +23,16 @@ import StartScreenV2 from './screens/landing/StartScreenV2';
 export default function App() {
   const route = useView(views.routing);
   const phase = route?.phase ?? null;
+  const [exit, setExit] = useState<EarlyExit | null>(null);
+  function endGame() {
+    const frame = store.frame.get();
+    if (frame === null || frame.clock.phase === 'lobby' || frame.clock.phase === 'final') return;
+    const snapshot = { frame, pending: connection.pending.get().length > 0, stale: lineStateOf(connection.state.get().phase) !== 'live' };
+    leaveGame();
+    setExit(snapshot);
+  }
+
+  if (exit !== null) return <EarlyExitScreen exit={exit} />;
 
   if ((route === null || phase === 'lobby') && new URLSearchParams(window.location.search).get('landing') !== 'original') {
     return <>
@@ -28,7 +43,7 @@ export default function App() {
 
   return (
     <div className={`app-shell flex min-h-dvh flex-col ${phase !== null && phase !== 'lobby' && phase !== 'final' ? 'app-shell-desk' : ''}`}>
-      <TopBar />
+      <TopBar {...(phase !== null && phase !== 'lobby' && phase !== 'final' ? { onEnd: endGame } : {})} />
       <RecoveryNotice />
       {route === null || phase === 'lobby' ? (
         <StartScreen connected={route !== null} />
@@ -43,7 +58,7 @@ export default function App() {
         </p>
       )}
       <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 px-4 py-2 text-xs text-muted">
-        <div className="flex gap-4"><GameHelp /><GameHelp engineering /></div>
+        <div className="flex flex-wrap items-center gap-4"><GameHelp /><GameHelp engineering /></div>
         <span className="text-[11px] tabular-nums">build {VERSION.commit} · {VERSION.buildTime}</span>
       </footer>
     </div>

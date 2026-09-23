@@ -35,13 +35,13 @@ function DirectionButton({ side, selected, onClick }: { side: Side; selected: bo
       selected={selected}
       onClick={onClick}
       className={cx(
-        'flex h-14 min-w-0 flex-col items-center justify-center gap-0.5 rounded-[18px] border-2 short:h-12',
+        'flex h-14 min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg border short:h-12',
         isUp
-          ? selected ? 'border-mint bg-mint text-ink' : 'border-mint/50 bg-mint/10 text-mint'
-          : selected ? 'border-coral bg-coral text-ink' : 'border-coral/50 bg-coral/10 text-coral',
+          ? selected ? 'border-mint bg-mint/15 text-mint' : 'border-line text-muted'
+          : selected ? 'border-coral bg-coral/15 text-coral' : 'border-line text-muted',
       )}
     >
-      <span className="flex items-center gap-1.5 font-display text-lg font-extrabold">
+      <span className="flex items-center gap-1.5 text-[15px] font-semibold">
         <Icon className="size-5" />
         {isUp ? 'UP' : 'DOWN'}
       </span>
@@ -80,12 +80,20 @@ function WhatIf({ quote, ticker }: { quote: TicketQuote; ticker: string }) {
   const stop = stopAt(quote, index);
   if (stop === null) return null;
   const ahead = stop.profitCents >= 0;
+  const breakEven = breakEvenStopIndex(quote);
+  const breakEvenStop = stopAt(quote, breakEven);
+  const exactBreakEven = breakEvenStop?.profitCents === 0;
   return (
-    <div className="flex flex-col gap-1">
+    <div className="price-scenario" data-outcome={stop.profitCents === 0 ? 'even' : ahead ? 'profit' : 'loss'}>
       <label htmlFor={id} className="text-[12px] text-muted">
         Scenario: what if, at the closing bell, {ticker} is at <span className="inline-block w-[8ch] text-right font-semibold text-cloud tabular-nums">{price(stop.atCents)}</span>?
       </label>
-      <div className="flex items-center gap-3">
+      <div className="scenario-result">
+        <span>{stop.profitCents === 0 ? 'Break even' : ahead ? 'Profit at the bell' : 'Loss at the bell'}</span>
+        <strong className="tabular-nums">{stop.profitCents === 0 ? '$0' : signedMoney(stop.profitCents)}</strong>
+      </div>
+      <div className="scenario-track">
+        {exactBreakEven && last > 0 && <span className="scenario-break-even" style={{ left: `${String(breakEven / last * 100)}%` }} aria-hidden="true" />}
         <input
           id={id}
           type="range"
@@ -93,11 +101,15 @@ function WhatIf({ quote, ticker }: { quote: TicketQuote; ticker: string }) {
           max={last}
           step={1}
           value={index}
-          className="h-2 min-w-0 grow accent-sun"
+          className="scenario-slider"
           aria-valuetext={`${price(stop.atCents)}: ${signedMoney(stop.profitCents)}`}
           onChange={(event) => { setChosen({ contractId: quote.contractId, index: Number(event.currentTarget.value) }); }}
         />
-        <span className={cx('w-[12ch] shrink-0 text-right text-[15px] font-bold tabular-nums', ahead ? 'text-mint' : 'text-coral')}>{signedMoney(stop.profitCents)}</span>
+      </div>
+      <div className="scenario-scale" aria-hidden="true">
+        <span>{price(quote.whatIf[0]?.atCents ?? stop.atCents)}</span>
+        <span>{exactBreakEven ? 'Break-even tick' : 'Explore an outcome'}</span>
+        <span>{price(quote.whatIf[last]?.atCents ?? stop.atCents)}</span>
       </div>
     </div>
   );
@@ -135,15 +147,16 @@ export function TicketBuilder({
 
   return (
     <div className="ticket-builder flex min-h-full flex-col gap-3 short:gap-2.5">
-      <div className="flex items-baseline justify-between gap-3">
-        <h2 className="m-0 font-display text-lg font-bold">Build your ticket</h2>
+      <div className="ticket-panel-heading flex items-center justify-between gap-3">
+        <h2 className="m-0">Build your ticket</h2>
         <GameHelp ticket />
       </div>
+      <div className="ticket-content">
       {frame.stress && <p className="m-0 flex items-start gap-2 text-xs text-sun"><InfoIcon className="mt-0.5 size-4 shrink-0" /><span>Read-only workload. Latest complete quote scenario, refreshed about every 1.5 seconds. Table prices can move between scenarios.</span></p>}
 
       <div className="flex flex-col gap-2 short:gap-1.5">
         <StepLabel>1. Which way will {company?.name ?? 'it'} go?</StepLabel>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-2">
           <DirectionButton side="up" selected={pick.side === 'up'} onClick={() => { onChooseSide('up'); }} />
           <DirectionButton side="down" selected={pick.side === 'down'} onClick={() => { onChooseSide('down'); }} />
         </div>
@@ -161,7 +174,7 @@ export function TicketBuilder({
               disabled={pick.side === null || locked}
               onClick={() => { onChooseChoice(target.choice); }}
               className={cx(
-                'grid min-h-[58px] grid-cols-2 items-center gap-3 rounded-2xl border-2 px-3 py-2 text-left text-cloud short:min-h-[48px] short:py-1',
+                'grid min-h-[58px] grid-cols-2 items-center gap-3 rounded-lg border px-3 py-2 text-left text-cloud short:min-h-[48px] short:py-1',
                 selected ? 'border-sun bg-raised' : 'border-line',
               )}
             >
@@ -177,7 +190,7 @@ export function TicketBuilder({
           );
         })}
         {pick.contractId !== null && pick.choice === null && snapshot.contract !== null && (
-          <div className="grid min-h-[58px] grid-cols-2 items-center gap-3 rounded-2xl border-2 border-sun bg-raised px-3 py-2 text-left text-cloud short:min-h-[48px] short:py-1">
+          <div className="grid min-h-[58px] grid-cols-2 items-center gap-3 rounded-lg border border-sun bg-raised px-3 py-2 text-left text-cloud short:min-h-[48px] short:py-1">
             <span className="flex flex-col gap-px">
               <span className="text-[15px] font-bold">From the table</span>
               <span className="text-xs text-muted">{snapshot.contract.ticker} {snapshot.contract.side === 'up' ? 'UP' : 'DOWN'}</span>
@@ -189,7 +202,7 @@ export function TicketBuilder({
           </div>
         )}
         {targets.length === 0 && CHOICES.map((choice) => (
-          <div key={choice} className="flex min-h-[58px] items-center rounded-2xl border-2 border-line px-3 text-sm text-muted short:min-h-[48px]">
+          <div key={choice} className="flex min-h-[58px] items-center rounded-lg border border-line px-3 text-sm text-muted short:min-h-[48px]">
             {CHOICE_WORDS[choice]}
           </div>
         ))}
@@ -215,8 +228,8 @@ export function TicketBuilder({
                 aria-label={half ? `Half your cash, ${money(cap)}` : undefined}
                 onClick={() => { setCustom(null); setCustomDay(null); handlers.onChooseSpend(amount); }}
                 className={cx(
-                  'h-12 rounded-[14px] border-2 text-[15px] font-bold short:h-10',
-                  selected ? 'border-sun bg-sun text-ink' : 'border-line text-cloud',
+                  'h-12 rounded-lg border text-[15px] font-bold short:h-10',
+                  selected ? 'border-sun bg-sun/10 text-sun' : 'border-line text-cloud',
                 )}
               >
                 {half ? 'Half' : `$${String(amount / 100_000)}K`}
@@ -234,11 +247,12 @@ export function TicketBuilder({
         {budgetError !== null && <p id={`${customId}-error`} className="m-0 text-xs text-coral" role="status">{budgetError}</p>}
       </div>
 
+      </div>
       <ActionDock>
-        <div className="flex flex-col gap-1.5 rounded-[14px] bg-raised px-3.5 py-2.5 text-sm leading-snug short:py-2 short:text-[13px]">
+        <div className="ticket-cost-summary flex flex-col gap-3 text-sm leading-snug short:text-[13px]">
           <p className="m-0 min-h-[2.75em]">{summaryOf(machine, pick)}</p>
           {quote !== null && quote.quantity > 0 && quote.whatIf.length > 0 && snapshot.contract !== null && (
-            <details className="text-xs text-muted">
+            <details className="scenario-disclosure text-xs text-muted">
               <summary className="cursor-pointer hover:text-cloud">Explore a price scenario</summary>
               <div className="pt-2"><WhatIf quote={quote} ticker={snapshot.contract.ticker} /></div>
             </details>

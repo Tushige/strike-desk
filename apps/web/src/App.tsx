@@ -7,19 +7,27 @@ import { startWords } from './screens/words';
 import { useView, views } from './store/hooks';
 import { GameHelp } from './screens/GameHelp';
 import { RecoveryNotice } from './screens/RecoveryNotice';
+import StartScreenV2 from './screens/landing/StartScreenV2';
 
 /**
  * One page, three screens, chosen by the phase the server says the game is
  * in: the front door in the lobby, the desk while a day is on, the final
- * screen after the last bell. Before the first frame there is only the bar
- * and a word.
+ * screen after the last bell. The landing is available before connection;
+ * the original composition remains available at ?landing=original.
  */
 export default function App() {
   const route = useView(views.routing);
   const phase = route?.phase ?? null;
 
+  if ((route === null || phase === 'lobby') && new URLSearchParams(window.location.search).get('landing') !== 'original') {
+    return <>
+      <RecoveryNotice />
+      <StartScreenV2 connected={route !== null} />
+    </>;
+  }
+
   return (
-    <div className="flex min-h-full flex-col lg:h-full lg:min-h-[620px]">
+    <div className={`app-shell flex min-h-dvh flex-col ${phase !== null && phase !== 'lobby' && phase !== 'final' ? 'app-shell-desk' : ''}`}>
       <TopBar />
       <RecoveryNotice />
       {route === null || phase === 'lobby' ? (

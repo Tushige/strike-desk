@@ -133,7 +133,7 @@ it('filtering the table while quotes stream keeps the half-built ticket', async 
   expect(later).toHaveLength(drafts.length);
 
   // Hiding comparison keeps the same grid/filter instance and the same budget.
-  fireEvent.click(screen.getByRole('button', { name: 'Back to news' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Close comparison' }));
   fireEvent.click(screen.getByRole('button', { name: 'Compare contracts' }));
   expect(within(screen.getByRole('group', { name: 'Filters' })).getByRole('button', { name: 'DOWN' }).getAttribute('aria-pressed')).toBe('true');
   expect(within(panel).getByRole('button', { name: '$100K' }).getAttribute('aria-pressed')).toBe('true');

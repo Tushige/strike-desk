@@ -4,6 +4,7 @@ import { OpeningBellButton, SkipToBellButton } from '../desk/PhaseActions';
 import { count, money, price, signedMoney } from '../format';
 import { ActionDock, cx, Label, PrimaryButton } from '../ui';
 import { Notice } from './Notice';
+import { RoboPup } from '../mascot/RoboPup';
 import type { TicketMachine } from './useTicketMachine';
 
 /**
@@ -34,9 +35,8 @@ function ValueBar({ position }: { position: PositionView }) {
   const hope = position.hopeCents;
   const paid = position.entryPriceCents;
   const scale = Math.max(paid, real + hope, 1);
-  const pct = (n: number): string => `${String((n / scale) * 100)}%`;
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-line p-4 short:gap-2 short:p-3">
+    <div className="ticket-breakdown flex flex-col gap-3 short:gap-2">
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm font-semibold">What a ticket is made of</span>
         <span className="flex items-center gap-1.5 whitespace-nowrap text-xs text-muted">
@@ -45,12 +45,14 @@ function ValueBar({ position }: { position: PositionView }) {
         </span>
       </div>
       <div className="relative py-1" aria-hidden="true">
-        <div className="flex h-[22px] overflow-hidden rounded-full bg-ink">
-          <span className="h-full bg-cloud transition-[width] duration-200" style={{ width: pct(real) }} />
-          <span className="h-full bg-grape transition-[width] duration-200" style={{ width: pct(hope) }} />
+        <div className="relative h-[22px] overflow-hidden rounded-full bg-ink">
+          <span className="value-bar-fill absolute inset-0 bg-grape" style={{ transform: `scaleX(${String((real + hope) / scale)})` }} />
+          <span className="value-bar-fill absolute inset-0 bg-cloud" style={{ transform: `scaleX(${String(real / scale)})` }} />
         </div>
         {/* The marker sits outside the clipped bar so it stays visible at 100%. */}
-        <span className="absolute inset-y-0 w-[3px] rounded-full bg-sun" style={{ left: `calc(${pct(paid)} - 3px)` }} />
+        <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" viewBox="0 0 100 30" preserveAspectRatio="none">
+          <line className="value-bar-marker stroke-sun" x1="0" x2="0" y1="0" y2="30" strokeWidth="3" vectorEffect="non-scaling-stroke" style={{ transform: `translateX(${String((paid / scale) * 100)}px)` }} />
+        </svg>
       </div>
       <dl className="m-0 flex flex-col gap-2.5 short:gap-1.5">
         <div className="flex gap-2.5">
@@ -81,7 +83,7 @@ function ValueBar({ position }: { position: PositionView }) {
 function TicketSummary({ frame, position }: { frame: Frame; position: PositionView }) {
   const company = frame.companies[position.companyId];
   return (
-    <div className="flex flex-col gap-1 rounded-2xl bg-raised px-4 py-3.5 short:py-2.5">
+    <div className="flex flex-col gap-1 border-b border-line pb-4">
       <div className="text-[15px] font-bold">
         {count(position.quantity)} {position.side === 'up' ? 'UP' : 'DOWN'} tickets on {company?.name}
       </div>
@@ -96,10 +98,12 @@ export function LiveTicket({ frame, position, machine }: { frame: Frame; positio
   const blocker = cashOutBlocker(machine.state, machine.snapshot);
   return (
     <div className="flex min-h-full flex-col gap-[18px] short:gap-3.5">
-      <h2 className="m-0 font-display text-xl font-bold short:text-lg">Your ticket</h2>
+      <h2 className="ticket-panel-heading ticket-mascot-heading m-0">Your ticket <RoboPup pose="stamp" active={machine.state.notice?.kind === 'accepted' && machine.state.notice.of === 'buy'} /></h2>
+      <div className="ticket-content">
       <TicketSummary frame={frame} position={position} />
       <BigMoney label="Worth right now" value={position.valueCents} paid={position.costCents} profit={position.profitCents} dim={machine.snapshot.line !== 'live'} />
       <ValueBar position={position} />
+      </div>
       <ActionDock>
         <PrimaryButton className="live-trade-action h-16 short:h-[52px]" disabled={blocker !== null} onClick={() => { machine.handlers.onPress('cashOut'); }}>
           <span>Cash out</span><span>{money(position.valueCents)}</span>
@@ -122,17 +126,27 @@ export function CashedOut({ frame, position }: { frame: Frame; position: Positio
   const proceeds = position.exit?.proceedsCents ?? position.valueCents;
   return (
     <div className="flex min-h-full flex-col gap-[18px] short:gap-3.5">
-      <h2 className="m-0 font-display text-xl font-bold">You cashed out</h2>
+      <h2 className="ticket-panel-heading ticket-confirmed-heading m-0">You cashed out <TicketStamp /></h2>
+      <div className="ticket-content">
       <TicketSummary frame={frame} position={position} />
       <BigMoney label="Money back in your pocket" value={proceeds} paid={position.costCents} profit={position.profitCents} />
       {position.ifHeldCents !== undefined && (
-        <div className="flex flex-col gap-1.5 rounded-2xl border border-line p-4">
+        <div className="flex flex-col gap-1.5 border-t border-line pt-4">
           <div className="text-sm font-semibold">If you had held on</div>
           <div className="font-display text-2xl font-bold whitespace-nowrap tabular-nums">{money(position.ifHeldCents)}</div>
           <div className="text-[13px] leading-snug text-muted">This is what your ticket would be worth right now. Keep watching. It can still go either way.</div>
         </div>
       )}
+      </div>
       <ActionDock>{frame.clock.phase === 'preBell' ? <OpeningBellButton frame={frame} compact /> : <SkipToBellButton frame={frame} />}</ActionDock>
     </div>
   );
+}
+
+/** Only mounted with a server-owned position or its confirmed early exit. */
+function TicketStamp() {
+  return <svg className="ticket-stamp" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" />
+    <path d="m7 12 3 3 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>;
 }

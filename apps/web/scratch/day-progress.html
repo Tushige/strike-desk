@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Strike Desk · Day progress studies</title>
+  <style>
+    :root { color-scheme:dark; --ink:#14112a; --panel:#1d1938; --raised:#27224a; --line:#352f63; --cloud:#f4f1ff; --muted:#b3add9; --sun:#ffd447; --mint:#3ee0a5; --coral:#ff7d6e; --ease:cubic-bezier(.16,1,.3,1); font-family:'Lexend Variable',sans-serif; color:var(--cloud); background:var(--ink); }
+    * { box-sizing:border-box; }
+    body { margin:0; }
+    button, select { font:inherit; }
+    button { cursor:pointer; }
+    button:disabled { opacity:.35; cursor:default; }
+    button, select { color:var(--cloud); background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px 14px; min-height:44px; }
+    button { transition:background 140ms,transform 140ms var(--ease); }
+    button:hover:not(:disabled) { background:var(--raised); }
+    button:active:not(:disabled) { transform:translateY(1px); }
+    :focus-visible { outline:2px solid var(--sun); outline-offset:4px; }
+    ::selection { background:var(--sun); color:var(--ink); }
+    a { color:var(--muted); text-underline-offset:4px; }
+    main { width:min(1192px,calc(100% - 64px)); margin:0 auto; padding:48px 0 32px; }
+    h1 { margin:0 0 14px; font:750 clamp(26px,4vw,42px)/1.2 'Unbounded Variable',sans-serif; letter-spacing:-.03em; }
+    .intro { margin:0; max-width:64ch; color:var(--muted); font-size:15px; line-height:1.7; }
+    .controls { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin:28px 0 12px; }
+    .controls label { display:flex; align-items:center; gap:10px; font-size:13px; }
+    .controls .separate { margin-left:auto; }
+    #next { background:var(--sun); color:var(--ink); border-color:var(--sun); }
+    #next:hover:not(:disabled) { background:#ffe077; }
+    #width-toggle[aria-pressed=true] { border-color:var(--sun); color:var(--sun); }
+    .legend { display:flex; flex-wrap:wrap; gap:8px 20px; color:var(--muted); font-size:12px; margin:0 0 26px; line-height:1.7; }
+    .gain { color:var(--mint); } .loss { color:var(--coral); } .flat { color:var(--muted); }
+    .study { display:grid; grid-template-columns:244px minmax(0,1fr); align-items:center; gap:32px; padding:30px 0; border-top:1px solid var(--line); }
+    .study h2 { font-size:18px; font-weight:600; margin:0 0 10px; }
+    .study p { font-size:13px; line-height:1.7; color:var(--muted); margin:0; max-width:35ch; }
+    .recommendation { display:block; margin-top:10px; font-size:11px; color:var(--sun); }
+    .stage { width:100%; min-width:0; max-width:100%; border:1px solid var(--line); border-radius:12px; overflow:hidden; background:var(--ink); }
+    .context { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:13px 20px; border-bottom:1px solid var(--line); background:var(--panel); }
+    .brand { font:700 11px 'Unbounded Variable',sans-serif; letter-spacing:.015em; }
+    .worth { font-size:11px; color:var(--muted); white-space:nowrap; }
+    .worth strong { color:var(--sun); font-weight:600; margin-left:7px; font-variant-numeric:tabular-nums; }
+    .surface { min-height:112px; display:flex; justify-content:center; align-items:center; padding:24px 16px; gap:18px; }
+    .day-label { color:var(--muted); font-size:12px; white-space:nowrap; min-width:70px; }
+    .days { display:flex; margin:0; padding:0; list-style:none; }
+    .days li { position:relative; display:flex; align-items:center; justify-content:center; flex-direction:column; font-variant-numeric:tabular-nums; }
+    .result { font-size:11px; line-height:12px; min-height:12px; margin-top:3px; }
+    .future { color:var(--muted); }
+    .tiles { position:relative; gap:7px; }
+    .tile-highlight { position:absolute; top:0; left:0; width:36px; height:42px; border-radius:7px; background:var(--sun); transform:translateX(calc(var(--active) * 43px)); transition:transform 280ms var(--ease),opacity 180ms; }
+    .tiles li { width:36px; height:42px; border:1px solid var(--line); border-radius:7px; font-size:14px; transition:color 180ms,border-color 180ms; }
+    .tiles li.current { color:var(--ink); border-color:transparent; }
+    .tiles .number { position:relative; z-index:1; }
+    .tiles li.current .result { color:var(--ink); }
+    .tickets { gap:7px; }
+    .tickets li { width:43px; height:65px; background:var(--panel); border-radius:5px; transition:transform 280ms var(--ease),background 180ms; }
+    .tickets li::before,.tickets li::after { content:''; position:absolute; top:36px; width:8px; height:8px; border-radius:50%; background:var(--ink); }
+    .tickets li::before { left:-4px; } .tickets li::after { right:-4px; }
+    .tickets li.current { background:var(--sun); color:var(--ink); transform:translateY(-4px) rotate(-3deg); }
+    .tickets .ticket-label { font-size:11px; letter-spacing:.04em; margin-bottom:2px; }
+    .tickets .number { font-size:16px; font-weight:600; line-height:20px; }
+    .tickets .result { margin-top:8px; }
+    .tickets li.current .result { color:var(--ink); }
+    .tickets li.future { background:transparent; outline:1px solid var(--line); outline-offset:-1px; }
+    .timeline, .timeline-shell { position:relative; width:244px; justify-content:space-between; }
+    .timeline-shell::before,.timeline-fill { content:''; position:absolute; left:14px; right:14px; top:14px; height:1px; background:var(--line); }
+    .timeline-fill { background:var(--muted); transform-origin:left; transform:scaleX(var(--progress)); transition:transform 280ms var(--ease); }
+    .timeline li { width:28px; }
+    .timeline .number { display:grid; place-items:center; width:28px; height:28px; border:1px solid var(--line); border-radius:50%; background:var(--ink); font-size:12px; transition:background 180ms,border-color 180ms,color 180ms; }
+    .timeline li.current .number { background:var(--sun); border-color:var(--sun); color:var(--ink); }
+    .timeline li.done .number { border-color:var(--muted); }
+    .timeline .result { margin-top:6px; }
+    .counter { width:188px; }
+    .counter-label { display:flex; align-items:baseline; justify-content:center; gap:9px; color:var(--muted); font-size:13px; }
+    .counter-value { color:var(--cloud); font:650 24px/1.2 'Unbounded Variable',sans-serif; min-width:1ch; text-align:center; }
+    .counter-track { display:grid; grid-template-columns:repeat(5,1fr); gap:5px; margin-top:13px; }
+    .counter-segment { height:4px; border-radius:2px; background:var(--line); overflow:hidden; }
+    .counter-segment > span { display:block; height:100%; background:var(--sun); transform:scaleX(0); transform-origin:left; transition:transform 280ms var(--ease); }
+    .counter-segment.done > span { transform:scaleX(1); }
+    .counter-segment.current { outline:1px solid var(--sun); outline-offset:0; background:transparent; }
+    .mobile-preview .stage { width:min(360px,100%); justify-self:center; }
+    .mobile-preview .surface { flex-direction:column; gap:16px; min-height:152px; }
+    .mobile-preview .day-label { text-align:center; }
+    footer { border-top:1px solid var(--line); padding-top:24px; color:var(--muted); font-size:12px; line-height:1.7; }
+    .sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+    @media(max-width:900px) { .study { grid-template-columns:minmax(0,1fr); gap:18px; } .study p { max-width:65ch; } .recommendation { display:inline; margin-left:10px; } }
+    @media(max-width:550px) { main { width:calc(100% - 32px); padding-top:28px; } .controls .separate { margin-left:0; } .controls { gap:8px; } button,select { padding-inline:11px; font-size:12px; } .context { padding-inline:14px; } .worth { font-size:11px; } .surface { flex-direction:column; gap:16px; min-height:152px; } .day-label { text-align:center; } .study { padding-block:26px; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Five days. Four directions.</h1>
+  <p class="intro">Compare the progress indicator in our existing colors and type. Change the day to feel each transition. Everything here is a sample; your game stays untouched.</p>
+  <div class="controls" aria-label="Preview controls">
+    <label for="day">Preview <select id="day"><option value="1">Day 1</option><option value="2">Day 2</option><option value="3">Day 3</option><option value="4" selected>Day 4</option><option value="5">Day 5</option><option value="6">All done</option></select></label>
+    <button id="previous">Previous day</button><button id="next">Next day</button><button id="replay">Replay sequence</button>
+    <button class="separate" id="width-toggle" aria-pressed="false">Mobile width</button>
+  </div>
+  <p class="legend"><span>Sample results:</span><span class="loss">− Loss</span><span class="flat">0 No change</span><span class="gain">+ Profit</span><span>Yellow = today</span></p>
+  <div id="announcement" class="sr-only" role="status" aria-live="polite"></div>
+  <section class="study" aria-labelledby="tiles-title">
+    <div><h2 id="tiles-title">Numbered day tiles</h2><p>Clear day numbers, a sliding highlight, and a small result mark after each bell.</p><span class="recommendation">Recommended balance</span></div>
+    <div class="stage"><div class="context"><span class="brand">STRIKE DESK</span><span class="worth">Worth<strong>$1,000,000</strong></span></div><div class="surface"><span class="day-label"></span><div class="tiles-wrap"><div class="tiles"><span class="tile-highlight" aria-hidden="true"></span><ol class="days tiles" data-kind="tiles" aria-label="Trading days"></ol></div></div></div></div>
+  </section>
+  <section class="study" aria-labelledby="tickets-title">
+    <div><h2 id="tickets-title">Trading ticket strip</h2><p>A little more arcade. Today’s ticket lifts out of the strip; the result lands like a stamp.</p></div>
+    <div class="stage"><div class="context"><span class="brand">STRIKE DESK</span><span class="worth">Worth<strong>$1,000,000</strong></span></div><div class="surface"><span class="day-label"></span><ol class="days tickets" data-kind="tickets" aria-label="Trading days"></ol></div></div>
+  </section>
+  <section class="study" aria-labelledby="timeline-title">
+    <div><h2 id="timeline-title">Five-day timeline</h2><p>Airy and precise. A fine connecting line advances between numbered stops.</p></div>
+    <div class="stage"><div class="context"><span class="brand">STRIKE DESK</span><span class="worth">Worth<strong>$1,000,000</strong></span></div><div class="surface"><span class="day-label"></span><div class="timeline-shell"><span class="timeline-fill" aria-hidden="true"></span><ol class="days timeline" data-kind="timeline" aria-label="Trading days"></ol></div></div></div>
+  </section>
+  <section class="study" aria-labelledby="counter-title">
+    <div><h2 id="counter-title">Compact day counter</h2><p>Progress takes the spotlight. Daily profit and loss would live in the review, keeping this header quiet.</p></div>
+    <div class="stage"><div class="context"><span class="brand">STRIKE DESK</span><span class="worth">Worth<strong>$1,000,000</strong></span></div><div class="surface"><div class="counter"><div class="counter-label"><span id="counter-prefix">Day</span><strong class="counter-value">4</strong><span id="counter-suffix">/ 5</span></div><div class="counter-track" aria-hidden="true"></div></div></div></div>
+  </section>
+  <footer>These are visual studies, not live game controls. The symbols show illustrative daily outcomes. <a href="/">Back to Strike Desk</a></footer>
+</main>
+<script type="module">
+  import '@fontsource-variable/lexend';
+  import '@fontsource-variable/unbounded';
+  const outcomes = [ {kind:'loss',symbol:'−',label:'loss'}, {kind:'flat',symbol:'0',label:'no change'}, {kind:'gain',symbol:'+',label:'profit'}, {kind:'gain',symbol:'+',label:'profit'}, {kind:'loss',symbol:'−',label:'loss'} ];
+  let day = 4;
+  let replayTimer;
+  const select = document.querySelector('#day');
+  const replay = document.querySelector('#replay');
+  document.querySelectorAll('[data-kind]').forEach(list => {
+    for (let n = 1; n <= 5; n++) {
+      const item = document.createElement('li');
+      item.dataset.day = String(n);
+      if (list.dataset.kind === 'tickets') { const label = document.createElement('span'); label.className = 'ticket-label'; label.textContent = 'DAY'; label.setAttribute('aria-hidden','true'); item.append(label); }
+      const number = document.createElement('span'); number.className = 'number'; number.textContent = String(n); number.setAttribute('aria-hidden','true');
+      const result = document.createElement('span'); result.className = 'result'; result.setAttribute('aria-hidden','true');
+      item.append(number,result); list.append(item);
+    }
+  });
+  const track = document.querySelector('.counter-track');
+  for(let n=1;n<=5;n++) { const segment=document.createElement('span'); segment.className='counter-segment'; segment.append(document.createElement('span')); track.append(segment); }
+  function render(animate = true) {
+    select.value = String(day);
+    document.querySelector('#previous').disabled = day === 1;
+    document.querySelector('#next').disabled = day === 6;
+    const label = day === 6 ? 'All 5 days done' : `Day ${day} of 5`;
+    document.querySelectorAll('.day-label').forEach(el => { el.textContent = label; });
+    document.querySelector('.tile-highlight').style.setProperty('--active',String(Math.min(day,5)-1));
+    document.querySelector('.tile-highlight').style.opacity = day === 6 ? '0' : '1';
+    document.querySelector('.timeline-fill').style.setProperty('--progress',String((Math.min(day,5)-1)/4));
+    document.querySelectorAll('[data-kind] li').forEach(el => {
+      const n = Number(el.dataset.day); const state = n < day ? 'done' : n === day ? 'current' : 'future';
+      const newlyDone = state === 'done' && !el.classList.contains('done');
+      el.className = state;
+      el.setAttribute('aria-label',`Day ${n}, ${state === 'done' ? outcomes[n-1].label : state === 'current' ? 'today' : 'upcoming'}`);
+      if(state === 'current') el.setAttribute('aria-current','step'); else el.removeAttribute('aria-current');
+      const result = el.querySelector('.result'); result.className = 'result ' + (state === 'done' ? outcomes[n-1].kind : '');
+      result.textContent = state === 'done' ? outcomes[n-1].symbol : state === 'current' ? '·' : '';
+      if(animate && newlyDone) result.animate([{transform:'scale(1.55) rotate(-12deg)',opacity:.3},{transform:'scale(1) rotate(0)',opacity:1}],{duration:320,easing:'cubic-bezier(.16,1,.3,1)'});
+    });
+    document.querySelector('#counter-prefix').textContent = day === 6 ? 'All' : 'Day';
+    document.querySelector('#counter-suffix').textContent = day === 6 ? 'days done' : '/ 5';
+    const value=document.querySelector('.counter-value'); value.textContent=String(Math.min(day,5));
+    if(animate) value.animate([{transform:'translateY(5px)',opacity:.35},{transform:'none',opacity:1}],{duration:220,easing:'ease-out'});
+    [...track.children].forEach((el,i)=>{el.className='counter-segment '+(i+1<day?'done':i+1===day?'current':'');});
+    if(animate) document.querySelector('#announcement').textContent=label;
+  }
+  function stopReplay(){clearInterval(replayTimer); replayTimer=undefined; replay.textContent='Replay sequence';}
+  select.addEventListener('change',()=>{stopReplay();day=Number(select.value);render();});
+  document.querySelector('#next').addEventListener('click',()=>{stopReplay();day=Math.min(6,day+1);render();});
+  document.querySelector('#previous').addEventListener('click',()=>{stopReplay();day=Math.max(1,day-1);render();});
+  replay.addEventListener('click',()=>{if(replayTimer!==undefined){stopReplay();return;} day=1;render();replay.textContent='Stop replay';replayTimer=setInterval(()=>{day++;render();if(day===6)stopReplay();},1000);});
+  document.querySelector('#width-toggle').addEventListener('click',event=>{const mobile=document.querySelector('main').classList.toggle('mobile-preview');event.currentTarget.setAttribute('aria-pressed',String(mobile));});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)stopReplay();});
+  render(false);
+</script>
+</body>
+</html>

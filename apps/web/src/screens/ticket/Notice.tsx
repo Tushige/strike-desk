@@ -15,7 +15,7 @@ const ACCEPTED = {
 export function Notice({ machine }: { machine: TicketMachine }) {
   const { state, handlers } = machine;
   if (state.form === 'pending') {
-    return <p className="m-0 text-sm font-semibold text-sun motion-safe:animate-pulse" role="status">{PENDING_WORDS}</p>;
+    return <p className="trade-pending m-0 text-sm font-semibold text-sun" role="status">{PENDING_WORDS}</p>;
   }
   if (state.form === 'checking') {
     return (
@@ -35,7 +35,7 @@ export function Notice({ machine }: { machine: TicketMachine }) {
   const notice = state.notice;
   if (notice === null) return null;
   if (notice.kind === 'accepted') {
-    return <p className="m-0 text-sm font-semibold text-mint" role="status">{ACCEPTED[notice.of]}</p>;
+    return <p className="trade-accepted m-0 text-sm font-semibold text-mint" role="status">{ACCEPTED[notice.of]}</p>;
   }
   if (notice.kind === 'lost') {
     return <p className="m-0 text-sm text-coral" role="status">{LOST_WORDS}</p>;

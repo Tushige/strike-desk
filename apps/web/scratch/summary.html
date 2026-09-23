@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Strike Desk · Summary studies</title>
+  <link rel="stylesheet" href="./summary.css" />
+</head>
+<body>
+<main class="workbench">
+  <header class="intro">
+    <h1>How should the final bell feel?</h1>
+    <p>Four ways to tell the story of your five days. Same game, same sample results, different emphasis. Pick a day inside each study to inspect the trade.</p>
+  </header>
+  <div class="tools" role="group" aria-label="Design preview controls">
+    <label for="scenario">Sample outcome</label>
+    <select id="scenario"><option value="profit">Profitable run</option><option value="loss">Losing run</option><option value="flat">Sat out all five days</option><option value="big">Big win / long amounts</option></select>
+    <button id="mobile" aria-pressed="false">Mobile width</button><button id="motion">Replay entrances</button>
+    <span class="sample-note">Illustrative data · pretend money</span>
+  </div>
+  <nav class="jump" aria-label="Summary designs"><a href="#receipt">Closing receipt</a><a href="#journal">Trading journal</a><a href="#journey">Balance journey</a><a href="#scorecard">Arcade scorecard</a></nav>
+  <div id="studies"></div>
+  <footer class="workbench-footer">These are scratch designs. Nothing here starts a game or changes your saved run. <a href="/scratch/day-progress.html">Day strip studies</a> · <a href="/">Strike Desk</a></footer>
+</main>
+<script type="module" src="./summary.js"></script>
+</body>
+</html>

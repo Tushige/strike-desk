@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import ticketMark from '../assets/brand/ticket-s.svg';
 
 /** Small shared pieces: class joiner, buttons, icons, company tiles. */
 
@@ -6,7 +7,7 @@ export const cx = (...parts: (string | false | null | undefined)[]): string => p
 
 const focusRing = 'focus-visible:outline-3 focus-visible:outline-offset-3 focus-visible:outline-sun';
 const pressable =
-  'transition hover:brightness-110 active:translate-y-px disabled:opacity-40 disabled:hover:brightness-100 disabled:active:translate-y-0';
+  'desk-control disabled:opacity-40';
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement>;
 
@@ -43,12 +44,7 @@ export function ChoiceButton({ selected, className, ...props }: ButtonProps & { 
 const stroke = { fill: 'none', stroke: 'currentColor', strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
 
 export const LogoMark = () => (
-  <span className="flex size-10 items-center justify-center rounded-xl bg-sun text-ink">
-    <svg viewBox="0 0 24 24" className="size-6" strokeWidth="2.6" {...stroke} aria-hidden="true">
-      <path d="M4 16l5-6 4 4 7-9" />
-      <path d="M15 5h5v5" />
-    </svg>
-  </span>
+  <img className="brand-mark" src={ticketMark} width="38" height="38" alt="" aria-hidden="true" />
 );
 
 export const ArrowUp = ({ className }: { className?: string }) => (

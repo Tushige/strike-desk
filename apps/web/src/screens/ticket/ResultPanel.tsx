@@ -6,6 +6,7 @@ import { ActionDock, cx, Label } from '../ui';
 import { headlineFor } from '../desk/tips';
 import { lessonFor } from './lesson';
 import { todaysTicket } from './sources';
+import { RoboPup } from '../mascot/RoboPup';
 
 /**
  * The debrief at the closing bell: how the ticket's company moved, what
@@ -25,10 +26,11 @@ export function ResultPanel({ frame, companyId }: { frame: Frame; companyId: num
   const held = ticket !== null && ticket.status !== 'cashedOut';
 
   return (
-    <div className="flex min-h-full flex-col gap-[18px] short:gap-3.5 motion-safe:animate-rise">
-      <h2 className="m-0 font-display text-xl font-bold short:text-lg">Closing bell</h2>
+    <div className="day-result flex min-h-full flex-col gap-[18px] short:gap-3.5">
+      <h2 className="ticket-panel-heading ticket-mascot-heading m-0">Closing bell <RoboPup key={frame.clock.day} pose="bell" active={result !== undefined} /></h2>
+      <div className="ticket-content">
 
-      <div className="flex flex-col gap-1 rounded-2xl bg-raised px-4 py-3.5 short:py-2.5">
+      <div className="flex flex-col gap-1 border-b border-line pb-4">
         <div className="font-bold">{headlineFor(frame, shown) === null ? `${company?.name ?? ''} had no news today.` : `Did the ${company?.name ?? ''} news come true?`}</div>
         <div className="text-sm text-muted">
           {news === null ? 'No event for this company.' : news.wasTrue === undefined ? 'Outcome not available.' : news.wasTrue ? 'The claimed direction happened.' : 'The event reversed the claimed direction.'}
@@ -47,7 +49,7 @@ export function ResultPanel({ frame, companyId }: { frame: Frame; companyId: num
       </div>
 
       {ticket !== null && (
-        <dl className="m-0 flex flex-col gap-2.5 rounded-2xl border border-line p-4 text-[15px] short:gap-2 short:p-3">
+        <dl className="m-0 flex flex-col gap-2.5 border-y border-line py-4 text-[15px] short:gap-2 short:py-3">
           <div className="flex justify-between">
             <dt className="text-muted">You paid</dt>
             <dd className="m-0 font-semibold tabular-nums">{money(ticket.costCents)}</dd>
@@ -70,6 +72,7 @@ export function ResultPanel({ frame, companyId }: { frame: Frame; companyId: num
         <p className="m-0 text-[15px] leading-normal short:text-sm">{lessonFor(ticket, opening, bell)}</p>
       </div>
 
+      </div>
       <ActionDock>
         <NextDayButton frame={frame} />
       </ActionDock>

@@ -227,7 +227,7 @@ export function buildReview(value: unknown, options: { mode: 'sample' | 'full' }
           const owner = titleOwners.get(words.title);
           if (owner !== undefined && owner !== event.id) throw new Error(`${company.name}: title shared by events ${owner} and ${event.id}`);
           titleOwners.set(words.title, event.id);
-          return { event: event.id, variant: variantIndex + 1, direction: event.direction, trust, ...words };
+          return { event: event.id, variant: variantIndex + 1, direction: event.direction, trust, source: words.source, title: words.title, body: words.body };
         }));
       });
     });

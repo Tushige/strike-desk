@@ -5,7 +5,7 @@ import { percentChange } from '../format';
  * The one-line tip under the chart: what the desk would whisper to a first
  * timer at this moment. It reacts to the phase, the selected company's
  * headline and whether the player holds a ticket. It never says whether a
- * headline was true; the price says enough.
+ * headline was true before its follow-up becomes public.
  */
 
 /** How many price steps the "Plot twist!" banner stays up after a reveal. */
@@ -48,11 +48,12 @@ export function tipFor(frame: Frame, companyId: number, openingCents: number | n
     return TRUST_TIPS[news.trust];
   }
   if (phase === 'open') {
-    if (twistShowing(frame, companyId)) return `Plot twist! Fresh news just hit ${name}. Watch the price.`;
+    if (news?.updateBody) return news.updateBody;
+    if (twistShowing(frame, companyId)) return `The news event has landed for ${name}.`;
     const ticket = ticketToday(frame);
     if (ticket !== null && ticket.status === 'open') return 'Hope value expires at the bell. It can rise or fall before then.';
     if (news?.revealed === true) return `The news is out for ${name}. There is less left to hope for.`;
-    return 'Watch which headlines come true. It helps you judge tomorrow’s news.';
+    return 'The chart marks the moment today’s news event lands.';
   }
   const now = frame.prices[companyId];
   const ticker = company?.ticker ?? '';

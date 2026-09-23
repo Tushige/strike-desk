@@ -43,6 +43,13 @@ export function previewFrame(source: Frame): Frame {
         revealed: item.revealed,
       };
       if (item.revealed && item.revealIndex !== undefined) news.revealIndex = item.revealIndex;
+      if (item.revealed) {
+        if (item.updateTitle !== undefined) news.updateTitle = item.updateTitle;
+        if (item.updateBody !== undefined) news.updateBody = item.updateBody;
+        if (item.eventDirection !== undefined) news.eventDirection = item.eventDirection;
+        if (item.eventBeforeCents !== undefined) news.eventBeforeCents = item.eventBeforeCents;
+        if (item.eventAfterCents !== undefined) news.eventAfterCents = item.eventAfterCents;
+      }
       const complete = item.day < source.clock.day || source.clock.phase === 'debrief' || source.clock.phase === 'final';
       if (complete && item.wasTrue !== undefined) news.wasTrue = item.wasTrue;
       return news;

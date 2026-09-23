@@ -54,7 +54,7 @@ function expectPublicOnly(frame: Frame): void {
     canBuy: !frame.stress && (frame.clock.phase === 'preBell' || frame.clock.phase === 'open') });
   for (const news of frame.news) {
     expect(Object.keys(news).sort()).toEqual([
-      'body', 'companyId', 'day', 'direction', 'id', ...(news.revealed ? ['revealIndex'] : []), 'revealed', 'source', 'title', 'trust', ...(['debrief', 'final'].includes(frame.clock.phase) ? ['wasTrue'] : []),
+      'body', 'companyId', 'day', 'direction', 'id', ...(news.revealed ? ['revealIndex', 'updateTitle', 'updateBody', 'eventDirection', 'eventBeforeCents', 'eventAfterCents'] : []), 'revealed', 'source', 'title', 'trust', ...(['debrief', 'final'].includes(frame.clock.phase) ? ['wasTrue'] : []),
     ].sort());
     if (news.revealed) expect(news.revealIndex).toBeLessThanOrEqual(frame.clock.priceIndex);
   }
@@ -160,7 +160,7 @@ it('preserves sold-ticket comparisons and receipts beside the public news whitel
       expect(JSON.stringify(frame)).not.toContain(String(FIXED_SEEDS[0]));
       for (const news of frame.news) {
         expect(Object.keys(news).sort()).toEqual(['body', 'companyId', 'day', 'direction', 'id',
-          ...(news.revealed ? ['revealIndex'] : []), 'revealed', 'source', 'title', 'trust'].sort());
+          ...(news.revealed ? ['revealIndex', 'updateTitle', 'updateBody', 'eventDirection', 'eventBeforeCents', 'eventAfterCents'] : []), 'revealed', 'source', 'title', 'trust'].sort());
         if (news.revealed) expect(news.revealIndex).toBeLessThanOrEqual(frame.clock.priceIndex);
       }
     }

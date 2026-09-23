@@ -208,6 +208,12 @@ export const newsViewSchema = z.object({
   revealIndex: count.optional(),
   /** Present only from that day's closing bell on. */
   wasTrue: z.boolean().optional(),
+  /** Follow-up and observed prices become public at the event, never before. */
+  updateTitle: z.string().optional(),
+  updateBody: z.string().optional(),
+  eventDirection: side.optional(),
+  eventBeforeCents: cents.optional(),
+  eventAfterCents: cents.optional(),
 });
 export type NewsView = z.infer<typeof newsViewSchema>;
 
@@ -320,6 +326,13 @@ export const dayResultSchema = z.object({
   endCents: cents,
   /** What the day changed: `endCents` minus `startCents`. Negative for a losing day. */
   changeCents: cents,
+  /** Completed-day context for the company traded; survives later days and refresh. */
+  review: z.object({
+    companyId: count,
+    openingCents: cents,
+    closingCents: cents,
+    news: newsViewSchema.optional(),
+  }).optional(),
 });
 export type DayResult = z.infer<typeof dayResultSchema>;
 

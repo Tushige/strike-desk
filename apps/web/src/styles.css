@@ -481,6 +481,15 @@
 .news-story h3 { margin: 10px 0 8px; font-size: 18px; font-weight: 600; line-height: 1.4; text-wrap: balance; }
 .news-story > p, .news-wire-empty { margin: 0; font-size: 15px; line-height: 1.6; color: var(--color-muted); }
 .news-story .news-outcome { margin-top: 10px; color: var(--color-sun); font-size: 13px; }
+.news-update { display:block; min-width:0; font-size:13px; line-height:1.6; }
+.news-update > strong { display:block; color:var(--color-sun); font-size:14px; font-weight:600; margin-bottom:4px; }
+.news-update > span { display:block; }
+.news-update-prices { color:var(--color-muted); font-size:12px; font-variant-numeric:tabular-nums; margin-top:6px; }
+.news-story > .news-update { margin-block:14px; padding-top:12px; border-top:1px solid var(--color-line); }
+.market-region .market-tip { min-height:126px; }
+.day-review-story { margin-bottom:20px; max-width:70ch; }
+.day-review-story p { line-height:1.65; margin-block:10px; }
+.day-review-headline { color:var(--color-muted); font-size:12px; }
 .news-story-source { display: flex; gap: 8px; align-items: center; margin-top: 12px; font-size: 12px; line-height: 1.4; color: var(--color-muted); }
 .news-trust-dots { display: flex; gap: 3px; flex-shrink: 0; }
 .news-trust-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--color-line); }

@@ -4,7 +4,8 @@ import { NextDayButton } from '../desk/PhaseActions';
 import { money, percentChange, signedMoney } from '../format';
 import { ActionDock, cx, Label } from '../ui';
 import { headlineFor } from '../desk/tips';
-import { lessonFor } from './lesson';
+import { tradeStoryFor } from './lesson';
+import { NewsUpdate } from '../desk/NewsUpdate';
 import { todaysTicket } from './sources';
 import { RoboPup } from '../mascot/RoboPup';
 
@@ -31,11 +32,7 @@ export function ResultPanel({ frame, companyId }: { frame: Frame; companyId: num
       <div className="ticket-content">
 
       <div className="flex flex-col gap-1 border-b border-line pb-4">
-        <div className="font-bold">{headlineFor(frame, shown) === null ? `${company?.name ?? ''} had no news today.` : `Did the ${company?.name ?? ''} news come true?`}</div>
-        <div className="text-sm text-muted">
-          {news === null ? 'No event for this company.' : news.wasTrue === undefined ? 'Outcome not available.' : news.wasTrue ? 'The claimed direction happened.' : 'The event reversed the claimed direction.'}
-          {news !== null && <span className="block">{news.source} / {news.trust} source dots</span>}
-        </div>
+        {news?.updateBody ? <NewsUpdate news={news} /> : <div className="font-bold">{news === null ? `${company?.name ?? ''} had no news event today.` : 'Today’s news outcome is unavailable.'}</div>}
         <div className="text-sm text-muted">
           {opening !== null && bell !== null ? `${company?.ticker ?? ''} moved ${percentChange(opening, bell)} today.` : 'The price says enough.'}
         </div>
@@ -68,8 +65,8 @@ export function ResultPanel({ frame, companyId }: { frame: Frame; companyId: num
       )}
 
       <div className="flex flex-col gap-1.5">
-        <div className="text-[13px] font-semibold text-sun">What just happened</div>
-        <p className="m-0 text-[15px] leading-normal short:text-sm">{lessonFor(ticket, opening, bell)}</p>
+        <div className="text-[13px] font-semibold text-sun">Your call, in hindsight</div>
+        <p className="m-0 text-[15px] leading-normal short:text-sm">{tradeStoryFor(ticket, news, opening, bell)}</p>
       </div>
 
       </div>

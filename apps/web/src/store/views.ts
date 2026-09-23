@@ -8,6 +8,18 @@ function records<T extends object>(a: readonly T[], b: readonly T[]): boolean {
 function numbers(a: readonly number[], b: readonly number[]): boolean {
   return a === b || a.length === b.length && a.every((value, i) => value === b[i]);
 }
+function days(a: Frame['days'], b: Frame['days']): boolean {
+  return a === b || a.length === b.length && a.every((day, i) => {
+    const other = b[i];
+    if (other === undefined) return false;
+    const left = day.review;
+    const right = other.review;
+    if (left !== right && (left === undefined || right === undefined ||
+      !sameFields(left.news ?? null, right.news ?? null) ||
+      !sameFields({ ...left, news: undefined }, { ...right, news: undefined }))) return false;
+    return sameFields({ ...day, review: undefined }, { ...other, review: undefined });
+  });
+}
 function board(a: Frame['board'], b: Frame['board']): boolean {
   return a === b || a !== null && b !== null && a.targetsPerCompany === b.targetsPerCompany &&
     a.companies.length === b.companies.length && a.companies.every((c, i) => {
@@ -40,17 +52,17 @@ export function createGameViews(store: GameStore) {
     clock: deriveSlice(store.frame, (f) => f?.clock ?? null, sameFields),
     account: deriveSlice(store.frame, (f) => f?.account ?? null, sameFields),
     news: deriveSlice(store.frame, (f) => f?.news ?? [], records),
-    days: deriveSlice(store.frame, (f) => f?.days ?? [], records),
+    days: deriveSlice(store.frame, (f) => f?.days ?? [], days),
     final: deriveSlice(store.frame, (f) => f?.final ?? null, sameFields),
     // Screens get stable authoritative snapshots of only the fields they consume.
     desk: screen((a, b) => identity(a, b) && board(a.board, b.board) && records(a.news, b.news) &&
       a.positions.length === b.positions.length && a.positions.every((p, i) => p.id === b.positions[i]?.id && p.status === b.positions[i]?.status)),
     comparison: screen((a, b) => identity(a, b) && board(a.board, b.board) && sameFields(a.account, b.account)),
     ticket: screen((a, b) => identity(a, b) && board(a.board, b.board) && numbers(a.quotes, b.quotes) &&
-      draft(a.draft, b.draft) && sameFields(a.account, b.account) && positions(a.positions, b.positions) && records(a.days, b.days) && records(a.news, b.news)),
+      draft(a.draft, b.draft) && sameFields(a.account, b.account) && positions(a.positions, b.positions) && days(a.days, b.days) && records(a.news, b.news)),
     chart: screen((a, b) => identity(a, b) && a.clock.priceIndex === b.clock.priceIndex && board(a.board, b.board) &&
       numbers(a.prices, b.prices) && numbers(a.quoteBreakEvens, b.quoteBreakEvens) && positions(a.positions, b.positions) && records(a.news, b.news)),
-    top: screen((a, b) => identity(a, b) && a.step === b.step && a.clock.pace === b.clock.pace && sameFields(a.account, b.account) && records(a.days, b.days)),
-    review: screen((a, b) => identity(a, b) && sameFields(a.final ?? null, b.final ?? null) && records(a.days, b.days) && positions(a.positions, b.positions)),
+    top: screen((a, b) => identity(a, b) && a.step === b.step && a.clock.pace === b.clock.pace && sameFields(a.account, b.account) && days(a.days, b.days)),
+    review: screen((a, b) => identity(a, b) && sameFields(a.final ?? null, b.final ?? null) && days(a.days, b.days) && positions(a.positions, b.positions)),
   };
 }

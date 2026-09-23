@@ -60,11 +60,11 @@ describe('a pool-bound headline writer', () => {
     const write = createHeadlineWriter(CANDIDATE);
     // Two fitting events: .375 * 2 = .75 selects the first event, then wording 2 of 2.
     expect(write([slot({ trust: 3, direction: 'up' })], CAST, scriptedRng([0.99, 0.375]))).toEqual([
-      { source: 'Official B', title: 'RoboPup order', body: 'Extra robot pets ordered.' },
+      { eventId: 'order', source: 'Official B', title: 'RoboPup order', body: 'Extra robot pets ordered.' },
     ]);
     // .95 * 2 = 1.9 selects the second event, then wording 3 of 3.
     expect(write([slot({ trust: 3, direction: 'up' })], CAST, scriptedRng([0, 0.95]))).toEqual([
-      { source: 'Official A', title: 'RoboPup delivery', body: 'Delivery C.' },
+      { eventId: 'delivery', source: 'Official A', title: 'RoboPup delivery', body: 'Delivery C.' },
     ]);
   });
 
@@ -73,7 +73,7 @@ describe('a pool-bound headline writer', () => {
     if (original === undefined) throw new Error('missing test company');
     const cast = [{ ...original, id: 42, name: 'Acme', product: 'test toys' }];
     expect(createHeadlineWriter(CANDIDATE)([slot({ companyId: 42, trust: 2, direction: 'up' })], cast, scriptedRng([0, 0]))).toEqual([
-      { source: 'Worker A', title: 'Acme order', body: 'More test toys ordered.' },
+      { eventId: 'order', source: 'Worker A', title: 'Acme order', body: 'More test toys ordered.' },
     ]);
   });
 

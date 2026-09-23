@@ -51,7 +51,6 @@ export function PriceChart({
   companyId,
   target,
   ticket,
-  twist,
   compact = false,
 }: {
   frame: Frame;
@@ -59,7 +58,7 @@ export function PriceChart({
   target: TargetLines | null;
   /** Today's ticket on this company, for the entry and exit marks. */
   ticket: PositionView | null;
-  /** Show the "Plot twist!" banner. */
+  /** Legacy callers may supply event freshness; the marker is now persistent and quiet. */
   twist: boolean;
   compact?: boolean;
 }) {
@@ -259,23 +258,16 @@ export function PriceChart({
           {narrow && <div className="chart-event-legend absolute inset-x-3 bottom-9 flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-semibold">
             {entryPoint !== null && <span className="flex items-center gap-1 text-sun"><span className="size-1.5 rounded-full bg-sun" aria-hidden="true" />Bought</span>}
             {exitPoint !== null && <span className="flex items-center gap-1 text-cloud"><span className="size-1.5 rounded-full bg-cloud" aria-hidden="true" />Cashed out</span>}
-            {revealX !== null && <span className="text-sun" role={twist ? 'status' : undefined}>Plot twist{twist ? '!' : ''}</span>}
+            {revealX !== null && <span className="text-sun" title={reveal?.updateBody}>News update</span>}
           </div>}
-          {twist && !compact && !narrow && (
-            <span className="absolute top-4 left-1/2 w-[184px] -translate-x-1/2">
-              <span className="block rounded-xl bg-sun py-2 text-center font-display text-[13px] font-bold text-ink animate-nudge" role="status">
-                Plot twist!
-              </span>
-            </span>
-          )}
 
           {!narrow && <span className="absolute bottom-2.5 left-2.5 hidden text-xs text-muted sm:block">Yesterday</span>}
           <span className="chart-open-label absolute bottom-2.5 text-xs text-muted" style={{ left: narrow ? 12 : openX + 8 }}>
             Opening bell
           </span>
-          {revealX !== null && !twist && !narrow && (
-            <span className="absolute bottom-2.5 text-xs font-semibold text-sun/80" style={{ left: Math.min(plotRight - 80, revealX + 6) }}>
-              Plot twist
+          {revealX !== null && !narrow && (
+            <span className="absolute bottom-2.5 text-xs font-semibold text-sun/80" title={reveal?.updateBody} style={{ left: Math.min(plotRight - 90, revealX + 6) }}>
+              News update
             </span>
           )}
           <span className="chart-close-label absolute bottom-2.5 text-xs text-muted" style={{ right: narrow ? 12 : rightMargin }}>Closing bell</span>

@@ -36,7 +36,7 @@ describe('the market writes its headlines through the writer', () => {
     const words = writeHeadlines(slots, market.cast, wordingStream(TEST_SEED));
 
     expect(headlines).toHaveLength(15);
-    expect(headlines.map(({ source, title, body }) => ({ source, title, body }))).toEqual(words);
+    expect(headlines.map(({ eventId, source, title, body }) => ({ eventId, source, title, body }))).toEqual(words);
     // The test market opens with Fizzly: real words, with the company's name filled in.
     expect(headlines[0]?.companyId).toBe(1);
     expect(headlines[0]?.title).toContain('Fizzly');

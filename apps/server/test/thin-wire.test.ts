@@ -381,7 +381,7 @@ describe("every frame this service emits", () => {
                     "revealed",
                 ];
                 if (news.revealed) {
-                    keys.push("revealIndex");
+                    keys.push("revealIndex", "updateTitle", "updateBody", "eventDirection", "eventBeforeCents", "eventAfterCents");
                     expect(news.revealIndex).toBeLessThanOrEqual(
                         frame.clock.priceIndex,
                     );

@@ -55,6 +55,7 @@ export interface MarketSettings {
 
 /** The half of a headline a player may read from the start of its day. */
 export interface Headline {
+  eventId?: string;
   id: number;
   day: number;
   companyId: number;
@@ -223,6 +224,7 @@ export function buildMarket(identity: MarketIdentity, settings: MarketSettings =
       const said = words[slots.indexOf(slot)];
       if (said === undefined) throw new Error(`the news writer left headline ${slot.id} without words`);
       const headline: Headline = {
+        ...(said.eventId === undefined ? {} : { eventId: said.eventId }),
         id: slot.id,
         day: slot.day,
         companyId: slot.companyId,

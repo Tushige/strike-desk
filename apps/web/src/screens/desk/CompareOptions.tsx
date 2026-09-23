@@ -6,6 +6,7 @@ import type { ContractRow } from '../../store/contractRows';
 import { ChoiceButton, CompanyTile, cx } from '../ui';
 import { useView, views } from '../../store/hooks';
 import { choicesFor } from './pick';
+import { COMPARISON_CHIP as CHIP, comparisonIntro } from './comparisonLayout';
 
 /**
  * "Compare options": the whole contract board, every ticket of every company
@@ -19,7 +20,6 @@ import { choicesFor } from './pick';
  * chart company while showing every company's contracts.
  */
 
-const CHIP = 'flex h-8 items-center gap-1.5 rounded-lg border-2 px-2 text-[12px] font-semibold';
 const chipTone = (on: boolean): string => (on ? 'border-sun bg-sun text-ink' : 'border-line text-cloud');
 
 export function CompareOptions({
@@ -80,8 +80,8 @@ export function CompareOptions({
   }, [boardKey, companyId]);
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col gap-2">
-      <p className="m-0 text-xs text-muted">Price, real and hope value are per ticket.{frame.stress ? " Read-only workload; complete scenarios refresh about every 1.5 seconds." : " Cost / max loss uses your current budget."} Scroll inside the table for more columns.</p>
+    <div className="comparison-content flex min-h-0 flex-col gap-3">
+      <p className="m-0 text-xs text-muted">{comparisonIntro(frame.stress)}</p>
       <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filters">
         <ChoiceButton selected={company === null} className={cx(CHIP, chipTone(company === null))} onClick={() => { setFilterCompany(false); }}>
           All
@@ -107,7 +107,7 @@ export function CompareOptions({
           Affordable for me
         </ChoiceButton>
       </div>
-      <div className="min-h-0 flex-1 overflow-hidden rounded-[18px] border border-line bg-panel">
+      <div className="comparison-grid min-h-0 overflow-hidden rounded-[18px] border border-line bg-panel">
         <ContractBoard
           selectedId={selectedContractId === null ? null : String(selectedContractId)}
           onSelect={(id) => { onPick(Number(id)); }}

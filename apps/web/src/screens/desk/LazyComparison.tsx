@@ -1,6 +1,7 @@
 import { Component, lazy, Suspense, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { CompareOptions } from './CompareOptions';
+import { ComparisonSkeleton } from './ComparisonSkeleton';
 
 type Props = Parameters<typeof CompareOptions>[0];
 const load = () => import('./CompareOptions').then((m) => ({ default: m.CompareOptions }));
@@ -17,6 +18,6 @@ export function LazyComparison(props: Props) {
   const [attempt, setAttempt] = useState(() => ({ id: 0, Grid: lazy(load) }));
   const Grid = attempt.Grid;
   return <GridBoundary key={attempt.id} retry={() => { setAttempt({ id: attempt.id + 1, Grid: lazy(load) }); }}>
-    <Suspense fallback={<p role="status" className="p-4 text-sm text-muted">Loading live contracts…</p>}><Grid {...props} /></Suspense>
+    <Suspense fallback={<ComparisonSkeleton />}><Grid {...props} /></Suspense>
   </GridBoundary>;
 }

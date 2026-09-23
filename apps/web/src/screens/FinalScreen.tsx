@@ -1,106 +1,88 @@
 import { useState } from 'react';
-import { DayReview } from './ticket/DayReview';
 import type { Frame } from '@strike-desk/shared/protocol';
 import { playAgain } from '../boot';
-import { money, signedMoney } from './format';
-import { cx, Label, PrimaryButton } from './ui';
-import { DAYS, finalWords, rankFor } from './words';
 import { useScreenFrame } from '../store/hooks';
+import { money, signedMoney } from './format';
+import { DAYS, finalWords, rankFor } from './words';
+import { DayReview } from './ticket/DayReview';
+import { BalanceJourney } from './summary/BalanceJourney';
+import { RoboPup } from './mascot/RoboPup';
+import { LessonConveyor } from './summary/LessonConveyor';
+import './summary/summary.css';
 
-/**
- * The last screen: the rank the final cash earned, the cash itself, one bar
- * per day, and the market number that would replay this exact market.
- */
+type SummaryStyle = 'journey' | 'receipt' | 'journal' | 'scorecard';
+const compactMoney = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
+const tone = (amount: number) => amount > 0 ? 'summary-profit' : amount < 0 ? 'summary-loss' : 'summary-flat';
 
-const BAR = 84; // px, tallest bar
+function DayChoices({ frame, selected, onSelect, layout }: {
+  frame: Frame; selected: number; onSelect: (day: number) => void; layout: SummaryStyle;
+}) {
+  const rows = layout === 'receipt' || layout === 'journal';
+  return <div className={`summary-days ${rows ? 'summary-day-rows' : 'summary-day-strip'}`} role="group" aria-label="Review your five days">
+    {Array.from({ length: DAYS }, (_, index) => {
+      const day = index + 1;
+      const result = frame.days.find(one => one.day === day);
+      const ticket = frame.positions.find(one => one.day === day);
+      const company = ticket === undefined ? undefined : frame.companies[ticket.companyId];
+      const label = ticket !== undefined ? `${company?.ticker ?? ''} ${ticket.side === 'up' ? 'UP' : 'DOWN'}` : result === undefined ? finalWords.notPlayed : finalWords.satOut;
+      const amount = result === undefined ? '—' : result.changeCents === 0 ? '$0' : signedMoney(result.changeCents);
+      const compact = result === undefined ? '—' : result.changeCents === 0 ? '$0' : `${result.changeCents < 0 ? '−' : '+'}$${compactMoney.format(Math.abs(result.changeCents) / 100)}`;
+      return <button key={day} type="button" className="summary-day" aria-pressed={selected === day}
+        aria-label={`Review day ${String(day)}, ${label}, ${amount}`} title={`Day ${String(day)} · ${label} · ${amount}`}
+        style={{ animationDelay: `${String(180 + index * 45)}ms` }} onClick={() => { onSelect(day); }}>
+        <span>Day {day}</span>{rows && <span className="summary-company">{label}</span>}
+        <span className={`summary-day-amount ${tone(result?.changeCents ?? 0)}`} aria-hidden="true">{rows ? amount : compact}</span>
+      </button>;
+    })}
+  </div>;
+}
 
-function DayBars({ frame, selected, onSelect }: { frame: Frame; selected: number; onSelect: (day: number) => void }) {
-  const biggest = Math.max(1, ...frame.days.map((day) => Math.abs(day.changeCents)));
-  return (
-    <ol className="m-0 grid list-none grid-cols-5 gap-3 p-0">
-      {Array.from({ length: DAYS }, (_, i) => {
-        const day = i + 1;
-        const result = frame.days.find((one) => one.day === day);
-        const ticket = frame.positions.find((one) => one.day === day);
-        const company = ticket === undefined ? null : (frame.companies[ticket.companyId] ?? null);
-        const change = result?.changeCents ?? 0;
-        const size = result !== undefined && change !== 0 ? Math.max(4, Math.round((Math.abs(change) / biggest) * BAR)) : 0;
-        return (
-          <li key={day}><button type="button" aria-pressed={selected === day} aria-label={`Review day ${String(day)}, ${ticket === undefined ? "No trade" : `${company?.ticker ?? ""} ${ticket.side === "up" ? "UP" : "DOWN"}`}, ${signedMoney(change)}`} onClick={() => { onSelect(day); }} className={cx("flex w-full flex-col items-center gap-1.5 rounded-xl p-1", selected === day && "bg-raised ring-1 ring-sun")}>
-            <span className={cx('text-[13px] font-bold tabular-nums', result === undefined || change === 0 ? 'text-muted' : change > 0 ? 'text-mint' : 'text-coral')}>
-              {result === undefined ? '' : ticket === undefined ? '$0' : signedMoney(change)}
-            </span>
-            <span className="flex w-11 items-end" style={{ height: BAR }}>
-              <span className="w-full rounded-t-[10px] bg-mint" style={{ height: change > 0 ? size : 0 }} />
-            </span>
-            <span className="h-0.5 w-[72px] max-w-full bg-dusk" />
-            <span className="flex w-11 items-start" style={{ height: BAR }}>
-              <span className="w-full rounded-b-[10px] bg-coral" style={{ height: change < 0 ? size : 0 }} />
-            </span>
-            <span className="text-sm font-bold">Day {day}</span>
-            <span className="text-xs text-muted">
-              {result === undefined ? finalWords.notPlayed : ticket === undefined || company === null ? finalWords.satOut : `${company.ticker} ${ticket.side === 'up' ? 'UP' : 'DOWN'}`}
-            </span>
-          </button></li>
-        );
-      })}
-    </ol>
-  );
+function Review({ frame, selected }: { frame: Frame; selected: number }) {
+  return <div className="summary-review-panels">
+    {Array.from({ length: DAYS }, (_, i) => i + 1).map(day => <div key={day}
+      className={selected === day ? 'summary-review-active' : 'summary-review-inactive'} aria-hidden={selected !== day} inert={selected !== day}>
+      <DayReview frame={frame} day={day} />
+    </div>)}
+  </div>;
 }
 
 export function FinalScreen() {
   const frame = useScreenFrame('review');
-  const [selected, setSelected] = useState(1);
-  const final = frame.final;
-  const finalCents = final?.finalCents ?? frame.account.cashCents;
-  const change = final?.changeCents ?? 0;
+  return <SummaryComposition frame={frame} layout="journey" />;
+}
+
+/** Alternative compositions remain in code; the live screen always uses Journey. */
+export function SummaryComposition({ frame, layout }: { frame: Frame; layout: SummaryStyle }) {
+  const [selected, setSelected] = useState(frame.positions[0]?.day ?? frame.days[0]?.day ?? 1);
+  const finalCents = frame.final?.finalCents ?? frame.account.cashCents;
+  const change = frame.final?.changeCents;
   const rank = rankFor(finalCents);
+  const verdict = <div className={`summary-verdict ${layout === 'journey' ? 'summary-verdict-with-pup' : ''}`}><div className="summary-verdict-copy"><h1>{rank.title}</h1><p>{rank.blurb}</p></div>{layout === 'journey' && <RoboPup pose="receipt" />}</div>;
+  const balance = <div className="summary-balance"><span className="summary-caption">{finalWords.finishedWith}</span>
+    <div className="summary-total">{money(finalCents)}</div>
+    {change !== undefined && <p className={tone(change)}>{change === 0 ? '$0' : signedMoney(change)} <span className="summary-caption">{change === 0 ? 'change overall' : 'overall'}</span></p>}
+  </div>;
+  const choices = <DayChoices frame={frame} selected={selected} onSelect={setSelected} layout={layout} />;
+  const review = <Review frame={frame} selected={selected} />;
 
-  return (
-    <main className="mx-auto flex w-full max-w-[1440px] grow flex-col gap-10 px-5 py-10 sm:px-12 lg:flex-row lg:items-center lg:gap-16 lg:px-24">
-      <div className="flex flex-col gap-7 motion-safe:animate-rise lg:w-[440px] lg:shrink-0">
-        <div className="flex flex-col gap-2.5">
-          <p className="m-0 text-[15px] font-semibold text-sun">{finalWords.kicker}</p>
-          <h1 className="m-0 font-display text-4xl leading-[1.1] font-extrabold sm:text-[44px]">{rank.title}</h1>
-          <p className="m-0 text-lg leading-normal text-muted">{rank.blurb}</p>
+  return <main className="end-screen">
+    <div key={layout} className={`summary-scene summary-${layout}`}>
+      {(layout === 'receipt' || layout === 'scorecard') && <div className="summary-masthead"><strong>STRIKE DESK</strong><span>{finalWords.kicker}</span></div>}
+      {layout === 'receipt' ? <div className="summary-receipt-body">
+        <div className="summary-receipt-verdict">{verdict}{balance}
+          {frame.days[0] && <div className="summary-starting"><span>Starting money</span><span>{money(frame.days[0].startCents)}</span></div>}
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label>{finalWords.finishedWith}</Label>
-          <div className="font-display text-4xl leading-[1.1] font-extrabold text-sun tabular-nums sm:text-[58px]">{money(finalCents)}</div>
-          <div className={cx('text-lg font-semibold', change >= 0 ? 'text-mint' : 'text-coral')}>
-            {change > 0 ? finalWords.more(signedMoney(change)) : change < 0 ? finalWords.less(money(-change)) : finalWords.even}
-          </div>
-        </div>
-        <div>
-          <PrimaryButton className="h-16 px-10 text-lg" onClick={playAgain}>
-            {finalWords.action}
-          </PrimaryButton>
-        </div>
-        {final !== undefined && (
-          <p className="m-0 text-[13px] leading-normal text-muted">
-            {finalWords.marketLabel} <span className="font-semibold text-cloud tabular-nums">{final.marketCode}</span>. {finalWords.marketHint}
-          </p>
-        )}
+        <div className="summary-receipt-ledger"><h2>{finalWords.daysHeading}</h2>{choices}{review}</div>
+      </div> : <>
+        <div className="summary-heading">{verdict}{balance}</div>
+        {layout === 'journey' ? <div className="summary-journey-body">
+          <BalanceJourney days={frame.days} selected={selected} />{choices}{review}
+        </div> : <div className="summary-results">{choices}{review}</div>}
+      </>}
+      <LessonConveyor />
+      <div className="summary-footer"><button className="summary-play" type="button" onClick={playAgain}>{finalWords.action}</button>
+        {frame.final && <p>{finalWords.marketLabel} <strong>{frame.final.marketCode}</strong>.<br />{finalWords.marketHint}</p>}
       </div>
-
-      <div className="flex grow flex-col gap-5">
-        <section className="flex flex-col gap-4 rounded-3xl border border-line bg-panel p-6">
-          <h2 className="m-0 font-display text-base font-bold">{finalWords.daysHeading}</h2>
-          <DayBars frame={frame} selected={selected} onSelect={setSelected} />
-          <DayReview frame={frame} day={selected} />
-        </section>
-        <section className="flex flex-col gap-3 rounded-3xl border border-line bg-panel p-6">
-          <h2 className="m-0 font-display text-base font-bold">{finalWords.lessonsHeading}</h2>
-          <ul className="m-0 flex list-none flex-col gap-3 p-0 text-[15px] leading-[1.45]">
-            {finalWords.lessons.map((text) => (
-              <li key={text} className="flex gap-3">
-                <span className="mt-2 size-2 shrink-0 rounded-full bg-sun" />
-                {text}
-              </li>
-            ))}
-          </ul>
-        </section>
-      </div>
-    </main>
-  );
+    </div>
+  </main>;
 }

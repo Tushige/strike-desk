@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { createElement } from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { PriceChart } from '../src/screens/desk/PriceChart';
 import { testFrame } from './fakeSocket';
@@ -26,7 +26,7 @@ const frame = testFrame({
   board: { targetsPerCompany: 2, companies: [{ targets: [8_000, 12_000], simpleUp: [0, 0, 1], simpleDown: [0, 1, 1], lowestUpIndex: 0, highestDownIndex: 1 }] },
 });
 
-it.each([[1_000, 192], [1_000, 224], [360, 224]])('uses the compact plot height at %i × %i and separates right-side price labels', (w, h) => {
+it.each([[1_000, 192], [1_000, 224]])('uses the compact plot height at %i × %i and separates right-side price labels', (w, h) => {
   width = w;
   height = h;
   const { container } = render(createElement(PriceChart, {
@@ -59,4 +59,42 @@ it.each([[1_000, 192], [1_000, 224], [360, 224]])('uses the compact plot height 
   expect(Number.parseFloat(bubble.style.left)).toBeLessThan(w - 144);
   expect(Number.parseFloat(bubble.style.top)).toBeGreaterThanOrEqual(8);
   expect(screen.queryByText('Now')).toBeNull();
+});
+
+it('keeps narrow-chart annotations outside the plot without losing observed prices or keyboard inspection', () => {
+  width = 309;
+  height = 280;
+  const { container } = render(createElement(PriceChart, {
+    frame, companyId: 0, compact: true, ticket: null, twist: false,
+    target: { side: 'up', targetCents: 10_000, breakEvenCents: 10_001 },
+  }));
+  expect(container.querySelectorAll('.chart-level-label')).toHaveLength(0);
+  expect(container.querySelector('.chart-level-legend')?.textContent).toContain('Break-even$100.01');
+  expect(container.querySelector('.chart-level-legend')?.textContent).toContain('Target$100.00');
+  const chart = screen.getByRole('img', { name: 'Price chart, now $105.00' });
+  const trace = chart.querySelectorAll('polyline')[1];
+  const points = trace?.getAttribute('points')?.split(' ').map((point) => point.split(',').map(Number)) ?? [];
+  expect(points).toHaveLength(4);
+  expect(Math.max(...points.map(([x]) => x ?? 0))).toBeLessThan(width);
+  expect(container.querySelector<HTMLElement>('.chart-open-label')?.style.left).toBe('12px');
+  expect(container.querySelector<HTMLElement>('.chart-close-label')?.style.right).toBe('12px');
+  expect(screen.getByRole('group').getAttribute('tabindex')).toBe('0');
+});
+
+it('shows chart guides until layout is measured, then replaces them with observed prices', () => {
+  let measure = () => {};
+  vi.stubGlobal('ResizeObserver', class implements ResizeObserver {
+    constructor(private readonly callback: ResizeObserverCallback) {
+      measure = () => { this.callback([{ contentRect: { width: 390, height: 280 } } as ResizeObserverEntry], this); };
+    }
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  });
+  render(createElement(PriceChart, { frame, companyId: 0, compact: false, ticket: null, twist: false, target: null }));
+  expect(screen.getByRole('status', { name: 'Preparing price chart' })).toBeTruthy();
+  expect(screen.queryByRole('img')).toBeNull();
+  act(() => { measure(); });
+  expect(screen.queryByRole('status', { name: 'Preparing price chart' })).toBeNull();
+  expect(screen.getByRole('img', { name: 'Price chart, now $105.00' })).toBeTruthy();
 });

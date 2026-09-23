@@ -5,39 +5,15 @@ import { lineStateOf } from '../modules/connection/index';
 import { useConnectionState, useView, views } from '../store/hooks';
 import { clock, money, secondsFor } from './format';
 import { cx, GhostButton, Label, LogoMark } from './ui';
-import { DAYS, LINE_WORDS, topBarWords } from './words';
+import { LINE_WORDS, topBarWords } from './words';
+import { DayTickets } from './DayTickets';
 
 /**
- * The bar across the top: logo, one pip per day, the time left, and the
+ * The bar across the top: logo, one ticket per day, the time left, and the
  * money. Total worth is the big number, because it only moves when the
  * market moves: buying a ticket turns cash into a ticket worth the same,
  * not into a loss.
  */
-
-function DayPips({ frame }: { frame: Frame | null }) {
-  const playing = frame !== null && frame.clock.phase !== 'lobby' && frame.clock.phase !== 'final';
-  return (
-    <div className="flex gap-2" aria-hidden="true">
-      {Array.from({ length: DAYS }, (_, i) => {
-        const day = i + 1;
-        const done = frame?.days.find((result) => result.day === day);
-        const current = playing && frame.clock.day === day;
-        return (
-          <span
-            key={day}
-            className={cx(
-              'h-3 w-10 rounded-full border-2',
-              done !== undefined && done.changeCents > 0 && 'border-mint bg-mint',
-              done !== undefined && done.changeCents < 0 && 'border-coral bg-coral',
-              done !== undefined && done.changeCents === 0 && 'border-muted bg-muted',
-              done === undefined && (current ? 'border-sun' : 'border-line'),
-            )}
-          />
-        );
-      })}
-    </div>
-  );
-}
 
 function dayLabel(frame: Frame | null): string {
   if (frame === null || frame.clock.phase === 'lobby') return topBarWords.lobbyDays;
@@ -56,10 +32,10 @@ export function TopBar() {
   const account = frame?.account ?? null;
 
   return (
-    <header className="flex h-[76px] shrink-0 items-center justify-between gap-4 border-b border-line bg-ink px-4 sm:px-7">
-      <div className="flex items-center gap-3 lg:w-[360px]">
+    <header className="game-topbar flex h-[76px] shrink-0 items-center justify-between gap-4 border-b border-line bg-ink px-4 sm:px-7">
+      <div className="topbar-brand flex min-w-0 items-center gap-3">
         <LogoMark />
-        <span className="hidden font-display text-lg font-extrabold tracking-wide sm:block">STRIKE DESK</span>
+        <span className="topbar-brand-name brand-wordmark">Strike Desk</span>
         {line !== 'live' && (
           <span
             role="status"
@@ -79,9 +55,9 @@ export function TopBar() {
         )}
       </div>
 
-      <div className="hidden items-center gap-3.5 lg:flex">
-        <span className="text-sm text-muted">{dayLabel(frame)}</span>
-        <DayPips frame={frame} />
+      <div className="topbar-day-progress">
+        <span className="topbar-day-label">{dayLabel(frame)}</span>
+        <DayTickets frame={frame} />
       </div>
 
       <div className="topbar-metrics">

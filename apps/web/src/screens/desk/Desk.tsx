@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { restoredIntent, store } from "../../boot";
 import type { Frame, Side } from "@strike-desk/shared/protocol";
 import { lineStateOf } from "../../modules/connection/index";
@@ -15,7 +15,9 @@ import { clock, percentChange, price, secondsFor } from "../format";
 import { TicketPanel } from "../ticket/TicketPanel";
 import { Bulb, CompanyTile, cx, GhostButton, Label } from "../ui";
 import { LazyComparison } from "./LazyComparison";
-import { NewsCard } from "./NewsCard";
+import { MarketCompany } from "./MarketCompany";
+import { MarketBell } from "./MarketBell";
+import { NewsWire } from "./NewsWire";
 import { CompanyList } from "./CompanyList";
 import {
     companyOf,
@@ -30,8 +32,8 @@ import type { TargetLines } from "./PriceChart";
 import { headlineFor, ticketToday, tipFor, twistShowing } from "./tips";
 
 /**
- * The desk: today's news down the left, the selected company's chart in the
- * middle, the ticket on the right. One screen, no page scroll on a laptop.
+ * The desk separates company navigation from news. Desktop shows the market
+ * and ticket together; mobile switches task views without unmounting the draft.
  *
  * The selected company is the one whose chart shows and whose tickets the
  * builder offers. It starts on the day's first headline and follows the
@@ -133,6 +135,13 @@ function CompanyHeader({
 
 export function Desk() {
     const frame = useScreenFrame("desk");
+    const [mobileView, setMobileView] = useState<'market' | 'news' | 'ticket'>('market');
+    const navigation = useRef<HTMLElement>(null);
+    useEffect(() => {
+        if (window.innerWidth >= 1024) return;
+        if (window.scrollY !== 0) window.scrollTo({ top: 0, behavior: 'instant' });
+        navigation.current?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')?.focus({ preventScroll: true });
+    }, [mobileView]);
     const day = frame.clock.day;
     const headlines = frame.news.filter((item) => item.day === day);
     const picking = frame.clock.phase === "preBell";
@@ -219,94 +228,51 @@ export function Desk() {
     const line = lineStateOf(useConnectionState().phase);
     const canCompare = frame.board !== null && frame.clock.phase !== "debrief";
     const showBoard = comparing && canCompare;
-    const quiet = frame.companies
-        .map((_, companyId) => companyId)
-        .filter((companyId) => headlineFor(frame, companyId) === null);
 
     return (
         <main
+            data-mobile-view={mobileView}
             className={cx(
                 "desk-layout mx-auto flex w-full max-w-[1920px] flex-col gap-4 p-4 lg:min-h-0 lg:grow lg:flex-row",
                 showBoard && "desk-comparing",
             )}
         >
-            <nav className="mobile-sections" aria-label="Desk sections">
-                <a
-                    href="#desk-news"
-                    onClick={() => {
-                        setComparing(false);
-                    }}
-                >
-                    News
-                </a>
-                <a href="#desk-market">Market</a>
-                <a href="#desk-ticket">Your ticket</a>
+            <nav ref={navigation} className="mobile-sections" aria-label="Desk sections">
+                {(['market', 'news', 'ticket'] as const).map(view => <button
+                    key={view} type="button" aria-pressed={mobileView === view}
+                    aria-controls={`desk-${view}`} onClick={() => { setMobileView(view); }}
+                >{view === 'market' ? 'Market' : view === 'news' ? 'News' : 'Your ticket'}</button>)}
             </nav>
-            <section
-                id="desk-news"
-                className={cx(
-                    "news-rail flex flex-col gap-3 transition-opacity lg:min-h-0 lg:w-[290px] lg:shrink-0",
-                    line !== "live" && "opacity-60",
-                )}
-                aria-label="Today's news"
-            >
-                <div className="flex h-[26px] shrink-0 items-center justify-between">
-                    <h2 className="m-0 font-display text-base font-bold">
-                        Today's news
-                    </h2>
-                    <span className="text-[13px] text-muted">Tap to view</span>
-                </div>
-                <CompanyList>
-                    {headlines.map((news) => {
-                        const company = frame.companies[news.companyId];
-                        return (
-                            <NewsCard
-                                key={news.id}
-                                news={news}
-                                companyId={news.companyId}
-                                name={company?.name ?? ""}
-                                product={company?.product ?? ""}
-                                selected={selected === news.companyId}
-                                mine={ticket?.companyId === news.companyId}
-                                picking={picking}
-                                onSelect={() => {
-                                    select(news.companyId);
-                                }}
-                            />
-                        );
-                    })}
-                    {quiet.map((companyId) => (
-                        <NewsCard
-                            key={companyId}
-                            news={null}
-                            companyId={companyId}
-                            name={frame.companies[companyId]?.name ?? ""}
-                            product={frame.companies[companyId]?.product ?? ""}
-                            picking={picking}
-                            selected={selected === companyId}
-                            mine={ticket?.companyId === companyId}
-                            onSelect={() => {
-                                select(companyId);
-                            }}
-                        />
-                    ))}
-                </CompanyList>
-            </section>
+            <aside className={cx('desk-sidebar', line !== 'live' && 'opacity-60')}>
+                <section className="market-lineup" aria-label="Companies">
+                    <div className="lineup-heading"><h2>Companies</h2><span>Choose a chart</span></div>
+                    <CompanyList>
+                        {frame.companies.map((company, companyId) => <MarketCompany
+                            key={companyId} companyId={companyId} name={company.name} ticker={company.ticker}
+                            selected={selected === companyId} mine={ticket?.companyId === companyId}
+                            picking={picking} disabled={orderInFlight} onSelect={() => { select(companyId); }}
+                        />)}
+                    </CompanyList>
+                </section>
+                <NewsWire frame={frame} selected={selected} disabled={orderInFlight} onSelect={companyId => {
+                    select(companyId); setMobileView('market'); setComparing(false);
+                }} />
+            </aside>
 
             <section
                 id="desk-market"
                 className={cx(
-                    "market-region flex min-w-0 flex-col gap-4 rounded-3xl border border-line bg-panel p-4 transition-opacity sm:p-5 lg:grow",
+                    "market-region flex min-w-0 flex-col gap-4 border border-line bg-panel transition-opacity lg:grow",
                     line !== "live" && "opacity-60",
                 )}
             >
-                <div className="flex items-center justify-between gap-x-3">
+                <div className="market-panel-heading">
                     <CompanyHeader frame={frame} companyId={selected} />
                     <DeskClock />
                 </div>
 
                 {showBoard && (
-                    <div className="flex items-center gap-3 text-sm text-muted">
+                    <div className="comparison-context flex flex-wrap items-center gap-3 text-sm text-muted">
                         <p className="m-0 min-w-0 flex-1 text-xs">
                             {headlineFor(frame, selected)?.title ??
                                 "No news for this company today."}
@@ -318,14 +284,14 @@ export function Desk() {
                                 setComparing(false);
                             }}
                         >
-                            Back to news
+                            Close comparison
                         </GhostButton>
-                        <a
+                        <button type="button"
                             className="ml-auto underline lg:hidden"
-                            href="#desk-ticket"
+                            onClick={() => { setMobileView('ticket'); }}
                         >
                             Your ticket
-                        </a>
+                        </button>
                     </div>
                 )}
                 <ChartRegion
@@ -352,7 +318,7 @@ export function Desk() {
                 )}
 
                 {!showBoard && (
-                    <div className="flex min-h-16 items-center gap-3.5 rounded-2xl bg-raised px-[18px] py-3">
+                    <div className="market-tip rounded-2xl bg-raised p-4">
                         <Bulb className="size-[26px] shrink-0 text-sun" />
                         <p className="m-0 grow text-[15px] leading-[1.45]">
                             {showBoard
@@ -368,7 +334,7 @@ export function Desk() {
                         {canCompare && (
                             <GhostButton
                                 tone={showBoard ? "line" : "sun"}
-                                className="h-10 shrink-0 px-3.5 text-[13px]"
+                                className="market-compare-action min-h-11 px-4"
                                 aria-pressed={showBoard}
                                 onClick={() => {
                                     setOpened(true);
@@ -376,17 +342,21 @@ export function Desk() {
                                 }}
                             >
                                 {showBoard
-                                    ? "Back to news"
+                                    ? "Close comparison"
                                     : "Compare contracts"}
                             </GhostButton>
                         )}
                     </div>
                 )}
+                <button type="button" className="mobile-ticket-link" onClick={() => { setMobileView('ticket'); }}>
+                    {frame.clock.phase === 'debrief' ? 'Review today' : ticket === null ? 'Build your ticket' : 'View your ticket'} <span aria-hidden="true">→</span>
+                </button>
             </section>
 
+            <link rel="preload" as="image" href={new URL('../../assets/mascot/robopup-poses.png', import.meta.url).href} />
             <section
                 id="desk-ticket"
-                className="ticket-region flex min-w-0 flex-col rounded-3xl border border-line bg-panel p-5 lg:w-[340px] lg:shrink-0 lg:overflow-y-auto"
+                className="ticket-region flex min-w-0 flex-col border border-line bg-panel lg:w-[340px] lg:shrink-0"
                 aria-label="Your ticket"
             >
                 <TicketPanel
@@ -408,10 +378,10 @@ function DeskClock() {
     const seconds = secondsFor(value.stepsLeft, value.pace);
     return (
         <div
-            className="flex shrink-0 flex-col items-end gap-0.5 rounded-2xl bg-raised px-3 py-2"
+            className="desk-clock"
             role="timer"
         >
-            <Label>{PHASE_LABEL[value.phase]}</Label>
+            <Label className="desk-clock-label"><MarketBell phase={value.phase} />{PHASE_LABEL[value.phase]}</Label>
             <span
                 className={cx(
                     "w-[5ch] text-right font-display text-lg font-bold tabular-nums",

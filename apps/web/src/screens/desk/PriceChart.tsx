@@ -4,6 +4,7 @@ import { OPEN_STEPS } from '@strike-desk/shared/time';
 import { useSeries } from '../../store/hooks';
 import { price } from '../format';
 import { cx } from '../ui';
+import { ChartSkeleton } from '../LoadingSkeleton';
 
 /**
  * The price chart: yesterday's tail, the opening bell, today's line so far,
@@ -93,11 +94,13 @@ export function PriceChart({
   }
   if (hi <= lo) hi = lo + 1;
 
-  const padTop = compact ? 26 : PAD_TOP;
-  const padBottom = compact ? 30 : PAD_BOTTOM;
+  const narrow = w > 0 && w < 460;
+  const useRail = compact && !narrow;
+  const padTop = narrow ? 64 : compact ? 26 : PAD_TOP;
+  const padBottom = narrow ? 68 : compact ? 30 : PAD_BOTTOM;
   // Keep prices outside the drawing, and leave compact charts actual plot
   // height instead of spending most of their box on full-size annotations.
-  const rightMargin = compact ? 152 : 76;
+  const rightMargin = narrow ? 16 : compact ? 152 : 76;
   const plotRight = Math.max(16, w - rightMargin);
   const plotBottom = Math.max(padTop + 1, h - padBottom);
   // Yesterday's tail gets a fixed fifth of the width whatever its point
@@ -144,7 +147,7 @@ export function PriceChart({
   }
 
   return (
-    <div ref={box} className={cx('price-chart relative overflow-hidden rounded-[18px] bg-well', compact ? 'chart-compact h-[224px] shrink-0' : 'h-[380px] lg:h-auto lg:min-h-[180px] lg:flex-1')}
+    <div ref={box} className={cx('price-chart relative overflow-hidden rounded-[18px] bg-well', narrow && 'chart-narrow', compact ? 'chart-compact h-[224px] shrink-0' : 'h-[380px] lg:h-auto lg:min-h-[180px] lg:flex-1')}
       tabIndex={0} role="group" aria-label="Observed price chart. Use left and right arrows to inspect received prices."
       onPointerLeave={() => { setInspect(null); }}
       onPointerMove={(event) => {
@@ -159,6 +162,7 @@ export function PriceChart({
         event.preventDefault();
         setInspect(Math.max(0, Math.min(points.length - 1, (inspect ?? points.length - 1) + (event.key === 'ArrowLeft' ? -1 : 1))));
       }}>
+      {(w <= 0 || h <= 0) && <ChartSkeleton />}
       {w > 0 && h > 0 && (
         <>
           <svg width={w} height={h} className="absolute inset-0" role="img" aria-label={`Price chart, now ${price(now)}`}>
@@ -194,16 +198,16 @@ export function PriceChart({
             )}
             <circle cx={dotX} cy={dotY} r="7" className={lineTone} stroke="var(--color-well)" strokeWidth="3" />
             {inspected !== null && <><line x1={x(inspected[0])} x2={x(inspected[0])} y1={padTop} y2={plotBottom} className="stroke-cloud/60" strokeDasharray="3 3" /><circle cx={x(inspected[0])} cy={y(inspected[1])} r={4} className="fill-cloud" /></>}
-            {compact && levels.map((level) => <path key={level.label} d={`M${String(plotRight)},${String(level.at)} L${String(plotRight + 8)},${String(level.labelY)}`} className="fill-none stroke-dusk" />)}
+            {useRail && levels.map((level) => <path key={level.label} d={`M${String(plotRight)},${String(level.at)} L${String(plotRight + 8)},${String(level.labelY)}`} className="fill-none stroke-dusk" />)}
           </svg>
 
-          {!compact && grid.map((cents) => (
+          {!compact && !narrow && grid.map((cents) => (
             <span key={cents} className="absolute right-2.5 text-xs text-muted tabular-nums" style={{ top: y(cents) - 8 }}>
               {price(cents)}
             </span>
           ))}
 
-          {target !== null && !compact && (
+          {target !== null && !compact && !narrow && (
             <>
               {/* Both labels sit on the half of the day away from the price bubble that rides the newest point. */}
               <span
@@ -227,44 +231,54 @@ export function PriceChart({
           >
             {price(now)}
           </span>
-          {compact && levels.map((level) => <span key={level.label}
+          {useRail && levels.map((level) => <span key={level.label}
             className={cx('chart-level-label absolute right-2 flex justify-between gap-2 rounded px-1 py-0.5 text-xs whitespace-nowrap', level.tone)}
             style={{ left: plotRight + 10, top: level.labelY - 10 }}>
             <span>{level.label}</span><span className="tabular-nums">{price(level.cents)}</span>
           </span>)}
-          {inspected !== null && <output className="pointer-events-none absolute bottom-8 left-2 rounded bg-panel px-2 py-1 text-xs text-cloud tabular-nums" aria-live="polite">
+          {narrow && target !== null && <div className="chart-level-legend absolute inset-x-3 top-3 grid grid-cols-2 gap-3 text-xs">
+            {levels.map((level) => <div key={level.label} className={cx('flex flex-col gap-1', level.tone)}>
+              <span>{level.label}</span><span className="font-semibold tabular-nums">{price(level.cents)}</span>
+            </div>)}
+          </div>}
+          {inspected !== null && <output className="pointer-events-none absolute left-2 rounded bg-panel px-2 py-1 text-xs text-cloud tabular-nums" style={{ bottom: narrow ? 68 : 32 }} aria-live="polite">
             {inspected[0] < 0 ? 'Yesterday' : `Observed step ${String(inspected[0])}`} / {price(inspected[1])}
           </output>}
 
-          {entryPoint !== null && (
+          {entryPoint !== null && !narrow && (
             <span className="absolute text-[11px] font-semibold text-sun" style={{ left: Math.min(plotRight - 60, x(entryPoint[0]) - 18), top: y(entryPoint[1]) + 10 }}>
               Bought
             </span>
           )}
-          {exitPoint !== null && (
+          {exitPoint !== null && !narrow && (
             <span className="absolute text-[11px] font-semibold text-cloud" style={{ left: Math.min(plotRight - 70, x(exitPoint[0]) - 24), top: y(exitPoint[1]) + 10 }}>
               Cashed out
             </span>
           )}
 
-          {twist && !compact && (
+          {narrow && <div className="chart-event-legend absolute inset-x-3 bottom-9 flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-semibold">
+            {entryPoint !== null && <span className="flex items-center gap-1 text-sun"><span className="size-1.5 rounded-full bg-sun" aria-hidden="true" />Bought</span>}
+            {exitPoint !== null && <span className="flex items-center gap-1 text-cloud"><span className="size-1.5 rounded-full bg-cloud" aria-hidden="true" />Cashed out</span>}
+            {revealX !== null && <span className="text-sun" role={twist ? 'status' : undefined}>Plot twist{twist ? '!' : ''}</span>}
+          </div>}
+          {twist && !compact && !narrow && (
             <span className="absolute top-4 left-1/2 w-[184px] -translate-x-1/2">
-              <span className="block rounded-xl bg-sun py-2 text-center font-display text-[13px] font-bold text-ink motion-safe:animate-nudge" role="status">
+              <span className="block rounded-xl bg-sun py-2 text-center font-display text-[13px] font-bold text-ink animate-nudge" role="status">
                 Plot twist!
               </span>
             </span>
           )}
 
-          <span className="absolute bottom-2.5 left-2.5 hidden text-xs text-muted sm:block">Yesterday</span>
-          <span className="absolute bottom-2.5 text-xs text-muted" style={{ left: openX + 8 }}>
+          {!narrow && <span className="absolute bottom-2.5 left-2.5 hidden text-xs text-muted sm:block">Yesterday</span>}
+          <span className="chart-open-label absolute bottom-2.5 text-xs text-muted" style={{ left: narrow ? 12 : openX + 8 }}>
             Opening bell
           </span>
-          {revealX !== null && !twist && (
+          {revealX !== null && !twist && !narrow && (
             <span className="absolute bottom-2.5 text-xs font-semibold text-sun/80" style={{ left: Math.min(plotRight - 80, revealX + 6) }}>
               Plot twist
             </span>
           )}
-          <span className="absolute bottom-2.5 text-xs text-muted" style={{ right: rightMargin }}>Closing bell</span>
+          <span className="chart-close-label absolute bottom-2.5 text-xs text-muted" style={{ right: narrow ? 12 : rightMargin }}>Closing bell</span>
         </>
       )}
     </div>

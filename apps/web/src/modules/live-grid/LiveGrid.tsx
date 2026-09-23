@@ -55,17 +55,11 @@ const BATCH_WAIT_MS = 50;
 
 /**
  * A changed value holds its colour for 240 ms and fades over 360 ms, so it
- * has finished before the next change can flash it again. Someone who has
- * asked their device for less motion gets no flash at all: a duration of
- * zero is the grid's own way of saying "do not flash". Read once, here,
- * because the grid must not be handed a new value while it runs.
+ * has finished before the next change can flash it again. Motion is a
+ * product setting, independent of the host laptop's OS preferences.
  */
-const REDUCED_MOTION =
-  typeof window !== 'undefined' &&
-  typeof window.matchMedia === 'function' &&
-  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-const FLASH_MS = REDUCED_MOTION ? 0 : 240;
-const FADE_MS = REDUCED_MOTION ? 0 : 360;
+const FLASH_MS = 240;
+const FADE_MS = 360;
 
 /**
  * Before the first rows arrive the table is simply empty: the grid's own
@@ -469,7 +463,7 @@ export function LiveGridInner<Row extends GridRow>(props: LiveGridProps<Row> & I
       onBlur={onBlur}
     >
       <div
-        className={`h-full w-full motion-safe:transition-opacity motion-safe:duration-200 ${stale ? 'opacity-60' : 'opacity-100'}`}
+        className={`h-full w-full transition-opacity duration-200 ${stale ? 'opacity-60' : 'opacity-100'}`}
       >
         <AgGridReact<Row>
           theme={strikeTheme}

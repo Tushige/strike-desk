@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Strike Desk · RoboPup studies</title><link rel="stylesheet" href="./mascot.css"></head>
+<body>
+<main class="workbench">
+  <header class="intro"><p class="eyebrow">STRIKE DESK / CHARACTER STUDIES</p><h1>A little character at the desk.</h1><p>Three places for RoboPup to earn its keep. Try each moment, then compare at mobile width.</p></header>
+  <div class="tools" role="group" aria-label="Preview controls"><button id="mobile" aria-pressed="false">Mobile width</button><button id="replay">Replay all</button><span class="sample-note">Scratch only · fictional results · no trades</span></div>
+  <nav class="jump" aria-label="Mascot studies"><a href="#acceptance">Ticket clerk</a><a href="#bell">Bell keeper</a><a href="#summary">Your five-day companion</a></nav>
+
+  <section class="mascot-study" id="acceptance">
+    <div class="study-copy"><span class="study-index">01</span><h2>The ticket clerk</h2><p>A tiny stamp makes the confirmation feel complete. RoboPup lives in the header, keeping the numbers in charge.</p><button data-replay="acceptance">Preview acceptance</button><p class="motion-note">One dip. One stamp. Then still.</p></div>
+    <div class="preview"><article class="mascot-panel ticket-panel">
+      <header class="panel-head"><div><span class="caption">YOUR TICKET</span><h3>Ready for the bell</h3></div><div class="mascot-slot"><div class="pup pup-stamp" aria-hidden="true"></div></div></header>
+      <div class="panel-content"><div class="company-line"><div class="company-mark">F</div><div><strong>Fizzly</strong><p>FIZZ · Fizzy drinks</p></div><span class="direction">DOWN / put</span></div>
+      <dl class="trade-values"><dt>Your tickets</dt><dd>40</dd><dt>Pays below</dt><dd>$51.17</dd><dt>Total cost / max loss</dt><dd>$6,240</dd></dl>
+      <div class="confirmation"><span class="confirm-mark" aria-hidden="true">✓</span><div><strong>Ticket accepted</strong><p>40 tickets are yours. You can cash out or hold to the bell.</p></div><span class="ink-stamp" aria-hidden="true">FILED</span></div>
+      <div class="quiet-row"><span>Worth right now</span><strong>$6,240</strong></div>
+      <p class="footnote">The stamp would appear only after the server confirms your trade.</p></div>
+    </article></div>
+  </section>
+
+  <section class="mascot-study" id="bell">
+    <div class="study-copy"><span class="study-index">02</span><h2>The bell keeper</h2><p>A brief nod marks the end of the day. The result follows, with room to understand what happened.</p><button data-replay="bell">Ring the closing bell</button><p class="motion-note">A small flourish between decisions.</p></div>
+    <div class="preview"><article class="mascot-panel bell-panel">
+      <header class="panel-head"><div><span class="caption">DAY 3 COMPLETE</span><h3>That’s the bell.</h3></div><div class="mascot-slot"><span class="bell-ring ring-one"></span><span class="bell-ring ring-two"></span><div class="pup pup-bell" aria-hidden="true"></div></div></header>
+      <div class="panel-content"><div class="bell-result"><span class="caption">Today you made</span><strong class="day-profit">+$6,200</strong></div><div class="result-rule"></div><h4>What just happened</h4><p class="explanation">Fizzly finished below your target. Your tickets paid $12,440 at the bell, including the $6,240 you spent.</p>
+      <div class="next-row"><span>Day 4 is up next</span><span class="mini-ticket">DAY <b>4</b></span></div></div>
+      <footer class="panel-footer"><span class="footnote">Same friendly response for every outcome.</span><button class="outcome-switch" id="outcome" aria-pressed="false">Show a losing day</button></footer>
+    </article></div>
+  </section>
+
+  <section class="mascot-study" id="summary">
+    <div class="study-copy"><span class="study-index">03</span><h2>Your five-day companion</h2><p>RoboPup brings the finished receipt. A warm sign-off beside your rank, leaving the chart to tell the story.</p><button data-replay="summary">Replay the final reveal</button><p class="motion-note">A gentle arrival as the line draws.</p></div>
+    <div class="preview"><article class="mascot-panel journey-panel">
+      <header class="summary-title"><div><span class="caption">FINAL BELL</span><h3>Steady Hand</h3><p>You kept the desk alive and a little ahead.</p></div><div class="pup pup-receipt" aria-hidden="true"></div></header>
+      <div class="summary-body"><span class="caption">You finished with</span><div class="final-total">$1,037,440</div><p class="final-delta">+$37,440 <span>overall</span></p>
+      <div class="chart-labels"><span>Start $1,000,000</span><span>Five trading days</span></div>
+      <svg class="journey-chart" viewBox="0 0 600 130" preserveAspectRatio="none" role="img" aria-label="Illustrative balance: starts at one million dollars and finishes at one million thirty-seven thousand four hundred forty dollars"><line x1="8" y1="100" x2="590" y2="100" class="baseline"/><path d="M8 100 L60 100 L180 112 L300 83 L420 91 L540 18" class="journey-line" vector-effect="non-scaling-stroke"/><g class="chart-dots"><circle cx="60" cy="100" r="3"/><circle cx="180" cy="112" r="3"/><circle cx="300" cy="83" r="3"/><circle cx="420" cy="91" r="3"/><circle cx="540" cy="18" r="3"/></g></svg>
+      <div class="chart-days"><span>Day 1</span><span>Day 2</span><span>Day 3</span><span>Day 4</span><span>Day 5</span></div></div>
+      <footer class="panel-footer summary-end"><strong>Five days. A few lessons. Your next move.</strong><button data-replay="summary" class="primary">See it again</button></footer>
+    </article></div>
+  </section>
+  <footer class="workbench-footer">Pose and motion studies using generated artwork. These previews do not change the live game. <a href="./summary.html">Summary studies</a> · <a href="/">Back to Strike Desk</a></footer>
+  <p id="preview-status" class="sr-only" role="status"></p>
+</main><script type="module" src="./mascot.js"></script>
+</body></html>

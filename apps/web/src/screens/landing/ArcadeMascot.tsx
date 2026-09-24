@@ -83,7 +83,7 @@ export function ArcadeMascot() {
           <Eye right />
         </g>
       </svg>
-      <button
+      {/* <button
         type="button"
         className="arcade-mascot-pause"
         aria-pressed={paused}
@@ -92,7 +92,7 @@ export function ArcadeMascot() {
         }}
       >
         {paused ? 'Resume mascot' : 'Pause mascot'}
-      </button>
+      </button> */}
     </div>
   );
 }

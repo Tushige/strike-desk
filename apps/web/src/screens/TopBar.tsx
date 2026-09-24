@@ -3,7 +3,8 @@ import { GAME_STEPS } from '@strike-desk/shared/time';
 import { connection, devControls } from '../boot';
 import { lineStateOf } from '../modules/connection/index';
 import { useConnectionState, useView, views } from '../store/hooks';
-import { clock, money, secondsFor } from './format';
+import { clock, secondsFor } from './format';
+import { LiveMoney } from './motion/LiveMoney';
 import { cx, GhostButton, Label, LogoMark } from './ui';
 import { LINE_WORDS, topBarWords } from './words';
 import { DayTickets } from './DayTickets';
@@ -92,12 +93,28 @@ export function TopBar({ onEnd }: { onEnd?: () => void }) {
           <Label>{topBarWords.worth}</Label>
           <div className="flex w-full min-w-0 flex-col items-end gap-0.5">
             <span className="topbar-worth w-full whitespace-nowrap text-right font-display text-xl font-extrabold text-sun tabular-nums sm:text-2xl">
-              {account === null ? '—' : money(account.worthCents)}
+              {account === null ? (
+                '—'
+              ) : (
+                <LiveMoney
+                  key={frame?.session}
+                  cents={account.worthCents}
+                  animate={line === 'live'}
+                />
+              )}
             </span>
             <span className="h-4 whitespace-nowrap text-xs font-semibold text-muted tabular-nums">
-              {account !== null && account.cashCents !== account.worthCents
-                ? `${topBarWords.cash} ${money(account.cashCents)}`
-                : ''}
+              {account !== null && (
+                <>
+                  {topBarWords.cash}{' '}
+                  <LiveMoney
+                    key={frame?.session}
+                    cents={account.cashCents}
+                    pace="cash"
+                    animate={line === 'live'}
+                  />
+                </>
+              )}
             </span>
           </div>
         </div>

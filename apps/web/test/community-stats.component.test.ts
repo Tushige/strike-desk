@@ -4,6 +4,7 @@ import { act, cleanup, render, renderHook, waitFor } from '@testing-library/reac
 import { afterEach, expect, it, vi } from 'vitest';
 import { CommunityStats } from '../src/screens/landing/CommunityStats';
 import { usePublicStats } from '../src/screens/landing/usePublicStats';
+import { Odometer } from '../src/screens/motion/Odometer';
 
 const data = { completedGames: '12', pretendProfitsEarnedCents: '140000000', bestNetProfitCents: '140000000' };
 const motion = vi.hoisted(() => ({ fromTo: vi.fn(), play: vi.fn(), kill: vi.fn(), set: vi.fn(), revert: vi.fn() }));
@@ -27,8 +28,8 @@ it('rolls only digits on first visibility, without replaying or rounding fresh t
   expect(motion.fromTo.mock.calls.length).toBeGreaterThan(2);
   for (const [node, from, to] of motion.fromTo.mock.calls) {
     expect((node as HTMLElement).className).toBe('odometer-strip');
-    expect(from).toEqual({ y: 0 });
-    expect(to).toEqual({ y: -Number((node as HTMLElement).dataset.digit) * 20, duration: 1.5, ease: 'power2.out' });
+    expect(from).toEqual({ y: 0, yPercent: 0 });
+    expect(to).toEqual({ y: -Number((node as HTMLElement).dataset.digit) * 20, yPercent: 0, duration: 1.5, ease: 'power2.out' });
   }
   expect(motion.play).not.toHaveBeenCalled();
   act(() => { callbacks.forEach(show => { show(); }); });
@@ -40,6 +41,23 @@ it('rolls only digits on first visibility, without replaying or rounding fresh t
   expect(motion.set).toHaveBeenCalled();
   view.unmount();
   expect(motion.kill).toHaveBeenCalledTimes(4);
+});
+
+it('keeps digit 5 inside its window and leaves no empty slot before a compact suffix', () => {
+  Object.values(motion).forEach(spy => spy.mockClear());
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({ height: 20 } as DOMRect);
+  const view = render(createElement(Odometer, { value: '+$2.25M' }));
+  const five = motion.fromTo.mock.calls.find(([node]) => (node as HTMLElement).dataset.digit === '5');
+  expect(five).toBeDefined();
+  expect(five![1]).toEqual({ y: 0, yPercent: 0 });
+  expect(five![2]).toMatchObject({ y: -100, yPercent: 0 });
+  view.rerender(createElement(Odometer, { value: '+$1.19M' }));
+  view.rerender(createElement(Odometer, { value: '+$2.2M' }));
+  expect(view.container.querySelectorAll('.odometer-window')).toHaveLength(2);
+  const suffix = view.container.querySelector('.odometer-drum')!.lastElementChild!;
+  expect(suffix.textContent).toBe('M');
+  expect(suffix.previousElementSibling?.querySelector('[data-digit]')?.getAttribute('data-digit')).toBe('2');
+  expect(motion.set.mock.calls.every(([, vars]) => (vars as { yPercent: number }).yPercent === 0)).toBe(true);
 });
 
 it('shows an honest error then retries using real API values, without substituting sample figures', async () => {

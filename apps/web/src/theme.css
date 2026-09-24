@@ -1,0 +1,173 @@
+/* Mint and coral encode direction and outcomes; company colors encode identity. */
+@theme {
+  --color-ink: #14112a; /* page ground */
+  --color-panel: #1d1938; /* cards */
+  --color-raised: #27224a; /* selected cards, inset boxes */
+  --color-well: #171433; /* chart ground */
+  --color-line: #352f63; /* borders */
+  --color-rule: #2a2552; /* chart grid */
+  --color-dusk: #5a528f; /* dotted guides */
+  --color-cloud: #f4f1ff; /* text */
+  --color-muted: #b3add9; /* secondary text */
+  --color-haze: #7f78b5; /* yesterday's price line */
+
+  --color-mint: #3ee0a5; /* UP, profit */
+  --color-coral: #ff7d6e; /* DOWN, loss */
+  --color-sun: #ffd447; /* cash, main actions, selection */
+
+  --color-grape: #8e7bff; /* hope value */
+
+  /* The six companies' tints, by company id. */
+  --color-company-0: #8e7bff; /* RoboPup */
+  --color-company-1: #5cc8ff; /* Fizzly */
+  --color-company-2: #ff8fd0; /* JetKicks */
+  --color-company-3: #ffb27a; /* MoonMunch */
+  --color-company-4: #4fe3e3; /* PixelPals */
+  --color-company-5: #cfd0ea; /* ZapCharge */
+
+  --color-lilac: #b6a0ff;
+  --color-landing-bg: #11101b;
+  --color-landing-panel: #1b1828;
+  --color-landing-muted: #b9b3ce;
+  --color-landing-line: #393446;
+  --color-receipt-bg: #30293a;
+  --color-receipt-text: #fff7de;
+  --color-receipt-line: #77664d;
+  --color-receipt-caption: #d5c4a2;
+  --color-led-warm: #ffeab0;
+  --color-focus: #c9b8ff;
+  --font-brand: 'Bricolage Grotesque', system-ui, sans-serif;
+  --text-2xs: 0.625rem;
+  --container-dialog: 38.75rem;
+  --container-confirmation: 28.75rem;
+  --container-reading: 35.0625rem;
+  --text-lesson: clamp(16px, 2.1cqi, 21px);
+  --container-stats: 38.8125rem;
+  --text-stat-small: clamp(23px, 6.5cqi, 32px);
+  --text-stat-profit: clamp(38px, 12cqi, 64px);
+  --text-stat-ribbon: clamp(24px, 7cqi, 38px);
+  --text-stat-ribbon-profit: clamp(40px, 13cqi, 64px);
+  --text-stat-ledger: clamp(24px, 7cqi, 30px);
+  --text-stat-unavailable: clamp(18px, 2.6cqi, 28px);
+  --animate-stat-loading: stat-loading 1.3s ease-in-out 3;
+  @keyframes stat-loading {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(100%);
+    }
+  }
+  --text-landing-hero: clamp(30px, 8.7vw, 60px);
+  --text-landing-heading: clamp(29px, 7.4vw, 40px);
+  --text-example-heading: 2.25rem;
+  --container-prose-short: 37ch;
+  --breakpoint-wide: 68.75rem;
+  --animate-landing-arrive: landing-arrive 550ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-example-arrive: landing-arrive 250ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  @keyframes landing-arrive {
+    from {
+      opacity: 0.5;
+      transform: translateY(16px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  --font-display: 'Unbounded', system-ui, sans-serif;
+  --font-body: 'Lexend', system-ui, sans-serif;
+
+  --animate-nudge: nudge 600ms ease-in-out 2;
+  --animate-rise: rise 0.4s ease both;
+
+  @keyframes nudge {
+    0%,
+    100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.07);
+    }
+  }
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}
+
+/*
+ * The same tokens under the names the contract table was built with. The
+ * table's theme (`gridSetup.ts`) and its cells read these, so the table can
+ * never drift from the page's colours.
+ */
+:root {
+  --background: var(--color-ink);
+  --foreground: var(--color-cloud);
+  --card: var(--color-panel);
+  --muted: var(--color-raised);
+  --muted-foreground: var(--color-muted);
+  --accent: var(--color-raised);
+  --border: var(--color-line);
+  --ring: var(--color-focus); /* keyboard focus inside the table; sun is kept for what is chosen */
+  --up: var(--color-mint);
+  --down: var(--color-coral);
+  --gold: var(--color-sun);
+  --radius: 0.75rem;
+
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-landing-accent: var(--landing-accent, var(--color-lilac));
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+  --color-up: var(--up);
+  --color-down: var(--down);
+  --color-gold: var(--gold);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+}
+
+@media (min-width: 768px) {
+  :root {
+    --text-landing-hero: clamp(40px, 4.5vw, 66px);
+    --text-landing-heading: clamp(30px, 2.8vw, 42px);
+    --text-example-heading: clamp(30px, 3vw, 44px);
+  }
+}
+
+@utility page-width {
+  width: calc(100% - 2.5rem);
+  max-width: 80rem;
+  margin-inline: auto;
+  @media (min-width: 768px) {
+    width: calc(100% - 4rem);
+  }
+  @media (min-width: 1100px) {
+    width: calc(100% - 6rem);
+  }
+}
+
+@container (min-width: 621px) {
+  .community-body {
+    --text-stat-small: clamp(24px, 3.8cqi, 42px);
+    --text-stat-profit: clamp(36px, 8cqi, 92px);
+    --text-stat-ribbon: clamp(28px, 4.8cqi, 60px);
+    --text-stat-ribbon-profit: var(--text-stat-ribbon);
+    --text-stat-ledger: clamp(23px, 3cqi, 34px);
+  }
+}

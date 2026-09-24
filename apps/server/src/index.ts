@@ -3,6 +3,8 @@ import path from 'node:path';
 import { createApp } from './app';
 import { PUBLIC_MAX_BOARD_SIZE, isAllowedBoardSize } from './boardSizes';
 import { VERSION } from './generated/version';
+import { createNeonRepository } from './neon';
+import { createResultsService } from './results';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const staticDir = path.resolve(here, '../../web/dist');
@@ -21,7 +23,14 @@ const probeModes = process.env.WS_PROBE_MODES === '1';
 const maxBoardEnv = Number(process.env.STRESS_MAX_BOARD);
 const maxBoardSize = isAllowedBoardSize(maxBoardEnv) ? maxBoardEnv : PUBLIC_MAX_BOARD_SIZE;
 
-const app = createApp({ staticDir, version: VERSION, probeModes, maxBoardSize });
+const databaseUrl = process.env.DATABASE_URL;
+const statsEnvironment = process.env.STATS_ENVIRONMENT;
+if (databaseUrl && statsEnvironment !== 'development' && statsEnvironment !== 'production') {
+  throw new Error('Set STATS_ENVIRONMENT to development or production when DATABASE_URL is configured.');
+}
+const results = databaseUrl && (statsEnvironment === 'development' || statsEnvironment === 'production')
+  ? createResultsService(createNeonRepository(databaseUrl, statsEnvironment)) : undefined;
+const app = createApp({ staticDir, version: VERSION, probeModes, maxBoardSize, results });
 
 app.server.listen(port, '0.0.0.0', () => {
   const address = app.server.address();

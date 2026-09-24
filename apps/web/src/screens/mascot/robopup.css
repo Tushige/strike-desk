@@ -1,12 +1,88 @@
-.robopup { position: relative; display: inline-block; flex: none; width: 76px; height: 76px; pointer-events: none; }
-.robopup-art { position: absolute; inset: 0; display: block; overflow: hidden; transform-origin: 50% 90%; }
-.robopup-art img { position: absolute; top: 0; left: 0; width: 300%; max-width: none; height: 100%; user-select: none; }
-.robopup-bell img { left: -100%; } .robopup-receipt img { left: -200%; }
-.robopup-filed { position: absolute; bottom: 1px; left: -24px; padding: 2px 4px; border: 1px solid var(--color-mint); border-radius: 3px; color: var(--color-mint); background: var(--color-panel); font: 500 8px/1.4 var(--font-body); letter-spacing: .08em; transform: rotate(-9deg); }
-.robopup-ring { position: absolute; width: 16px; height: 16px; right: 3px; bottom: 7px; border: 1px solid var(--color-sun); border-radius: 50%; opacity: 0; }
-.ticket-panel-heading.ticket-mascot-heading { position: relative; display: flex; align-items: center; padding-right: 108px; min-height: 57px; }
-.ticket-mascot-heading > .robopup { position: absolute; right: 12px; bottom: 1px; width: 54px; height: 54px; }
-.summary-verdict-with-pup { display: flex; align-items: center; gap: 16px; }
-.summary-verdict-copy { min-width: 0; }
-.summary-verdict-with-pup > .robopup { width: 104px; height: 104px; }
-@container (max-width: 620px) { .summary-verdict-with-pup { gap: 10px; } .summary-verdict-with-pup > .robopup { width: 76px; height: 76px; } }
+.robopup {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: 76px;
+  height: 76px;
+  pointer-events: none;
+}
+.robopup-art {
+  position: absolute;
+  inset: 0;
+  display: block;
+  overflow: hidden;
+  transform-origin: 50% 90%;
+}
+.robopup-art img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 300%;
+  max-width: none;
+  height: 100%;
+  user-select: none;
+}
+.robopup-bell img {
+  left: -100%;
+}
+.robopup-receipt img {
+  left: -200%;
+}
+.robopup-filed {
+  position: absolute;
+  bottom: 1px;
+  left: -24px;
+  padding: 2px 4px;
+  border: 1px solid var(--color-mint);
+  border-radius: 3px;
+  color: var(--color-mint);
+  background: var(--color-panel);
+  font: 500 8px/1.4 var(--font-body);
+  letter-spacing: 0.08em;
+  transform: rotate(-9deg);
+}
+.robopup-ring {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  right: 3px;
+  bottom: 7px;
+  border: 1px solid var(--color-sun);
+  border-radius: 50%;
+  opacity: 0;
+}
+.ticket-panel-heading.ticket-mascot-heading {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding-right: 108px;
+  min-height: 57px;
+}
+.ticket-mascot-heading > .robopup {
+  position: absolute;
+  right: 12px;
+  bottom: 1px;
+  width: 54px;
+  height: 54px;
+}
+.summary-verdict-with-pup {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.summary-verdict-copy {
+  min-width: 0;
+}
+.summary-verdict-with-pup > .robopup {
+  width: 104px;
+  height: 104px;
+}
+@container (max-width: 620px) {
+  .summary-verdict-with-pup {
+    gap: 10px;
+  }
+  .summary-verdict-with-pup > .robopup {
+    width: 76px;
+    height: 76px;
+  }
+}

@@ -12,6 +12,7 @@
     "@strike-desk/shared": "workspace:*",
     "ag-grid-community": "36.2.0",
     "ag-grid-react": "36.2.0",
+    "gsap": "^3.15.0",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },

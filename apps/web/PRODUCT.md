@@ -41,7 +41,8 @@ Existing implementation facts, grounded in the repository:
 - Prices stream while players inspect and compare contracts. Preserve readable values, stable controls, and the current selection during updates.
 - The normal board has 252 contracts; the optional engineering workload has 2,508. Workload trading is blocked by both client and server.
 - Games are stored in server memory, with a 30-minute disconnected lifetime. Restart, redeployment, and expiry lose sessions. Browser storage is optional; refresh recovery depends on available storage and a retained server session.
-- The current product has no database, authentication, multiplayer, live-news dependency, or LLM dependency.
+- Completed game results are recorded in Neon PostgreSQL when configured, with separate development and production totals. Public statistics describe completed games and pretend profits after excluding starting capital; active game sessions remain in memory. Umami provides website analytics separately.
+- The current product has no authentication, multiplayer, live-news dependency, or LLM dependency.
 
 ## Brand Commitments
 
@@ -62,6 +63,8 @@ Use Balance Journey as the live game-over summary, with a finite chart-drawing e
 RoboPup appears as the ticket clerk after a confirmed purchase, the bell keeper with recorded daily results, and the receipt-bearing companion beside the final rank. Use the approved landing-matched pose sheet, fixed image space and brief finite reactions. Keep monetary outcomes and trade status in accessible text; reactions are decorative and supportive across wins and losses.
 
 The landing mascot uses the selected Arcade eyes treatment: a ten-second repeating smile, rolling dollar signs, rising mint arrows, and rest. Keep its body still and the illustration footprint fixed. Expressions are decorative, never live market signals. Provide manual pause/resume and pause automatically offscreen or in a hidden tab, preserving the loop position. Retain all three motion studies in scratch. Selected 2026-09-23.
+
+Use the approved Motion.dev-inspired contrast landing with a lilac (`#b6a0ff`) field, dark hero card, and sharp panel corners. Keep the new lesson accordion and its matching example cards, the existing live community-statistics ticket with loading/error/retry states, and the real game-start flow. Retain Ticket S, the existing fonts, company marks, and Arcade eyes mascot. This landing-specific palette and corner treatment is an exception to the general panel guidance; whole-game design tokens stay unchanged. Palette experiments and mobile-preview controls remain in scratch. Approved 2026-09-23; implementation context is in `../../docs/LANDING-CONTRAST.md`.
 
 The final-summary lessons use the selected Ticket conveyor: one always-visible lesson on a perforated slip, a peek at the next ticket, and an eight-second reading interval. Include direct lesson selection, previous/next and pause/resume. Pause while hovered, focused, offscreen or in a hidden tab, preserving remaining time. Keep the content height stable and use the existing lesson copy without an accordion.
 

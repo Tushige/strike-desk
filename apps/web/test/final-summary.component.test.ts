@@ -3,7 +3,7 @@ import { createElement } from 'react';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { FinalScreen, SummaryComposition } from '../src/screens/FinalScreen';
-import { BalanceJourney, balancePoints } from '../src/screens/summary/BalanceJourney';
+import { BalanceJourney, balancePoints, journeyGeometry } from '../src/screens/summary/BalanceJourney';
 import { testFrame } from './fakeSocket';
 
 const replay = vi.hoisted(() => vi.fn());
@@ -56,6 +56,20 @@ it('uses recorded balances even if changes differ and does not join missing days
   expect(balancePoints(input)).toEqual([{ day: 0, cents: 100, start: true }, { day: 1, cents: 80, start: false },
     { day: 2, cents: 90, start: true }, { day: 3, cents: 110, start: false }]);
   expect(input[0]?.day).toBe(3);
+  const geometry = journeyGeometry(balancePoints(input), 390, 150);
+  expect(geometry.segments).toHaveLength(2);
+  expect(geometry.segments[1]!.start).toBe(geometry.segments[0]!.length);
+  expect(geometry.distances.at(-1)).toBe(geometry.total);
+});
+
+it('ends the responsive trace exactly at the fifth-day point', () => {
+  for (const width of [320, 1000]) {
+    const geometry = journeyGeometry(balancePoints(days), width, 180);
+    const last = geometry.coordinates.at(-1)!;
+    expect(last.x).toBe(width * .9);
+    expect(geometry.segments.at(-1)!.path.endsWith(`L${String(last.x)},${String(last.y)}`)).toBe(true);
+    expect(geometry.total).toBeGreaterThan(0);
+  }
 });
 
 it('renders a flat run without invalid coordinates and an honest empty state without records', () => {

@@ -10,7 +10,9 @@ import type { ContractRow } from '../store/contractRows';
  * says enough. A screen reader cannot see dimming, so the dash carries the
  * reason as its name instead of being read out as nothing.
  */
-export const PriceCell = memo(function PriceCell({ value }: CustomCellRendererProps<ContractRow, number | null>) {
+export const PriceCell = memo(function PriceCell({
+  value,
+}: CustomCellRendererProps<ContractRow, number | null>) {
   if (value == null) {
     return (
       <span role="img" aria-label="too cheap to trade">

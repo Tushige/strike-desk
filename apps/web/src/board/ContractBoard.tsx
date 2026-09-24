@@ -29,7 +29,14 @@ const WORKLOAD_COLUMNS = COLUMNS.filter((column) => column.field !== 'costCents'
  */
 const isDimmed = (row: ContractRow): boolean => row.dimmed;
 
-export const ContractBoard = memo(function ContractBoard({ selectedId, onSelect, filter, isHighlighted, stale = false, staleNoticeId }: {
+export const ContractBoard = memo(function ContractBoard({
+  selectedId,
+  onSelect,
+  filter,
+  isHighlighted,
+  stale = false,
+  staleNoticeId,
+}: {
   selectedId: string | null;
   onSelect: (id: string) => void;
   filter: ((row: ContractRow) => boolean) | null;
@@ -59,8 +66,12 @@ export const ContractBoard = memo(function ContractBoard({ selectedId, onSelect,
       staleNoticeId={staleNoticeId}
     />
   );
-  return stress ? <div ref={table} className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]">
-    <StressReadout measurements={stressMeasurements} />
-    {grid}
-  </div> : grid;
+  return stress ? (
+    <div ref={table} className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]">
+      <StressReadout measurements={stressMeasurements} />
+      {grid}
+    </div>
+  ) : (
+    grid
+  );
 });

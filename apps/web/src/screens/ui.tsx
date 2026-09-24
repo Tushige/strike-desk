@@ -1,47 +1,54 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import { Button } from '../components/Button';
 import ticketMark from '../assets/brand/ticket-s.svg';
 
-/** Small shared pieces: class joiner, buttons, icons, company tiles. */
-
-export const cx = (...parts: (string | false | null | undefined)[]): string => parts.filter(Boolean).join(' ');
-
-const focusRing = 'focus-visible:outline-3 focus-visible:outline-offset-3 focus-visible:outline-sun';
-const pressable =
-  'desk-control disabled:opacity-40';
+export const cx = (...parts: (string | false | null | undefined)[]): string =>
+  parts.filter(Boolean).join(' ');
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement>;
 
-/** The one loud button on every screen. */
 export function PrimaryButton({ className, ...props }: ButtonProps) {
   return (
-    <button
-      type="button"
-      className={cx('rounded-2xl bg-sun px-8 font-display font-extrabold text-ink tabular-nums', pressable, focusRing, className)}
+    <Button
+      variant="primary"
+      className={cx('rounded-2xl px-8 font-display font-extrabold tabular-nums', className)}
       {...props}
     />
   );
 }
 
-export function GhostButton({ tone = 'line', className, ...props }: ButtonProps & { tone?: 'line' | 'sun' }) {
+export function GhostButton({
+  tone = 'line',
+  className,
+  ...props
+}: ButtonProps & { tone?: 'line' | 'sun' }) {
   const tones = {
     line: 'border-line text-cloud text-sm font-semibold',
     sun: 'border-sun text-sun font-display font-bold text-[15px]',
   };
   return (
-    <button
-      type="button"
-      className={cx('rounded-2xl border-2 bg-transparent', tones[tone], pressable, focusRing, className)}
+    <Button
+      className={cx('rounded-2xl border-2 bg-transparent', tones[tone], className)}
       {...props}
     />
   );
 }
 
 /** A selectable card or pill. `selected` drives aria-pressed so it reads correctly to screen readers. */
-export function ChoiceButton({ selected, className, ...props }: ButtonProps & { selected: boolean }) {
-  return <button type="button" aria-pressed={selected} className={cx(pressable, focusRing, className)} {...props} />;
+export function ChoiceButton({
+  selected,
+  className,
+  ...props
+}: ButtonProps & { selected: boolean }) {
+  return <Button aria-pressed={selected} className={className} {...props} />;
 }
 
-const stroke = { fill: 'none', stroke: 'currentColor', strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
+const stroke = {
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeLinecap: 'round',
+  strokeLinejoin: 'round',
+} as const;
 
 export const LogoMark = () => (
   <img className="brand-mark" src={ticketMark} width="38" height="38" alt="" aria-hidden="true" />
@@ -167,7 +174,13 @@ const TILE_SIZES = {
   lg: { box: 'size-14 rounded-[18px]', icon: 'size-8' },
 } as const;
 
-export function CompanyTile({ companyId, size = 'md' }: { companyId: number; size?: keyof typeof TILE_SIZES }) {
+export function CompanyTile({
+  companyId,
+  size = 'md',
+}: {
+  companyId: number;
+  size?: keyof typeof TILE_SIZES;
+}) {
   const mark = MARKS[companyId] ?? MARKS[0];
   const { box, icon } = TILE_SIZES[size];
   return (
@@ -184,7 +197,7 @@ export function CompanyTile({ companyId, size = 'md' }: { companyId: number; siz
  * the ticket controls when space is tight.
  */
 export const ActionDock = ({ children }: { children: ReactNode }) => (
-    <div className="action-dock mt-auto flex flex-col gap-2.5 bg-panel pt-3 pb-1">{children}</div>
+  <div className="action-dock mt-auto flex flex-col gap-2.5 bg-panel pt-3 pb-1">{children}</div>
 );
 
 export const Label = ({ className, children }: { className?: string; children: ReactNode }) => (

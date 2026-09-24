@@ -23,7 +23,8 @@ function dayLabel(frame: Frame | null): string {
 }
 
 function timeLeft(frame: Frame | null): string {
-  if (frame === null || frame.clock.phase === 'final') return clock(frame === null ? secondsFor(GAME_STEPS, 1) : 0);
+  if (frame === null || frame.clock.phase === 'final')
+    return clock(frame === null ? secondsFor(GAME_STEPS, 1) : 0);
   return clock(secondsFor(GAME_STEPS - frame.step, frame.clock.pace));
 }
 
@@ -33,7 +34,12 @@ export function TopBar({ onEnd }: { onEnd?: () => void }) {
   const account = frame?.account ?? null;
 
   return (
-    <header className={cx('game-topbar flex h-[76px] shrink-0 items-center justify-between gap-4 border-b border-line bg-ink px-4 sm:px-7', onEnd !== undefined && 'game-topbar-with-exit')}>
+    <header
+      className={cx(
+        'game-topbar flex h-[76px] shrink-0 items-center justify-between gap-4 border-b border-line bg-ink px-4 sm:px-7',
+        onEnd !== undefined && 'game-topbar-with-exit',
+      )}
+    >
       <div className="topbar-brand flex min-w-0 items-center gap-3">
         <LogoMark />
         <span className="topbar-brand-name brand-wordmark">Strike Desk</span>
@@ -45,12 +51,21 @@ export function TopBar({ onEnd }: { onEnd?: () => void }) {
               line === 'stale' ? 'border-sun/60 text-sun' : 'border-coral/60 text-coral',
             )}
           >
-            <span className={cx('size-2 rounded-full', line === 'stale' ? 'bg-sun' : 'bg-coral')} aria-hidden="true" />
+            <span
+              className={cx('size-2 rounded-full', line === 'stale' ? 'bg-sun' : 'bg-coral')}
+              aria-hidden="true"
+            />
             {LINE_WORDS[line]}
           </span>
         )}
         {devControls && line === 'live' && (
-          <GhostButton className="ml-2 h-8 px-3 text-xs" onClick={() => { connection.simulateDrop(); }} title="Developer control: cut the connection to see the page reconnect">
+          <GhostButton
+            className="ml-2 h-8 px-3 text-xs"
+            onClick={() => {
+              connection.simulateDrop();
+            }}
+            title="Developer control: cut the connection to see the page reconnect"
+          >
             Drop the line
           </GhostButton>
         )}
@@ -64,21 +79,34 @@ export function TopBar({ onEnd }: { onEnd?: () => void }) {
       <div className="topbar-metrics">
         <div className="flex min-w-0 flex-col items-end gap-0.5">
           <Label>{topBarWords.timeLeft}</Label>
-          <span className="w-full whitespace-nowrap text-right font-display text-lg font-bold tabular-nums">{timeLeft(frame)}</span>
+          <span className="w-full whitespace-nowrap text-right font-display text-lg font-bold tabular-nums">
+            {timeLeft(frame)}
+          </span>
         </div>
-        <div className={cx('flex min-w-0 flex-col items-end gap-0.5 transition-opacity', line === 'live' ? 'opacity-100' : 'opacity-60')}>
+        <div
+          className={cx(
+            'flex min-w-0 flex-col items-end gap-0.5 transition-opacity',
+            line === 'live' ? 'opacity-100' : 'opacity-60',
+          )}
+        >
           <Label>{topBarWords.worth}</Label>
           <div className="flex w-full min-w-0 flex-col items-end gap-0.5">
             <span className="topbar-worth w-full whitespace-nowrap text-right font-display text-xl font-extrabold text-sun tabular-nums sm:text-2xl">
               {account === null ? '—' : money(account.worthCents)}
             </span>
             <span className="h-4 whitespace-nowrap text-xs font-semibold text-muted tabular-nums">
-              {account !== null && account.cashCents !== account.worthCents ? `${topBarWords.cash} ${money(account.cashCents)}` : ''}
+              {account !== null && account.cashCents !== account.worthCents
+                ? `${topBarWords.cash} ${money(account.cashCents)}`
+                : ''}
             </span>
           </div>
         </div>
       </div>
-      {onEnd !== undefined && <div className="topbar-endgame"><EndGameButton onEnd={onEnd} /></div>}
+      {onEnd !== undefined && (
+        <div className="topbar-endgame">
+          <EndGameButton onEnd={onEnd} />
+        </div>
+      )}
     </header>
   );
 }

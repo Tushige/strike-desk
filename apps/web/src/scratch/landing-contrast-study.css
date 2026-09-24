@@ -1,0 +1,21 @@
+@import "../screens/landing/landing-contrast.css";
+
+/* Scratch controls never ship on the live landing. */
+.contrast-tools { position: fixed; bottom: 18px; right: 18px; width: 292px; z-index: 6; background: #211e30; color: #f4f1ff; border: 1px solid #5a546d; font-family: var(--font-body); box-shadow: 0 12px 35px #0003; }
+.contrast-tools-toggle { width: 100%; display: flex; align-items: center; justify-content: space-between; min-height: 44px; padding: 12px 16px; cursor: pointer; font-size: 11px; }
+.contrast-tools-toggle > span:last-child { color: #c8c1df; font-size: 10px; }
+.contrast-tools [hidden] { display: none; }
+.contrast-tools > div { padding: 0 16px 16px; }
+.contrast-palette-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+.contrast-palette-options button { display: flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid #5a546d; min-height: 40px; cursor: pointer; font-size: 11px; }
+.contrast-palette-options button[aria-pressed="true"] { background: #f4f1ff; color: #11101b; border-color: #f4f1ff; }
+.contrast-palette-options button > span { width: 11px; height: 11px; border: 1px solid #11101b55; }
+.contrast-tools p { min-height: 34px; margin: 12px 0; font-size: 10px; line-height: 1.7; color: #c8c1df; }
+.contrast-mobile-toggle { min-height: 38px; font-size: 11px; width: 100%; border: 1px solid #5a546d; cursor: pointer; }
+.contrast-tools :focus-visible { outline: 2px solid #ffd447; outline-offset: 3px; }
+.contrast-study[data-mobile="true"] { min-height: 100dvh; padding: 24px 12px; background: #292535; }
+.contrast-phone { width: 390px; max-width: 100%; height: calc(100dvh - 48px); margin: auto; display: block; border: 1px solid #6a637d; background: #11101b; }
+
+@media (max-width: 767px) {
+  .contrast-tools { right: 10px; bottom: 10px; width: min(292px, calc(100% - 20px)); }
+}

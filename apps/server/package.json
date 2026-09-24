@@ -4,14 +4,17 @@
   "type": "module",
   "scripts": {
     "build": "tsup",
-    "dev": "tsx watch src/index.ts"
+    "dev": "tsx watch --env-file-if-exists=.env.local src/index.ts",
+    "db:migrate": "tsx --env-file-if-exists=.env.local scripts/migrate.ts"
   },
   "dependencies": {
-    "ws": "8.21.3",
+    "@neondatabase/serverless": "1.1.0",
+    "@strike-desk/shared": "workspace:*",
     "sirv": "3.0.2",
-    "@strike-desk/shared": "workspace:*"
+    "ws": "8.21.3"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
     "@types/ws": "8.18.1",
     "tsup": "8.5.1",
     "tsx": "4.23.13"

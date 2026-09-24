@@ -13,7 +13,8 @@
 }
 .landing-v2 :is(button, a, summary, [tabindex]):focus-visible { outline: 2px solid var(--v2-accent); outline-offset: 5px; }
 .landing-v2 ::selection { background: var(--v2-accent); color: var(--v2-ground); }
-.landing-v2 :is(.v2-header, .v2-hero, .v2-cast, .v2-how, .v2-rules, .v2-footer) { width: min(1280px, calc(100% - 80px)); margin-inline: auto; }
+.landing-v2 :is(.v2-header, .v2-hero, .v2-community, .v2-cast, .v2-how, .v2-rules, .v2-footer) { width: min(1280px, calc(100% - 80px)); margin-inline: auto; }
+.landing-v2 .v2-community { margin-bottom:48px; }
 .landing-v2 .v2-skip { position: absolute; top: 12px; left: 24px; z-index: 2; padding: 12px; border-radius: 8px; background: var(--v2-accent); color: var(--v2-ground); transform: translateY(-200%); }
 .landing-v2 .v2-skip:focus { transform: none; }
 .landing-v2 .v2-header { display: flex; align-items: center; justify-content: space-between; height: 80px; gap: 24px; }
@@ -95,7 +96,8 @@
   .landing-v2 .v2-how { gap: 36px; }
 }
 @media (max-width: 767px) {
-  .landing-v2 :is(.v2-header, .v2-hero, .v2-cast, .v2-how, .v2-rules, .v2-footer) { width: calc(100% - 40px); }
+  .landing-v2 :is(.v2-header, .v2-hero, .v2-community, .v2-cast, .v2-how, .v2-rules, .v2-footer) { width: calc(100% - 40px); }
+  .landing-v2 .v2-community { margin-bottom:32px; }
   .landing-v2 .v2-header { height: 72px; gap: 12px; }
   .landing-v2 .v2-brand { gap: 8px; }
   .landing-v2 .v2-header nav { gap: 0; }

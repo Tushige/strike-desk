@@ -1,0 +1,30 @@
+.odometer {
+  display: inline-block;
+  height: 1.16em;
+  line-height: 1.16;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+.odometer-drum {
+  display: inline-flex;
+  height: 1.16em;
+  align-items: flex-start;
+}
+.odometer-window {
+  display: inline-block;
+  position: relative;
+  width: 0.64em;
+  height: 1.16em;
+  overflow: clip;
+}
+.odometer-strip {
+  display: block;
+  position: absolute;
+  inset: 0 0 auto;
+}
+.odometer-strip > span {
+  display: block;
+  height: 1.16em;
+  line-height: 1.16em;
+  text-align: center;
+}

@@ -19,6 +19,7 @@ export interface PublicStats {
   pretendProfitsEarnedCents: string;
   netProfitCents: string;
   bestFinalBalanceCents: string | null;
+  bestNetProfitCents: string | null;
   purchases: string;
 }
 

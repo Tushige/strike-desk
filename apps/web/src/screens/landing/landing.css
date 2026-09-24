@@ -1,0 +1,76 @@
+/* Browser chrome follows the same token as the page's accent field. */
+html:has(.landing-page) {
+  scroll-behavior: smooth;
+  scrollbar-color: var(--color-haze) var(--color-landing-bg);
+}
+@media (prefers-reduced-motion: reduce) {
+  html:has(.landing-page) {
+    scroll-behavior: auto;
+  }
+}
+
+@layer components {
+  .landing-page {
+    --landing-accent: var(--color-lilac);
+  }
+  .landing-page .community-stats {
+    --color-ink: var(--color-landing-bg);
+    --color-panel: var(--color-landing-panel);
+    --color-line: var(--color-landing-line);
+    --color-muted: var(--color-landing-muted);
+    --color-sun: var(--landing-accent);
+  }
+  .landing-page[data-palette='sun'] {
+    --landing-accent: var(--color-sun);
+  }
+  .landing-page ::selection {
+    background: var(--landing-accent);
+    color: var(--color-landing-bg);
+  }
+  .landing-page :focus-visible {
+    outline: 3px solid currentColor;
+    outline-offset: 5px;
+  }
+  .landing-page :is(button, a) {
+    -webkit-tap-highlight-color: transparent;
+  }
+  .landing-page button {
+    cursor: pointer;
+  }
+  .landing-page button:disabled {
+    cursor: not-allowed;
+  }
+  .landing-page a {
+    text-underline-offset: 5px;
+  }
+  .landing-page svg {
+    flex-shrink: 0;
+  }
+  .landing-page .arcade-mascot {
+    width: 100%;
+    aspect-ratio: 1;
+  }
+  .landing-page .arcade-mascot img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    border-radius: 0;
+  }
+  .landing-page .arcade-mascot-pause {
+    background: var(--color-landing-bg);
+    border: 1px solid var(--color-landing-line);
+    color: var(--color-landing-muted);
+    border-radius: 0;
+    right: 18px;
+    bottom: 18px;
+  }
+  @media (max-width: 767px) {
+    .landing-page .arcade-mascot-pause {
+      font-size: var(--text-2xs);
+      padding: 8px 10px;
+      right: 12px;
+      bottom: 10px;
+    }
+  }
+}

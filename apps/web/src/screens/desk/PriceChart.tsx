@@ -107,7 +107,9 @@ export function PriceChart({
   const plotWidth = plotRight - 4;
   const bellX = 4 + plotWidth * YESTERDAY_SHARE;
   const x = (k: number): number =>
-    k < 0 ? bellX + (k / Math.max(1, lead.length)) * plotWidth * YESTERDAY_SHARE : bellX + (k / OPEN_STEPS) * plotWidth * (1 - YESTERDAY_SHARE);
+    k < 0
+      ? bellX + (k / Math.max(1, lead.length)) * plotWidth * YESTERDAY_SHARE
+      : bellX + (k / OPEN_STEPS) * plotWidth * (1 - YESTERDAY_SHARE);
   const y = (cents: number): number => padTop + ((hi - cents) / (hi - lo)) * (plotBottom - padTop);
   const path = (from: number, to: number): string =>
     points
@@ -122,51 +124,110 @@ export function PriceChart({
   const clampY = (cents: number): number => Math.max(padTop, Math.min(plotBottom, y(cents)));
   const targetY = target === null ? 0 : clampY(target.targetCents);
   const breakEvenY = target === null ? 0 : clampY(target.breakEvenCents);
-  const lineTone = picking ? 'stroke-cloud fill-cloud' : up ? 'stroke-mint fill-mint' : 'stroke-coral fill-coral';
+  const lineTone = picking
+    ? 'stroke-cloud fill-cloud'
+    : up
+      ? 'stroke-mint fill-mint'
+      : 'stroke-coral fill-coral';
   const entry = ticket !== null && ticket.companyId === companyId ? ticket : null;
-  const entryPoint = entry === null ? null : points.find(([k]) => k === entry.entryPriceIndex) ?? null;
-  const exitPoint = entry?.exit === undefined || entry.exit.kind !== 'cashOut' ? null : points.find(([k]) => k === entry.exit?.priceIndex) ?? null;
-  const labelSide = dotX < (openX + plotRight) / 2 ? { right: rightMargin + 8 } : { left: openX + 8 };
-  const reveal = frame.news.find((item) => item.companyId === companyId && item.day === frame.clock.day && item.revealed);
+  const entryPoint =
+    entry === null ? null : (points.find(([k]) => k === entry.entryPriceIndex) ?? null);
+  const exitPoint =
+    entry?.exit === undefined || entry.exit.kind !== 'cashOut'
+      ? null
+      : (points.find(([k]) => k === entry.exit?.priceIndex) ?? null);
+  const labelSide =
+    dotX < (openX + plotRight) / 2 ? { right: rightMargin + 8 } : { left: openX + 8 };
+  const reveal = frame.news.find(
+    (item) => item.companyId === companyId && item.day === frame.clock.day && item.revealed,
+  );
   const revealX = reveal?.revealIndex === undefined ? null : x(reveal.revealIndex);
 
-  const inspected = inspect === null ? null : points[Math.min(inspect, points.length - 1)] ?? null;
-  // Only server-provided prices in the compact rail, like the donor chart.
+  const inspected =
+    inspect === null ? null : (points[Math.min(inspect, points.length - 1)] ?? null);
+  // The compact rail shows only prices received from the server.
   // Separate close levels without moving their actual lines or price points.
   const levels = [
-    ...(target === null ? [] : [
-      { label: 'Target', cents: target.targetCents, tone: 'text-sun' },
-      { label: 'Break-even', cents: target.breakEvenCents, tone: 'text-cloud' },
-    ]),
-  ].map((level) => ({ ...level, at: y(level.cents), labelY: y(level.cents) })).sort((a, b) => a.at - b.at);
-  levels.forEach((level, i) => { level.labelY = Math.max(level.at, i === 0 ? padTop : (levels[i - 1]?.labelY ?? padTop) + 24); });
+    ...(target === null
+      ? []
+      : [
+          { label: 'Target', cents: target.targetCents, tone: 'text-sun' },
+          { label: 'Break-even', cents: target.breakEvenCents, tone: 'text-cloud' },
+        ]),
+  ]
+    .map((level) => ({ ...level, at: y(level.cents), labelY: y(level.cents) }))
+    .sort((a, b) => a.at - b.at);
+  levels.forEach((level, i) => {
+    level.labelY = Math.max(level.at, i === 0 ? padTop : (levels[i - 1]?.labelY ?? padTop) + 24);
+  });
   for (let i = levels.length - 1; i >= 0; i -= 1) {
     const level = levels[i];
-    if (level !== undefined) level.labelY = Math.min(level.labelY, i === levels.length - 1 ? plotBottom : (levels[i + 1]?.labelY ?? plotBottom) - 24);
+    if (level !== undefined)
+      level.labelY = Math.min(
+        level.labelY,
+        i === levels.length - 1 ? plotBottom : (levels[i + 1]?.labelY ?? plotBottom) - 24,
+      );
   }
 
   return (
-    <div ref={box} className={cx('price-chart relative overflow-hidden rounded-[18px] bg-well', narrow && 'chart-narrow', compact ? 'chart-compact h-[224px] shrink-0' : 'h-[380px] lg:h-auto lg:min-h-[180px] lg:flex-1')}
-      tabIndex={0} role="group" aria-label="Observed price chart. Use left and right arrows to inspect received prices."
-      onPointerLeave={() => { setInspect(null); }}
+    <div
+      ref={box}
+      className={cx(
+        'price-chart relative overflow-hidden rounded-[18px] bg-well',
+        narrow && 'chart-narrow',
+        compact
+          ? 'chart-compact h-[224px] shrink-0'
+          : 'h-[380px] lg:h-auto lg:min-h-[180px] lg:flex-1',
+      )}
+      tabIndex={0}
+      role="group"
+      aria-label="Observed price chart. Use left and right arrows to inspect received prices."
+      onPointerLeave={() => {
+        setInspect(null);
+      }}
       onPointerMove={(event) => {
         const at = event.clientX - event.currentTarget.getBoundingClientRect().left;
         let nearest = 0;
-        points.forEach(([k], i) => { if (Math.abs(x(k) - at) < Math.abs(x(points[nearest]?.[0] ?? 0) - at)) nearest = i; });
+        points.forEach(([k], i) => {
+          if (Math.abs(x(k) - at) < Math.abs(x(points[nearest]?.[0] ?? 0) - at)) nearest = i;
+        });
         setInspect(nearest);
       }}
       onKeyDown={(event) => {
         if (event.key === 'Escape') setInspect(null);
         if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
         event.preventDefault();
-        setInspect(Math.max(0, Math.min(points.length - 1, (inspect ?? points.length - 1) + (event.key === 'ArrowLeft' ? -1 : 1))));
-      }}>
+        setInspect(
+          Math.max(
+            0,
+            Math.min(
+              points.length - 1,
+              (inspect ?? points.length - 1) + (event.key === 'ArrowLeft' ? -1 : 1),
+            ),
+          ),
+        );
+      }}
+    >
       {(w <= 0 || h <= 0) && <ChartSkeleton />}
       {w > 0 && h > 0 && (
         <>
-          <svg width={w} height={h} className="absolute inset-0" role="img" aria-label={`Price chart, now ${price(now)}`}>
+          <svg
+            width={w}
+            height={h}
+            className="absolute inset-0"
+            role="img"
+            aria-label={`Price chart, now ${price(now)}`}
+          >
             {grid.map((cents) => (
-              <line key={cents} x1="0" x2={plotRight} y1={y(cents)} y2={y(cents)} className="stroke-rule" strokeWidth="1" />
+              <line
+                key={cents}
+                x1="0"
+                x2={plotRight}
+                y1={y(cents)}
+                y2={y(cents)}
+                className="stroke-rule"
+                strokeWidth="1"
+              />
             ))}
             {target !== null && (
               <>
@@ -177,47 +238,148 @@ export function PriceChart({
                   height={target.side === 'up' ? targetY - padTop : plotBottom - targetY}
                   className={target.side === 'up' ? 'fill-mint/15' : 'fill-coral/15'}
                 />
-                <line x1={openX} x2={plotRight} y1={targetY} y2={targetY} className={target.side === 'up' ? 'stroke-mint' : 'stroke-coral'} strokeWidth="2" strokeDasharray="7 6" />
-                <line x1={openX} x2={plotRight} y1={breakEvenY} y2={breakEvenY} className={target.side === 'up' ? 'stroke-mint/60' : 'stroke-coral/60'} strokeWidth="1.5" strokeDasharray="3 5" />
+                <line
+                  x1={openX}
+                  x2={plotRight}
+                  y1={targetY}
+                  y2={targetY}
+                  className={target.side === 'up' ? 'stroke-mint' : 'stroke-coral'}
+                  strokeWidth="2"
+                  strokeDasharray="7 6"
+                />
+                <line
+                  x1={openX}
+                  x2={plotRight}
+                  y1={breakEvenY}
+                  y2={breakEvenY}
+                  className={target.side === 'up' ? 'stroke-mint/60' : 'stroke-coral/60'}
+                  strokeWidth="1.5"
+                  strokeDasharray="3 5"
+                />
               </>
             )}
-            {revealX !== null && <line x1={revealX} x2={revealX} y1={padTop - 16} y2={plotBottom + 12} className="stroke-sun/70" strokeWidth="2" strokeDasharray="2 4" />}
-            <line x1={openX} x2={openX} y1="0" y2={h} className="stroke-dusk" strokeWidth="2" strokeDasharray="2 5" />
+            {revealX !== null && (
+              <line
+                x1={revealX}
+                x2={revealX}
+                y1={padTop - 16}
+                y2={plotBottom + 12}
+                className="stroke-sun/70"
+                strokeWidth="2"
+                strokeDasharray="2 4"
+              />
+            )}
+            <line
+              x1={openX}
+              x2={openX}
+              y1="0"
+              y2={h}
+              className="stroke-dusk"
+              strokeWidth="2"
+              strokeDasharray="2 5"
+            />
             {lead.length > 0 && (
-              <polyline points={path(-lead.length, 0)} className="fill-none stroke-haze" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+              <polyline
+                points={path(-lead.length, 0)}
+                className="fill-none stroke-haze"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             )}
             {today.length > 1 && (
-              <polyline points={path(0, OPEN_STEPS)} className={cx('fill-none', lineTone)} strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+              <polyline
+                points={path(0, OPEN_STEPS)}
+                className={cx('fill-none', lineTone)}
+                strokeWidth="3.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             )}
             {entryPoint !== null && (
-              <circle cx={x(entryPoint[0])} cy={y(entryPoint[1])} r="6" className="fill-sun" stroke="var(--color-well)" strokeWidth="2.5" />
+              <circle
+                cx={x(entryPoint[0])}
+                cy={y(entryPoint[1])}
+                r="6"
+                className="fill-sun"
+                stroke="var(--color-well)"
+                strokeWidth="2.5"
+              />
             )}
             {exitPoint !== null && (
-              <circle cx={x(exitPoint[0])} cy={y(exitPoint[1])} r="6" className="fill-cloud" stroke="var(--color-well)" strokeWidth="2.5" />
+              <circle
+                cx={x(exitPoint[0])}
+                cy={y(exitPoint[1])}
+                r="6"
+                className="fill-cloud"
+                stroke="var(--color-well)"
+                strokeWidth="2.5"
+              />
             )}
-            <circle cx={dotX} cy={dotY} r="7" className={lineTone} stroke="var(--color-well)" strokeWidth="3" />
-            {inspected !== null && <><line x1={x(inspected[0])} x2={x(inspected[0])} y1={padTop} y2={plotBottom} className="stroke-cloud/60" strokeDasharray="3 3" /><circle cx={x(inspected[0])} cy={y(inspected[1])} r={4} className="fill-cloud" /></>}
-            {useRail && levels.map((level) => <path key={level.label} d={`M${String(plotRight)},${String(level.at)} L${String(plotRight + 8)},${String(level.labelY)}`} className="fill-none stroke-dusk" />)}
+            <circle
+              cx={dotX}
+              cy={dotY}
+              r="7"
+              className={lineTone}
+              stroke="var(--color-well)"
+              strokeWidth="3"
+            />
+            {inspected !== null && (
+              <>
+                <line
+                  x1={x(inspected[0])}
+                  x2={x(inspected[0])}
+                  y1={padTop}
+                  y2={plotBottom}
+                  className="stroke-cloud/60"
+                  strokeDasharray="3 3"
+                />
+                <circle cx={x(inspected[0])} cy={y(inspected[1])} r={4} className="fill-cloud" />
+              </>
+            )}
+            {useRail &&
+              levels.map((level) => (
+                <path
+                  key={level.label}
+                  d={`M${String(plotRight)},${String(level.at)} L${String(plotRight + 8)},${String(level.labelY)}`}
+                  className="fill-none stroke-dusk"
+                />
+              ))}
           </svg>
 
-          {!compact && !narrow && grid.map((cents) => (
-            <span key={cents} className="absolute right-2.5 text-xs text-muted tabular-nums" style={{ top: y(cents) - 8 }}>
-              {price(cents)}
-            </span>
-          ))}
+          {!compact &&
+            !narrow &&
+            grid.map((cents) => (
+              <span
+                key={cents}
+                className="absolute right-2.5 text-xs text-muted tabular-nums"
+                style={{ top: y(cents) - 8 }}
+              >
+                {price(cents)}
+              </span>
+            ))}
 
           {target !== null && !compact && !narrow && (
             <>
               {/* Both labels sit on the half of the day away from the price bubble that rides the newest point. */}
               <span
-                className={cx('absolute rounded-[10px] px-2.5 py-1 text-[13px] font-bold text-ink', target.side === 'up' ? 'bg-mint' : 'bg-coral')}
+                className={cx(
+                  'absolute rounded-[10px] px-2.5 py-1 text-[13px] font-bold text-ink',
+                  target.side === 'up' ? 'bg-mint' : 'bg-coral',
+                )}
                 style={{ ...labelSide, top: target.side === 'up' ? targetY + 6 : targetY - 32 }}
               >
                 Target {price(target.targetCents)}
               </span>
               <span
-                className={cx('absolute text-[12px] font-semibold', target.side === 'up' ? 'text-mint/80' : 'text-coral/80')}
-                style={{ ...labelSide, top: target.side === 'up' ? breakEvenY - 22 : breakEvenY + 6 }}
+                className={cx(
+                  'absolute text-[12px] font-semibold',
+                  target.side === 'up' ? 'text-mint/80' : 'text-coral/80',
+                )}
+                style={{
+                  ...labelSide,
+                  top: target.side === 'up' ? breakEvenY - 22 : breakEvenY + 6,
+                }}
               >
                 Break-even {price(target.breakEvenCents)}
               </span>
@@ -226,51 +388,119 @@ export function PriceChart({
 
           <span
             className="absolute w-[88px] rounded-lg bg-cloud px-2 py-1 text-center text-[13px] font-bold whitespace-nowrap text-ink tabular-nums"
-            style={{ left: Math.max(8, dotX > plotRight - 102 ? dotX - 102 : dotX + 14), top: Math.max(8, dotY - 34) }}
+            style={{
+              left: Math.max(8, dotX > plotRight - 102 ? dotX - 102 : dotX + 14),
+              top: Math.max(8, dotY - 34),
+            }}
           >
             {price(now)}
           </span>
-          {useRail && levels.map((level) => <span key={level.label}
-            className={cx('chart-level-label absolute right-2 flex justify-between gap-2 rounded px-1 py-0.5 text-xs whitespace-nowrap', level.tone)}
-            style={{ left: plotRight + 10, top: level.labelY - 10 }}>
-            <span>{level.label}</span><span className="tabular-nums">{price(level.cents)}</span>
-          </span>)}
-          {narrow && target !== null && <div className="chart-level-legend absolute inset-x-3 top-3 grid grid-cols-2 gap-3 text-xs">
-            {levels.map((level) => <div key={level.label} className={cx('flex flex-col gap-1', level.tone)}>
-              <span>{level.label}</span><span className="font-semibold tabular-nums">{price(level.cents)}</span>
-            </div>)}
-          </div>}
-          {inspected !== null && <output className="pointer-events-none absolute left-2 rounded bg-panel px-2 py-1 text-xs text-cloud tabular-nums" style={{ bottom: narrow ? 68 : 32 }} aria-live="polite">
-            {inspected[0] < 0 ? 'Yesterday' : `Observed step ${String(inspected[0])}`} / {price(inspected[1])}
-          </output>}
+          {useRail &&
+            levels.map((level) => (
+              <span
+                key={level.label}
+                className={cx(
+                  'chart-level-label absolute right-2 flex justify-between gap-2 rounded px-1 py-0.5 text-xs whitespace-nowrap',
+                  level.tone,
+                )}
+                style={{ left: plotRight + 10, top: level.labelY - 10 }}
+              >
+                <span>{level.label}</span>
+                <span className="tabular-nums">{price(level.cents)}</span>
+              </span>
+            ))}
+          {narrow && target !== null && (
+            <div className="chart-level-legend absolute inset-x-3 top-3 grid grid-cols-2 gap-3 text-xs">
+              {levels.map((level) => (
+                <div key={level.label} className={cx('flex flex-col gap-1', level.tone)}>
+                  <span>{level.label}</span>
+                  <span className="font-semibold tabular-nums">{price(level.cents)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {inspected !== null && (
+            <output
+              className="pointer-events-none absolute left-2 rounded bg-panel px-2 py-1 text-xs text-cloud tabular-nums"
+              style={{ bottom: narrow ? 68 : 32 }}
+              aria-live="polite"
+            >
+              {inspected[0] < 0 ? 'Yesterday' : `Observed step ${String(inspected[0])}`} /{' '}
+              {price(inspected[1])}
+            </output>
+          )}
 
           {entryPoint !== null && !narrow && (
-            <span className="absolute text-[11px] font-semibold text-sun" style={{ left: Math.min(plotRight - 60, x(entryPoint[0]) - 18), top: y(entryPoint[1]) + 10 }}>
+            <span
+              className="absolute text-[11px] font-semibold text-sun"
+              style={{
+                left: Math.min(plotRight - 60, x(entryPoint[0]) - 18),
+                top: y(entryPoint[1]) + 10,
+              }}
+            >
               Bought
             </span>
           )}
           {exitPoint !== null && !narrow && (
-            <span className="absolute text-[11px] font-semibold text-cloud" style={{ left: Math.min(plotRight - 70, x(exitPoint[0]) - 24), top: y(exitPoint[1]) + 10 }}>
+            <span
+              className="absolute text-[11px] font-semibold text-cloud"
+              style={{
+                left: Math.min(plotRight - 70, x(exitPoint[0]) - 24),
+                top: y(exitPoint[1]) + 10,
+              }}
+            >
               Cashed out
             </span>
           )}
 
-          {narrow && <div className="chart-event-legend absolute inset-x-3 bottom-9 flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-semibold">
-            {entryPoint !== null && <span className="flex items-center gap-1 text-sun"><span className="size-1.5 rounded-full bg-sun" aria-hidden="true" />Bought</span>}
-            {exitPoint !== null && <span className="flex items-center gap-1 text-cloud"><span className="size-1.5 rounded-full bg-cloud" aria-hidden="true" />Cashed out</span>}
-            {revealX !== null && <span className="text-sun" title={reveal?.updateBody}>News update</span>}
-          </div>}
+          {narrow && (
+            <div className="chart-event-legend absolute inset-x-3 bottom-9 flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-semibold">
+              {entryPoint !== null && (
+                <span className="flex items-center gap-1 text-sun">
+                  <span className="size-1.5 rounded-full bg-sun" aria-hidden="true" />
+                  Bought
+                </span>
+              )}
+              {exitPoint !== null && (
+                <span className="flex items-center gap-1 text-cloud">
+                  <span className="size-1.5 rounded-full bg-cloud" aria-hidden="true" />
+                  Cashed out
+                </span>
+              )}
+              {revealX !== null && (
+                <span className="text-sun" title={reveal?.updateBody}>
+                  News update
+                </span>
+              )}
+            </div>
+          )}
 
-          {!narrow && <span className="absolute bottom-2.5 left-2.5 hidden text-xs text-muted sm:block">Yesterday</span>}
-          <span className="chart-open-label absolute bottom-2.5 text-xs text-muted" style={{ left: narrow ? 12 : openX + 8 }}>
+          {!narrow && (
+            <span className="absolute bottom-2.5 left-2.5 hidden text-xs text-muted sm:block">
+              Yesterday
+            </span>
+          )}
+          <span
+            className="chart-open-label absolute bottom-2.5 text-xs text-muted"
+            style={{ left: narrow ? 12 : openX + 8 }}
+          >
             Opening bell
           </span>
           {revealX !== null && !narrow && (
-            <span className="absolute bottom-2.5 text-xs font-semibold text-sun/80" title={reveal?.updateBody} style={{ left: Math.min(plotRight - 90, revealX + 6) }}>
+            <span
+              className="absolute bottom-2.5 text-xs font-semibold text-sun/80"
+              title={reveal?.updateBody}
+              style={{ left: Math.min(plotRight - 90, revealX + 6) }}
+            >
               News update
             </span>
           )}
-          <span className="chart-close-label absolute bottom-2.5 text-xs text-muted" style={{ right: narrow ? 12 : rightMargin }}>Closing bell</span>
+          <span
+            className="chart-close-label absolute bottom-2.5 text-xs text-muted"
+            style={{ right: narrow ? 12 : rightMargin }}
+          >
+            Closing bell
+          </span>
         </>
       )}
     </div>

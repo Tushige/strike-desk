@@ -11,19 +11,35 @@ export function CompanyList({ children }: { children: ReactNode }) {
     if (el === null) return;
     const top = el.scrollTop > 1;
     const bottom = el.scrollHeight - el.clientHeight - el.scrollTop > 1;
-    setEdges((previous) => previous.top === top && previous.bottom === bottom ? previous : { top, bottom });
+    setEdges((previous) =>
+      previous.top === top && previous.bottom === bottom ? previous : { top, bottom },
+    );
   }, []);
   useLayoutEffect(() => {
     measure();
     const observer = new ResizeObserver(measure);
     if (viewport.current !== null) observer.observe(viewport.current);
     if (content.current !== null) observer.observe(content.current);
-    return () => { observer.disconnect(); };
+    return () => {
+      observer.disconnect();
+    };
   }, [measure]);
-  return <div className="company-list-shell">
-    <div ref={viewport} className="company-list-scroll" role="region" aria-label="Company cards" tabIndex={0}
-      data-fade-top={edges.top} data-fade-bottom={edges.bottom} onScroll={measure}>
-      <div ref={content} className="flex flex-col gap-3 p-1.5">{children}</div>
+  return (
+    <div className="company-list-shell">
+      <div
+        ref={viewport}
+        className="company-list-scroll"
+        role="region"
+        aria-label="Company cards"
+        tabIndex={0}
+        data-fade-top={edges.top}
+        data-fade-bottom={edges.bottom}
+        onScroll={measure}
+      >
+        <div ref={content} className="flex flex-col gap-3 p-1.5">
+          {children}
+        </div>
+      </div>
     </div>
-  </div>;
+  );
 }

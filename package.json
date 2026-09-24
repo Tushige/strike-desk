@@ -10,6 +10,8 @@
     "build": "node scripts/write-version.mjs && tsc --build && pnpm --filter @strike-desk/web run build && pnpm --filter @strike-desk/server run build",
     "typecheck": "node scripts/write-version.mjs && tsc --build",
     "lint": "node scripts/write-version.mjs && eslint .",
+    "format:web": "prettier --write \"apps/web/src/**/*.tsx\" \"apps/web/src/**/*.css\" \"apps/web/src/screens/useStartGame.ts\" \"apps/web/src/screens/summary/useLessonRotation.ts\"",
+    "format:web:check": "prettier --check \"apps/web/src/**/*.tsx\" \"apps/web/src/**/*.css\" \"apps/web/src/screens/useStartGame.ts\" \"apps/web/src/screens/summary/useLessonRotation.ts\"",
     "test": "vitest run",
     "start": "node apps/server/dist/server.js",
     "dev": "node scripts/write-version.mjs && pnpm --parallel --filter @strike-desk/server --filter @strike-desk/web run dev",
@@ -27,6 +29,7 @@
     "eslint": "10.11.0",
     "globals": "17.12.0",
     "jsdom": "30.0.1",
+    "prettier": "3.9.9",
     "typescript": "6.0.3",
     "typescript-eslint": "8.70.0",
     "vitest": "5.0.1"

@@ -22,6 +22,7 @@ export function createNeonRepository(url: string, environment: StatsEnvironment)
         coalesce(sum(greatest(final_cash_cents - starting_cash_cents, 0)), 0)::text AS "pretendProfitsEarnedCents",
         coalesce(sum(final_cash_cents - starting_cash_cents), 0)::text AS "netProfitCents",
         max(final_cash_cents)::text AS "bestFinalBalanceCents",
+        max(final_cash_cents - starting_cash_cents)::text AS "bestNetProfitCents",
         coalesce(sum(purchases), 0)::text AS purchases
         FROM completed_games WHERE environment = $1`, [environment], queryOptions());
       // The query fixes this shape; keep the driver's untyped rows out of callers.

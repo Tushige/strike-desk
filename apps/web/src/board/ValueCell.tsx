@@ -13,6 +13,8 @@ import type { ContractRow } from '../store/contractRows';
  * price's dash carries a reason for a screen reader; saying it three times on
  * one row would be noise, so these two are hidden from it instead.
  */
-export const ValueCell = memo(function ValueCell({ value }: CustomCellRendererProps<ContractRow, number | null>) {
+export const ValueCell = memo(function ValueCell({
+  value,
+}: CustomCellRendererProps<ContractRow, number | null>) {
   return value == null ? <span aria-hidden="true">—</span> : <>{formatCents(value)}</>;
 });

@@ -26,15 +26,16 @@ describe('Neon repository SQL', () => {
     const development = createNeonRepository('unused', 'development');
     const production = createNeonRepository('unused', 'production');
     expect(await production.stats()).toEqual({ completedGames: '0', pretendProfitsEarnedCents: '0',
-      netProfitCents: '0', bestFinalBalanceCents: null, purchases: '0' });
+      netProfitCents: '0', bestFinalBalanceCents: null, bestNetProfitCents: null, purchases: '0' });
     await development.save(game('a', 999999999));
-    await production.save(game('a', 120000000));
     await production.save(game('b', 90000000));
+    expect((await production.stats()).bestNetProfitCents).toBe('-10000000');
+    await production.save(game('a', 120000000));
     await production.save(game('c', 100000000));
     // A retry, even with different values, must never overwrite or double count.
     await production.save(game('a', 500000000));
     expect(await production.stats()).toEqual({ completedGames: '3', pretendProfitsEarnedCents: '20000000',
-      netProfitCents: '10000000', bestFinalBalanceCents: '120000000', purchases: '9' });
+      netProfitCents: '10000000', bestFinalBalanceCents: '120000000', bestNetProfitCents: '20000000', purchases: '9' });
   });
 
   it('preserves sums beyond JavaScript safe integer precision', async () => {

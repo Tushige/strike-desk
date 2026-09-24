@@ -8,6 +8,9 @@ const sockets = createSocketFactory();
 let App: typeof import('../src/App')['default'];
 let close: () => void;
 beforeAll(async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: () => ({
+    completedGames: '12', pretendProfitsEarnedCents: '140000000', bestNetProfitCents: '40000000', currency: 'pretend-USD',
+  }) }));
   vi.stubGlobal('WebSocket', function FakeWebSocket(url: string) { return sockets.create(url); });
   vi.stubGlobal('ResizeObserver', class {
     observe() {}
@@ -32,6 +35,14 @@ it('defaults to V2, preserves the original fallback, and starts the real game wi
   window.history.replaceState({}, '', '/');
   view.rerender(createElement(App));
   await screen.findByRole('heading', { level: 1, name: /Grow it.*Or blow it/ });
+  expect(view.container.querySelector('.contrast-page')?.getAttribute('data-palette')).toBe('lilac');
+  expect(screen.queryByRole('complementary', { name: 'Sketch controls' })).toBeNull();
+  const stats = await screen.findByRole('region', { name: /The desk, so far/ });
+  expect(stats.textContent).toContain('Games completed');
+  expect(stats.textContent).toContain('Pretend profits earned');
+  expect(stats.textContent).toContain('Best completed run');
+  expect(await screen.findByRole('img', { name: '12' })).toBeTruthy();
+  expect(stats.textContent).toContain('Starting $1M excluded');
   expect(screen.queryByRole('banner')?.textContent).not.toContain('Total worth');
   expect(screen.getByRole('button', { name: 'Connecting to the desk…' }).hasAttribute('disabled')).toBe(true);
   expect(screen.getByRole('status', { name: 'Loading companies' })).toBeTruthy();
@@ -41,10 +52,16 @@ it('defaults to V2, preserves the original fallback, and starts the real game wi
     socket.fireOpen(); socket.fireMessage(JSON.stringify(testFrame()));
     await Promise.resolve();
   });
-  fireEvent.keyDown(screen.getByRole('tab', { name: 'Read the news' }), { key: 'End' });
+  fireEvent.keyDown(screen.getByRole('button', { name: 'Read the news.' }), { key: 'End' });
+  expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Beat the bell.' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Beat the bell.' }));
   expect(screen.queryByRole('status', { name: 'Loading companies' })).toBeNull();
-  expect(screen.getByRole('tab', { name: 'Beat the bell' }).getAttribute('aria-selected')).toBe('true');
-  expect(screen.getByRole('tabpanel').textContent).toContain('Cash out or hold?');
+  expect(screen.getByRole('button', { name: 'Beat the bell.' }).getAttribute('aria-expanded')).toBe('true');
+  expect(screen.getByRole('region', { name: 'Beat the bell.' }).textContent).toContain('A payout isn’talways a profit.');
+  fireEvent.click(screen.getByRole('button', { name: 'Make your move.' }));
+  expect(screen.getByRole('region', { name: 'Make your move.' }).textContent).toContain('Sit this one out.');
+  fireEvent.click(screen.getByRole('button', { name: 'Read the news.' }));
+  expect(screen.getByRole('region', { name: 'Read the news.' }).textContent).toContain('fetch your slippers');
 
   fireEvent.click(screen.getByRole('button', { name: '5 min' }));
   fireEvent.click(screen.getByRole('button', { name: 'Open the desk' }));

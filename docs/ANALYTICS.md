@@ -59,6 +59,7 @@ The response includes `currency: "pretend-USD"` and:
 | `pretendProfitsEarnedCents` | Sum of positive net results: `max(final balance − starting balance, 0)` per completed game. Losing runs do not reduce this metric. |
 | `netProfitCents` | Sum of signed net results, including losses. |
 | `bestFinalBalanceCents` | Largest completed final balance; null when no games have completed. Includes starting money, so do not label it profit. |
+| `bestNetProfitCents` | Largest final balance minus that run's starting balance; null when no games have completed. Use for “Best completed run” on the landing page. Can be negative if all completed games lost money. |
 | `purchases` | Accepted purchases across completed games, not contracts or unique players. |
 
 All counts and cent amounts are decimal **strings** to preserve large integers across JSON. Convert cents carefully for display; avoid converting huge totals straight to JavaScript Number. Suggested public wording is “Pretend profits earned,” with its positive-results-only definition available. Never present starting balances or ticket proceeds as profit.

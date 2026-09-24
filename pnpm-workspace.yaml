@@ -3,3 +3,5 @@ packages:
   - 'apps/*'
 allowBuilds:
   esbuild: true
+minimumReleaseAgeExclude:
+  - prettier@3.9.9

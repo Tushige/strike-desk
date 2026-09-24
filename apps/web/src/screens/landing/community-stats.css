@@ -1,0 +1,77 @@
+.community-stats { container-type:inline-size; color:var(--color-cloud); }
+.community-stats ::selection { color:var(--color-ink); background:var(--color-sun); }
+.community-body { position:relative; padding-block:32px; }
+.community-intro { display:none; }
+.community-intro h2 { margin:0; font:800 clamp(32px,4cqi,54px)/1.02 'Bricolage Grotesque',sans-serif; letter-spacing:-.035em; }
+.community-intro h2 span { color:var(--color-sun); }
+.community-intro p { margin:18px 0 0; font-size:14px; line-height:1.6; color:var(--color-muted); }
+.community-metrics { display:grid; grid-template-columns:1fr 1.35fr 1.1fr; gap:0; margin:0; }
+.community-metric { min-width:0; }
+.community-metric dt { font-size:14px; line-height:1.5; color:var(--color-muted); }
+.community-metric dd { margin:8px 0 0; min-height:1.25em; font:800 clamp(28px,4.8cqi,60px)/1.15 'Bricolage Grotesque',sans-serif; letter-spacing:-.035em; font-variant-numeric:tabular-nums; }
+.community-number-window { display:block; overflow:clip; padding-bottom:.12em; }
+.community-number { display:inline-block; white-space:nowrap; }
+.community-glyph-window { display:inline-block; overflow:clip; vertical-align:bottom; }
+.community-glyph { display:inline-block; }
+.community-profit dd { color:var(--color-mint); }
+.community-metric[data-negative=true] dd { color:var(--color-coral); }
+.community-metric dd[data-unavailable=true] .community-number { font-size:clamp(18px,2.6cqi,28px); color:var(--color-muted); letter-spacing:-.02em; }
+.community-note { display:flex; flex-wrap:wrap; align-items:center; gap:4px 16px; margin-top:20px; min-height:24px; font-size:12px; line-height:1.7; color:var(--color-muted); }
+.community-note p { margin:0; }
+.community-note button { border:0; border-bottom:1px solid var(--color-sun); background:transparent; color:var(--color-sun); padding:10px 0; min-height:44px; cursor:pointer; }
+.community-note button:hover { color:var(--color-cloud); }
+.community-note button:focus-visible { outline:2px solid var(--color-sun); outline-offset:5px; }
+.community-ribbon .community-body { border-block:1px solid var(--color-line); }
+.community-ribbon .community-metric + .community-metric { padding-left:32px; border-left:1px solid var(--color-line); }
+.community-ribbon .community-metric:not(:last-child) { padding-right:24px; }
+.community-ribbon .community-intro { display:block; position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+.community-ticket .community-body { padding:32px; border:1px solid var(--color-line); border-radius:12px; background:var(--color-panel); }
+.community-ticket .community-metrics { grid-template-columns:minmax(0,1.7fr) minmax(0,1fr); grid-template-areas:'profit games' 'profit best'; column-gap:32px; }
+.community-ticket .community-profit { grid-area:profit; align-self:center; padding-block:12px; }
+.community-ticket .community-profit dd { font-size:clamp(36px,8cqi,92px); }
+.community-ticket .community-games { grid-area:games; padding-bottom:20px; }
+.community-ticket .community-best { grid-area:best; padding-top:20px; }
+.community-ticket :is(.community-games,.community-best) { padding-left:32px; border-left:1px dashed var(--color-dusk); }
+.community-ticket .community-best dd,.community-ticket .community-games dd { font-size:clamp(24px,3.8cqi,42px); }
+.community-ticket .community-body::before,.community-ticket .community-body::after { content:''; position:absolute; top:calc(50% - 12px); width:24px; height:24px; border:1px solid var(--color-line); border-radius:50%; background:var(--color-ink); }
+.community-ticket .community-body::before { left:-13px; clip-path:inset(0 0 0 50%); }
+.community-ticket .community-body::after { right:-13px; clip-path:inset(0 50% 0 0); }
+.community-ticket .community-intro { display:block; position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+.community-ledger .community-body { display:grid; grid-template-columns:1fr 1.4fr; column-gap:56px; border-top:1px solid var(--color-line); }
+.community-ledger .community-intro { display:block; grid-row:1/3; padding-top:10px; }
+.community-ledger .community-metrics { display:block; }
+.community-ledger .community-metric { display:flex; justify-content:space-between; align-items:center; gap:20px; padding:14px 0; border-bottom:1px solid var(--color-line); }
+.community-ledger .community-metric dd { margin:0; font-size:clamp(23px,3cqi,34px); flex:none; width:8.5ch; text-align:right; }
+.community-ledger .community-placeholder { margin-left:auto; }
+.community-ledger .community-note { grid-column:2; margin-top:16px; }
+.community-placeholder { display:block; width:75%; height:.86em; margin-block:.12em; overflow:hidden; position:relative; border-radius:4px; background:var(--color-raised); }
+.community-placeholder::after { content:''; position:absolute; inset:0; background:linear-gradient(100deg,transparent,var(--color-line),transparent); transform:translateX(-100%); animation:community-load 1.3s ease-in-out 3; }
+@keyframes community-load { to { transform:translateX(100%); } }
+@container(max-width:620px) {
+  .community-body { padding-block:24px; }
+  .community-metrics { grid-template-columns:1fr 1fr; grid-template-areas:'profit profit' 'games best'; gap:24px 20px; }
+  .community-profit { grid-area:profit; }
+  .community-games { grid-area:games; }
+  .community-best { grid-area:best; }
+  .community-metric dt { font-size:12px; }
+  .community-metric dd { font-size:clamp(24px,7cqi,38px); }
+  .community-profit dd { font-size:clamp(40px,13cqi,64px); }
+  .community-ribbon .community-metric + .community-metric { padding-left:0; border-left:0; }
+  .community-ribbon .community-metric:not(:last-child) { padding-right:0; }
+  .community-ribbon .community-best { padding-left:20px; border-left:1px solid var(--color-line); }
+  .community-note { margin-top:20px; font-size:11px; }
+  .community-ticket .community-body { padding:24px 20px; }
+  .community-ticket .community-metrics { grid-template-columns:1fr 1fr; grid-template-areas:'profit profit' 'games best'; gap:24px 16px; }
+  .community-ticket .community-profit { padding:0 0 20px; border-bottom:1px dashed var(--color-dusk); }
+  .community-ticket .community-profit dd { font-size:clamp(38px,12cqi,64px); }
+  .community-ticket :is(.community-games,.community-best) { padding:0; border-left:0; }
+  .community-ticket .community-best dd,.community-ticket .community-games dd { font-size:clamp(23px,6.5cqi,32px); }
+  .community-ledger .community-body { display:block; }
+  .community-ledger .community-intro { padding:0 0 20px; }
+  .community-ledger .community-intro h2 { font-size:36px; }
+  .community-ledger .community-intro h2 br { display:none; }
+  .community-ledger .community-intro p { display:none; }
+  .community-ledger .community-metric dd { font-size:clamp(24px,7cqi,30px); }
+  .community-ledger .community-metric dt { max-width:12ch; }
+  .community-ledger .community-metric { min-height:66px; }
+}

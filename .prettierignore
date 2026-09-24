@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.planning/
+.impeccable/
+reference/
+apps/web/scratch/
+apps/web/src/scratch/
+apps/web/src/screens/landing/landing-v2.css
+apps/web/src/screens/landing/landing-contrast.css
+apps/web/src/screens/landing/community-stats.css
+pnpm-lock.yaml

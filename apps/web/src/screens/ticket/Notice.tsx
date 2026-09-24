@@ -1,4 +1,12 @@
-import { CHECKING_WORDS, LOST_WORDS, PENDING_WORDS, REJECTED_LEAD, REJECTED_NO_REASON, RETRY_HINT, RETRY_LABEL } from '../../modules/order-ticket/words';
+import {
+  CHECKING_WORDS,
+  LOST_WORDS,
+  PENDING_WORDS,
+  REJECTED_LEAD,
+  REJECTED_NO_REASON,
+  RETRY_HINT,
+  RETRY_LABEL,
+} from '../../modules/order-ticket/words';
 import { REJECT_WORDS, retryAllowed } from '../../modules/order-ticket/index';
 import type { TicketMachine } from './useTicketMachine';
 import { cx, GhostButton } from '../ui';
@@ -15,7 +23,11 @@ const ACCEPTED = {
 export function Notice({ machine }: { machine: TicketMachine }) {
   const { state, handlers } = machine;
   if (state.form === 'pending') {
-    return <p className="trade-pending m-0 text-sm font-semibold text-sun" role="status">{PENDING_WORDS}</p>;
+    return (
+      <p className="trade-pending m-0 text-sm font-semibold text-sun" role="status">
+        {PENDING_WORDS}
+      </p>
+    );
   }
   if (state.form === 'checking') {
     return (
@@ -23,7 +35,12 @@ export function Notice({ machine }: { machine: TicketMachine }) {
         <p className="m-0 text-sm font-semibold text-sun">{CHECKING_WORDS}</p>
         {retryAllowed(state, true) && (
           <>
-            <GhostButton tone="sun" className="h-11" disabled={machine.snapshot.line !== 'live'} onClick={handlers.onRetry}>
+            <GhostButton
+              tone="sun"
+              className="h-11"
+              disabled={machine.snapshot.line !== 'live'}
+              onClick={handlers.onRetry}
+            >
               {RETRY_LABEL}
             </GhostButton>
             <p className="m-0 text-xs text-muted">{RETRY_HINT}</p>
@@ -35,14 +52,23 @@ export function Notice({ machine }: { machine: TicketMachine }) {
   const notice = state.notice;
   if (notice === null) return null;
   if (notice.kind === 'accepted') {
-    return <p className="trade-accepted m-0 text-sm font-semibold text-mint" role="status">{ACCEPTED[notice.of]}</p>;
+    return (
+      <p className="trade-accepted m-0 text-sm font-semibold text-mint" role="status">
+        {ACCEPTED[notice.of]}
+      </p>
+    );
   }
   if (notice.kind === 'lost') {
-    return <p className="m-0 text-sm text-coral" role="status">{LOST_WORDS}</p>;
+    return (
+      <p className="m-0 text-sm text-coral" role="status">
+        {LOST_WORDS}
+      </p>
+    );
   }
   return (
     <p className={cx('m-0 text-sm text-coral')} role="status">
-      <span className="font-semibold">{REJECTED_LEAD}</span> {notice.reason === null ? REJECTED_NO_REASON : REJECT_WORDS[notice.reason]}
+      <span className="font-semibold">{REJECTED_LEAD}</span>{' '}
+      {notice.reason === null ? REJECTED_NO_REASON : REJECT_WORDS[notice.reason]}
     </p>
   );
 }

@@ -19,7 +19,10 @@ function TrustDots({ level }: { level: 1 | 2 | 3 }) {
     <span className="flex items-center gap-2">
       <span className="flex gap-1" aria-hidden="true">
         {[1, 2, 3].map((n) => (
-          <span key={n} className={cx('size-2.5 rounded-full', n <= level ? 'bg-sun' : 'bg-line')} />
+          <span
+            key={n}
+            className={cx('size-2.5 rounded-full', n <= level ? 'bg-sun' : 'bg-line')}
+          />
         ))}
       </span>
       <span className="text-[13px] font-semibold">
@@ -80,20 +83,39 @@ export function NewsCard({
         <CompanyTile companyId={companyId} />
         <span className="flex min-w-0 grow flex-col gap-0.5">
           <span className="text-[15px] font-bold leading-tight">{name}</span>
-          <span className={cx('text-[12px] leading-tight', mine ? 'text-sun' : 'text-muted')}>{mine ? 'Your ticket is here' : product === '' ? '' : `makes ${product}`}</span>
+          <span className={cx('text-[12px] leading-tight', mine ? 'text-sun' : 'text-muted')}>
+            {mine ? 'Your ticket is here' : product === '' ? '' : `makes ${product}`}
+          </span>
         </span>
       </span>
       <PriceAndChange companyId={companyId} picking={picking} />
-      {news === null ? <span className="text-[13px] leading-snug text-muted">No news today. Still tradable.</span> : <>
-        <span className="block text-[13.5px] leading-snug font-semibold">{news.title}</span>
-        {news.wasTrue !== undefined && <span className="text-xs font-semibold text-sun">{news.wasTrue ? 'The claimed direction happened.' : 'The event reversed the claim.'}</span>}
-        <span className={cx('block text-[13px] leading-snug text-muted', selected ? '' : 'tall:block hidden')}>{news.body}</span>
-      </>}
+      {news === null ? (
+        <span className="text-[13px] leading-snug text-muted">No news today. Still tradable.</span>
+      ) : (
+        <>
+          <span className="block text-[13.5px] leading-snug font-semibold">{news.title}</span>
+          {news.wasTrue !== undefined && (
+            <span className="text-xs font-semibold text-sun">
+              {news.wasTrue ? 'The claimed direction happened.' : 'The event reversed the claim.'}
+            </span>
+          )}
+          <span
+            className={cx(
+              'block text-[13px] leading-snug text-muted',
+              selected ? '' : 'tall:block hidden',
+            )}
+          >
+            {news.body}
+          </span>
+        </>
+      )}
       <span className="mt-auto flex items-end gap-3 pt-1">
-        {news !== null && <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <TrustDots level={news.trust} />
-          <span className="text-[12px] text-muted">{news.source}</span>
-        </span>}
+        {news !== null && (
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <TrustDots level={news.trust} />
+            <span className="text-[12px] text-muted">{news.source}</span>
+          </span>
+        )}
         <CompanyTrend companyId={companyId} picking={picking} />
       </span>
     </ChoiceButton>

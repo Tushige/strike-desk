@@ -1,4 +1,12 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import type { FocusEvent, PointerEvent, ReactElement } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import type {
@@ -72,7 +80,11 @@ const NO_GRID_MESSAGES: OverlayType[] = ['loading', 'noRows'];
  * row and tells assistive technology about it; it never changes the selection
  * by itself, so a click or a key press is only ever a request to the caller.
  */
-const ROW_SELECTION: RowSelectionOptions = { mode: 'singleRow', checkboxes: false, enableClickSelection: false };
+const ROW_SELECTION: RowSelectionOptions = {
+  mode: 'singleRow',
+  checkboxes: false,
+  enableClickSelection: false,
+};
 
 /** A highlighted row: a gold left edge on a faint ground. Both are utilities on the page's colour names. */
 const HIGHLIGHTED_ROW = 'bg-accent/40 shadow-[inset_3px_0_0_0_var(--gold)]';
@@ -141,8 +153,21 @@ interface InnerProps {
   readonly drawEveryRow?: boolean;
 }
 
-export function LiveGridInner<Row extends GridRow>(props: LiveGridProps<Row> & InnerProps): ReactElement {
-  const { source, columns, defaultColDef, label, selectedId, onSelect, filter, isDimmed, isHighlighted, stale } = props;
+export function LiveGridInner<Row extends GridRow>(
+  props: LiveGridProps<Row> & InnerProps,
+): ReactElement {
+  const {
+    source,
+    columns,
+    defaultColDef,
+    label,
+    selectedId,
+    onSelect,
+    filter,
+    isDimmed,
+    isHighlighted,
+    stale,
+  } = props;
   const { onReadout, staleNoticeId, drawEveryRow = false } = props;
 
   const rows = useSyncExternalStore(source.subscribe, source.rows, source.rows);
@@ -310,12 +335,15 @@ export function LiveGridInner<Row extends GridRow>(props: LiveGridProps<Row> & I
     if (event.data !== undefined) latest.current.onSelect(event.data.id);
   }, []);
 
-  const onCellKeyDown = useCallback((event: CellKeyDownEvent<Row> | FullWidthCellKeyDownEvent<Row>) => {
-    if (event.data === undefined || !isSelectKey(event.event)) return;
-    // Space would otherwise scroll the page.
-    event.event.preventDefault();
-    latest.current.onSelect(event.data.id);
-  }, []);
+  const onCellKeyDown = useCallback(
+    (event: CellKeyDownEvent<Row> | FullWidthCellKeyDownEvent<Row>) => {
+      if (event.data === undefined || !isSelectKey(event.event)) return;
+      // Space would otherwise scroll the page.
+      event.event.preventDefault();
+      latest.current.onSelect(event.data.id);
+    },
+    [],
+  );
 
   // If anything but the caller changes the grid's selection, the caller's word is put back.
   const onSelectionChanged = useCallback((event: { api: GridApi<Row> }) => {
@@ -352,7 +380,8 @@ export function LiveGridInner<Row extends GridRow>(props: LiveGridProps<Row> & I
   // same pair, no work.
   const isExternalFilterPresent = useCallback((): boolean => filter !== null, [filter]);
   const doesExternalFilterPass = useCallback(
-    (node: IRowNode<Row>): boolean => filter === null || node.data === undefined || filter(node.data),
+    (node: IRowNode<Row>): boolean =>
+      filter === null || node.data === undefined || filter(node.data),
     [filter],
   );
 
@@ -443,7 +472,8 @@ export function LiveGridInner<Row extends GridRow>(props: LiveGridProps<Row> & I
   }, [connect]);
 
   useEffect(() => {
-    if (api.current !== null && !api.current.isDestroyed()) api.current.setGridAriaProperty('label', label);
+    if (api.current !== null && !api.current.isDestroyed())
+      api.current.setGridAriaProperty('label', label);
   }, [label]);
 
   // Once after every new row set, which is rare. The worst apply time belonged to the set before.
@@ -496,8 +526,14 @@ export function LiveGridInner<Row extends GridRow>(props: LiveGridProps<Row> & I
       </div>
       {/* Always here, so that a screen reader hears a notice arrive; empty, it takes no room and catches no pointer. */}
       <div role="status" className="pointer-events-none absolute bottom-2 left-2 z-10 flex gap-1.5">
-        {stale && staleNoticeId === undefined ? <span className={`${NOTICE} text-foreground`}>These prices are old</span> : null}
-        {holding ? <span className={`${NOTICE} text-muted-foreground`}>{filter === null ? 'Sorting paused' : 'Sorting and filters paused'}</span> : null}
+        {stale && staleNoticeId === undefined ? (
+          <span className={`${NOTICE} text-foreground`}>These prices are old</span>
+        ) : null}
+        {holding ? (
+          <span className={`${NOTICE} text-muted-foreground`}>
+            {filter === null ? 'Sorting paused' : 'Sorting and filters paused'}
+          </span>
+        ) : null}
       </div>
     </div>
   );
@@ -508,4 +544,6 @@ export function LiveGridInner<Row extends GridRow>(props: LiveGridProps<Row> & I
  * table. `memo` forgets the row type, and the cast gives it back, with the
  * public props and nothing more.
  */
-export const LiveGrid = memo(LiveGridInner) as <Row extends GridRow>(props: LiveGridProps<Row>) => ReactElement;
+export const LiveGrid = memo(LiveGridInner) as <Row extends GridRow>(
+  props: LiveGridProps<Row>,
+) => ReactElement;

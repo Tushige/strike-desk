@@ -6,7 +6,7 @@ import { msAtStep, PLAYER, sessionAt } from './contracts/sessionAt';
 import { startHarness } from './harness';
 
 const totals: PublicStats = { completedGames: '1', pretendProfitsEarnedCents: '0', netProfitCents: '0',
-  bestFinalBalanceCents: '100000000', purchases: '0' };
+  bestFinalBalanceCents: '100000000', bestNetProfitCents: '0', purchases: '0' };
 const finished = () => frameFor(sessionAt('open').session, PLAYER, msAtStep(4500), { history: false }).session;
 const repository = (): ResultsRepository => ({ save: vi.fn(() => Promise.resolve()), stats: vi.fn(() => Promise.resolve(totals)) });
 

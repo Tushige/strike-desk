@@ -25,12 +25,14 @@ export function Odometer({
     }));
     const context = gsap.context(() => {
       for (const { strip, digit, height } of tracks) {
-        if (presented.current) gsap.set(strip, { y: -digit * height });
+        // A 5 starts halfway down the ten-row strip. Without an explicit zero,
+        // GSAP can infer yPercent=-50 and add a second, unwanted half-strip shift.
+        if (presented.current) gsap.set(strip, { y: -digit * height, yPercent: 0 });
         else
           timeline.fromTo(
             strip,
-            { y: 0 },
-            { y: -digit * height, duration: 1.5, ease: 'power2.out' },
+            { y: 0, yPercent: 0 },
+            { y: -digit * height, yPercent: 0, duration: 1.5, ease: 'power2.out' },
             0,
           );
       }
@@ -69,12 +71,12 @@ export function Odometer({
             context.add(() => {
               tracks.forEach((track) => {
                 track.height = track.strip.firstElementChild!.getBoundingClientRect().height;
-                if (presented.current) gsap.set(track.strip, { y: -track.digit * track.height });
+                if (presented.current) gsap.set(track.strip, { y: -track.digit * track.height, yPercent: 0 });
                 else
                   timeline.fromTo(
                     track.strip,
-                    { y: 0 },
-                    { y: -track.digit * track.height, duration: 1.5, ease: 'power2.out' },
+                    { y: 0, yPercent: 0 },
+                    { y: -track.digit * track.height, yPercent: 0, duration: 1.5, ease: 'power2.out' },
                     0,
                   );
               });

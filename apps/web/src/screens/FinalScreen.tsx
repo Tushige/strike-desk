@@ -9,6 +9,7 @@ import type { SummaryStyle } from './summary/DayResults';
 import { BalanceJourney } from './summary/BalanceJourney';
 import { RoboPup } from './mascot/RoboPup';
 import { LessonConveyor } from './summary/LessonConveyor';
+import { Odometer } from './motion/Odometer';
 import './summary/summary.css';
 
 export function FinalScreen() {
@@ -33,7 +34,9 @@ export function SummaryComposition({ frame, layout }: { frame: Frame; layout: Su
   const balance = (
     <div className="summary-balance">
       <span className="summary-caption">{finalWords.finishedWith}</span>
-      <div className="summary-total">{money(finalCents)}</div>
+      <div className="summary-total">
+        <Odometer value={money(finalCents)} delay={layout === 'journey' ? 0.2 : 0} />
+      </div>
       {change !== undefined && (
         <p className={tone(change)}>
           {change === 0 ? '$0' : signedMoney(change)}{' '}

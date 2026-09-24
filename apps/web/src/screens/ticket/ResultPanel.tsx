@@ -1,6 +1,6 @@
 import type { Frame } from '@strike-desk/shared/protocol';
 import { NextDayButton } from '../desk/PhaseActions';
-import { signedMoney } from '../format';
+import { ResultCount } from '../motion/ResultCount';
 import { ActionDock, cx, Label } from '../ui';
 import { RoboPup } from '../mascot/RoboPup';
 import { DayReview } from './DayReview';
@@ -23,7 +23,7 @@ export function ResultPanel({ frame }: { frame: Frame }) {
               change > 0 ? 'text-mint' : change < 0 ? 'text-coral' : 'text-cloud',
             )}
           >
-            {result === undefined ? '…' : signedMoney(change)}
+            {result === undefined ? '…' : <ResultCount key={frame.clock.day} cents={change} />}
           </div>
         </div>
         <DayReview key={frame.clock.day} frame={frame} day={frame.clock.day} />

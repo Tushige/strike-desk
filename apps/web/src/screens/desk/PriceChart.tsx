@@ -1,10 +1,11 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useId, useLayoutEffect, useRef, useState } from 'react';
 import type { Frame, PositionView, Side } from '@strike-desk/shared/protocol';
 import { OPEN_STEPS } from '@strike-desk/shared/time';
 import { useSeries } from '../../store/hooks';
 import { price } from '../format';
 import { cx } from '../ui';
 import { ChartSkeleton } from '../LoadingSkeleton';
+import { usePriceChartMotion } from './usePriceChartMotion';
 
 /**
  * The price chart: yesterday's tail, the opening bell, today's line so far,
@@ -63,6 +64,7 @@ export function PriceChart({
   compact?: boolean;
 }) {
   const box = useRef<HTMLDivElement>(null);
+  const clipId = useId();
   const { w, h } = useSize(box);
   const series = useSeries(companyId);
   const [inspect, setInspect] = useState<number | null>(null);
@@ -143,6 +145,21 @@ export function PriceChart({
   );
   const revealX = reveal?.revealIndex === undefined ? null : x(reveal.revealIndex);
 
+  usePriceChartMotion(
+    box,
+    {
+      identity: `${frame.session}:${frame.clock.day}:${companyId}`,
+      geometry: `${w}:${h}:${lo}:${hi}:${padTop}:${plotBottom}:${plotRight}`,
+      points: [...points, ...(today.length === 0 ? [[0, opening] as [number, number]] : [])].map(
+        ([k, cents]) => ({ x: x(k), y: y(cents) }),
+      ),
+      reveal: reveal?.revealIndex === undefined ? null : lead.length + reveal.revealIndex,
+      live: frame.clock.phase === 'open',
+    },
+    target === null ? null : `${ticket?.id ?? 'draft'}:${target.side}:${target.targetCents}`,
+    w > 0 && h > 0,
+  );
+
   const inspected =
     inspect === null ? null : (points[Math.min(inspect, points.length - 1)] ?? null);
   // The compact rail shows only prices received from the server.
@@ -218,6 +235,11 @@ export function PriceChart({
             role="img"
             aria-label={`Price chart, now ${price(now)}`}
           >
+            <defs>
+              <clipPath id={clipId}>
+                <rect data-price-clip x="0" y="-8" width={w + 8} height={h + 16} />
+              </clipPath>
+            </defs>
             {grid.map((cents) => (
               <line
                 key={cents}
@@ -230,7 +252,7 @@ export function PriceChart({
               />
             ))}
             {target !== null && (
-              <>
+              <g data-price-reference>
                 <rect
                   x={openX}
                   width={Math.max(0, plotRight - openX)}
@@ -256,10 +278,11 @@ export function PriceChart({
                   strokeWidth="1.5"
                   strokeDasharray="3 5"
                 />
-              </>
+              </g>
             )}
             {revealX !== null && (
               <line
+                data-price-event
                 x1={revealX}
                 x2={revealX}
                 y1={padTop - 16}
@@ -280,6 +303,7 @@ export function PriceChart({
             />
             {lead.length > 0 && (
               <polyline
+                clipPath={`url(#${clipId})`}
                 points={path(-lead.length, 0)}
                 className="fill-none stroke-haze"
                 strokeWidth="2.5"
@@ -289,6 +313,7 @@ export function PriceChart({
             )}
             {today.length > 1 && (
               <polyline
+                clipPath={`url(#${clipId})`}
                 points={path(0, OPEN_STEPS)}
                 className={cx('fill-none', lineTone)}
                 strokeWidth="3.5"
@@ -317,6 +342,7 @@ export function PriceChart({
               />
             )}
             <circle
+              data-price-dot
               cx={dotX}
               cy={dotY}
               r="7"
@@ -363,6 +389,7 @@ export function PriceChart({
             <>
               {/* Both labels sit on the half of the day away from the price bubble that rides the newest point. */}
               <span
+                data-price-reference
                 className={cx(
                   'absolute rounded-[10px] px-2.5 py-1 text-[13px] font-bold text-ink',
                   target.side === 'up' ? 'bg-mint' : 'bg-coral',
@@ -372,6 +399,7 @@ export function PriceChart({
                 Target {price(target.targetCents)}
               </span>
               <span
+                data-price-reference
                 className={cx(
                   'absolute text-[12px] font-semibold',
                   target.side === 'up' ? 'text-mint/80' : 'text-coral/80',
@@ -387,6 +415,7 @@ export function PriceChart({
           )}
 
           <span
+            data-price-bubble
             className="absolute w-[88px] rounded-lg bg-cloud px-2 py-1 text-center text-[13px] font-bold whitespace-nowrap text-ink tabular-nums"
             style={{
               left: Math.max(8, dotX > plotRight - 102 ? dotX - 102 : dotX + 14),
@@ -399,6 +428,7 @@ export function PriceChart({
             levels.map((level) => (
               <span
                 key={level.label}
+                data-price-reference
                 className={cx(
                   'chart-level-label absolute right-2 flex justify-between gap-2 rounded px-1 py-0.5 text-xs whitespace-nowrap',
                   level.tone,
@@ -410,7 +440,10 @@ export function PriceChart({
               </span>
             ))}
           {narrow && target !== null && (
-            <div className="chart-level-legend absolute inset-x-3 top-3 grid grid-cols-2 gap-3 text-xs">
+            <div
+              data-price-reference
+              className="chart-level-legend absolute inset-x-3 top-3 grid grid-cols-2 gap-3 text-xs"
+            >
               {levels.map((level) => (
                 <div key={level.label} className={cx('flex flex-col gap-1', level.tone)}>
                   <span>{level.label}</span>

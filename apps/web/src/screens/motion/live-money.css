@@ -1,0 +1,46 @@
+.live-money {
+  display: inline-block;
+  height: 1.16em;
+  line-height: 1.16;
+  vertical-align: bottom;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.live-money-drum,
+.live-money-place {
+  display: inline-flex;
+  align-items: flex-start;
+  height: 1.16em;
+}
+.live-money-window {
+  display: inline-block;
+  position: relative;
+  width: 1ch;
+  height: 1.16em;
+  overflow: clip;
+}
+.live-money-strip {
+  position: absolute;
+  display: block;
+  inset: 0 0 auto;
+}
+.live-money-strip > span {
+  display: block;
+  height: 1.16em;
+  line-height: 1.16em;
+  text-align: center;
+}
+.result-count {
+  display: inline-block;
+  position: relative;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.result-count-width {
+  visibility: hidden;
+}
+.result-count-value {
+  position: absolute;
+  inset: 0;
+  text-align: right;
+}

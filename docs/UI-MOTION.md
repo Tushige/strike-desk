@@ -1,10 +1,17 @@
 # Approved motion
 
+## Live numbers
+
+The portfolio uses 280ms `power2.out` digit rolls; cash uses a 550ms roll after its value changes. Initial snapshots are displayed immediately. Changed digits redirect from their current position without queuing, while unchanged digits retain their current animation. Reels use font-relative transforms, stable decimal-place keys, and fixed digit widths. Currency signs and grouping marks do not animate. The existing fixed header grid keeps the timer and adjacent controls in place; cash remains visible after positions close.
+
+Presentation never drives trading calculations: accessible labels and game logic retain the latest server value. Stale/offline connections and hidden tabs settle the reels immediately. The closing-bell daily result counts once on visibility over 850ms with `power3.out`. The final balance uses the accepted 1.5-second odometer with a 200ms delay, finishing alongside the chart draw. Reviewing days does not replay it. Contract tables, quantity inputs, countdowns, and historical review figures remain steady.
+
 The approved studies remain at `/scratch/stats-motion.html` and `/scratch/page-motion.html`. Live components retain their existing layout, data, and controls.
 
 - Community statistics: GSAP digit-strip odometer, 1.5 seconds with `power2.out`. Currency signs, separators, units, labels, and ticket stay fixed. Profit starts first, then games at 200ms and best run at 400ms. No rebound or replacement of the strips after settling. Formatting still uses BigInt; initial values animate on visibility and refreshed totals settle directly.
 - Landing companies: 28px travel, .94 starting scale, slight authored rotation, a reproducible shuffled stagger, and `back.out(1.4)`. Use the gentler approved preview; the stronger “Reference energy” treatment remains scratch-only.
 - Desk panels: sidebar, market, then ticket, using 20px travel, .98 scale, and `power3.out`. Each panel enters once on visibility, including panels initially hidden by mobile navigation. Price ticks, company selection, and ticket edits do not replay the entrance. Existing loading skeletons stay in place; no artificial loading delay is introduced.
 - Balance Journey: 1.5-second DrawSVG trace with one shared `power2.out` progression. Dots enter as the line reaches them. Paths use rendered-pixel coordinates to avoid nonuniform SVG scaling errors; missing records remain disconnected. Day selection does not replay the trace. Resizing finishes the entrance and recomputes geometry without a second animation.
+- Live price charts: received history draws over 500ms with `power2.out`. Subsequent ticks extend the clipping edge and endpoint over 160ms along received segments, leaving prior history intact. Interrupted ticks continue from the visible point. New news markers receive one 650ms stroke emphasis when the trace reaches their event; historical markers stay quiet. Ticket guides fade in over 280ms on selection, without replaying for quote changes. Company/day changes start fresh; resizing, rescaling, closing the market, and hiding the tab settle directly. Chart inspection and price labels always use server values. The current-price bubble appears after the initial history draw.
 
 The project keeps the user's explicit preference to animate independently of the operating system's reduced-motion setting. Animation teardown disconnects observers and releases GSAP effects on unmount. Sketch iteration needs only a quick sanity check; integration uses targeted code checks rather than extended browser sessions.

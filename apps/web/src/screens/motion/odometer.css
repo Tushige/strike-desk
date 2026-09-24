@@ -3,6 +3,7 @@
   height: 1.16em;
   line-height: 1.16;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
   vertical-align: bottom;
 }
 .odometer-drum {
@@ -13,14 +14,15 @@
 .odometer-window {
   display: inline-block;
   position: relative;
-  width: 0.64em;
+  /* The ten real glyphs determine the width, including variable-font features. */
+  width: max-content;
+  letter-spacing: normal;
   height: 1.16em;
   overflow: clip;
 }
 .odometer-strip {
   display: block;
-  position: absolute;
-  inset: 0 0 auto;
+  position: relative;
 }
 .odometer-strip > span {
   display: block;

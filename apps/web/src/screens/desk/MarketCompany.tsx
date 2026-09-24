@@ -30,6 +30,7 @@ export function MarketCompany({
     <ChoiceButton
       selected={selected}
       disabled={disabled}
+      dimWhenDisabled={false}
       onClick={onSelect}
       className="market-company"
       aria-label={`${name}, ${now === null ? 'waiting for price' : price(now)}${mine ? ', your ticket' : ''}`}

@@ -1,8 +1,9 @@
 import { useId } from 'react';
 import type { LandingStats } from './publicStats';
 import { statNumber } from './publicStats';
-import { Odometer } from '../motion/Odometer';
-import { cx } from '../ui';
+import { Odometer } from '../../motion/Odometer';
+import { cx } from '../../ui';
+import { useStatsEntrance } from './useStatsEntrance';
 
 export type StatsStyle = 'ribbon' | 'ticket' | 'ledger';
 export type StatsState = { status: 'ready'; data: LandingStats } | { status: 'loading' | 'error' };
@@ -71,12 +72,14 @@ function Metric({
   kind,
   status,
   variant,
+  play,
 }: {
   label: string;
   value: string | null;
   kind: MetricKind;
   status: StatsState['status'];
   variant: StatsStyle;
+  play: boolean;
 }) {
   const formatted = value === null ? null : statNumber(value, kind !== 'games');
   const negative = value !== null && BigInt(value) < 0n;
@@ -111,11 +114,7 @@ function Metric({
               {status === 'error' ? (
                 'Unavailable'
               ) : formatted ? (
-                <Odometer
-                  value={formatted.compact}
-                  label={formatted.exact}
-                  delay={kind === 'profit' ? 0 : kind === 'games' ? 0.2 : 0.4}
-                />
+                <Odometer value={formatted.compact} label={formatted.exact} play={play} />
               ) : (
                 'Not yet'
               )}
@@ -137,6 +136,7 @@ export function CommunityStats({
   onRetry: () => void;
 }) {
   const id = useId();
+  const { metrics, play } = useStatsEntrance(state.status === 'ready');
   const data = state.status === 'ready' ? state.data : null;
   const styles = STYLES[variant];
   const statusText =
@@ -168,10 +168,11 @@ export function CommunityStats({
             Your decisions add up.
           </p>
         </div>
-        <dl className={cx('community-metrics', styles.metrics)}>
+        <dl ref={metrics} className={cx('community-metrics', styles.metrics)}>
           <Metric
             variant={variant}
             kind="games"
+            play={play}
             label="Games completed"
             value={data?.completedGames ?? null}
             status={state.status}
@@ -179,6 +180,7 @@ export function CommunityStats({
           <Metric
             variant={variant}
             kind="profit"
+            play={play}
             label="Pretend profits earned"
             value={data?.pretendProfitsEarnedCents ?? null}
             status={state.status}
@@ -186,6 +188,7 @@ export function CommunityStats({
           <Metric
             variant={variant}
             kind="best"
+            play={play}
             label="Best completed run"
             value={data?.bestNetProfitCents ?? null}
             status={state.status}

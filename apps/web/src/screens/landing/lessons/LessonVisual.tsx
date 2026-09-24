@@ -1,9 +1,12 @@
-import { ArrowUp, CompanyTile, LogoMark } from '../ui';
+import { ArrowUp, CompanyTile, LogoMark } from '../../ui';
+import { useLessonEntrance } from './useLessonEntrance';
 
 export function LessonVisual({ step }: { step: number }) {
+  const root = useLessonEntrance(step);
   return (
     <div
-      className="contrast-example flex min-h-112 flex-col self-stretch bg-landing-accent p-6 text-landing-bg animate-example-arrive md:min-h-120 md:p-6.5 wide:px-9 wide:py-7.5"
+      ref={root}
+      className="contrast-example flex min-h-112 flex-col self-stretch bg-landing-accent p-6 text-landing-bg md:min-h-120 md:p-6.5 wide:px-9 wide:py-7.5"
       key={step}
     >
       <div className="contrast-example-top mb-12 flex items-center justify-between gap-3 text-2xs [&_.brand-mark]:size-7.5 [&_.brand-mark]:rounded [&_.brand-mark]:bg-landing-bg [&_.brand-mark]:p-0.75">

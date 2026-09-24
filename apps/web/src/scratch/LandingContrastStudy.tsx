@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { LessonVisual } from '../screens/landing/LessonVisual';
-import { ArcadeMascot } from '../screens/landing/ArcadeMascot';
+import { LessonVisual } from '../screens/landing/lessons/LessonVisual';
+import { ArcadeMascot } from '../screens/landing/hero/ArcadeMascot';
 import { ArrowUp, CompanyTile, LogoMark } from '../screens/ui';
 import { startWords } from '../screens/words';
 import '../styles.css';
@@ -62,7 +62,7 @@ function Landing({ palette }: { palette: Palette }) {
     </div>
     <div className="contrast-lower">
       <section className="contrast-companies contrast-width" id="companies" aria-labelledby="companies-title">
-        <h2 id="companies-title">Made-up companies. <span>Real decisions.</span></h2>
+        <h2 id="companies-title">Fictional companies. <span>Real decisions.</span></h2>
         <ul>{COMPANIES.map(([name, product], index) => <li key={name}><CompanyTile companyId={index} size="md" /><div><h3>{name}</h3><p>{product}</p></div></li>)}</ul>
       </section>
       <section className="contrast-how contrast-width" id="how-to-play" aria-labelledby="how-title">

@@ -7,10 +7,13 @@ export function Odometer({
   value,
   label = value,
   delay = 0,
+  play,
 }: {
   value: string;
   label?: string;
   delay?: number;
+  /** A section may start several numbers together; omitted means observe this number. */
+  play?: boolean;
 }) {
   const root = useRef<HTMLSpanElement>(null);
   const presented = useRef(false);
@@ -42,10 +45,13 @@ export function Odometer({
       timeline.play();
     };
     const observer =
-      !presented.current && typeof IntersectionObserver !== 'undefined'
+      play === undefined && !presented.current && typeof IntersectionObserver !== 'undefined'
         ? new IntersectionObserver(
             (entries) => {
-              if (entries.some((entry) => entry.isIntersecting)) {
+              const visible = entries.some(
+                (entry) => entry.isIntersecting && entry.intersectionRatio >= 0.15,
+              );
+              if (visible) {
                 reveal();
                 observer?.disconnect();
               }
@@ -53,8 +59,8 @@ export function Odometer({
             { threshold: 0.15 },
           )
         : null;
-    if (observer) observer.observe(node.closest('.community-body') ?? node);
-    else reveal();
+    if (observer) observer.observe(node);
+    else if (play !== false) reveal();
     const resize =
       typeof ResizeObserver === 'undefined'
         ? null
@@ -66,17 +72,24 @@ export function Odometer({
               )
             )
               return;
-            if (presented.current) timeline.progress(1).pause();
-            else timeline.clear();
+            if (presented.current) {
+              timeline.progress(1).pause();
+            } else timeline.clear();
             context.add(() => {
               tracks.forEach((track) => {
                 track.height = track.strip.firstElementChild!.getBoundingClientRect().height;
-                if (presented.current) gsap.set(track.strip, { y: -track.digit * track.height, yPercent: 0 });
+                if (presented.current)
+                  gsap.set(track.strip, { y: -track.digit * track.height, yPercent: 0 });
                 else
                   timeline.fromTo(
                     track.strip,
                     { y: 0, yPercent: 0 },
-                    { y: -track.digit * track.height, yPercent: 0, duration: 1.5, ease: 'power2.out' },
+                    {
+                      y: -track.digit * track.height,
+                      yPercent: 0,
+                      duration: 1.5,
+                      ease: 'power2.out',
+                    },
                     0,
                   );
               });
@@ -89,7 +102,7 @@ export function Odometer({
       timeline.kill();
       context.revert();
     };
-  }, [value, delay]);
+  }, [value, delay, play]);
   return (
     <span ref={root} className="odometer" role="img" aria-label={label} title={label}>
       <span aria-hidden="true" className="odometer-drum">

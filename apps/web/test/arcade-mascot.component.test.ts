@@ -10,7 +10,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it('waits for artwork, pauses while hidden or offscreen, preserves manual pause, and cleans up', () => {
+it('waits for artwork, pauses while hidden or offscreen, resumes when visible, and cleans up', () => {
   let visibility: ((entries: { isIntersecting: boolean }[]) => void) | undefined;
   const disconnect = vi.fn();
   vi.stubGlobal(
@@ -41,12 +41,9 @@ it('waits for artwork, pauses while hidden or offscreen, preserves manual pause,
   hidden.mockReturnValue(true);
   fireEvent(document, new Event('visibilitychange'));
   expect(root.getAttribute('data-running')).toBe('false');
-  // fireEvent.click(screen.getByRole('button', { name: 'Pause mascot' }));
-  // hidden.mockReturnValue(false);
-  // fireEvent(document, new Event('visibilitychange'));
-  // expect(root.getAttribute('data-running')).toBe('false');
-  // fireEvent.click(screen.getByRole('button', { name: 'Resume mascot' }));
-  // expect(root.getAttribute('data-running')).toBe('true');
+  hidden.mockReturnValue(false);
+  fireEvent(document, new Event('visibilitychange'));
+  expect(root.getAttribute('data-running')).toBe('true');
   view.unmount();
   expect(disconnect).toHaveBeenCalled();
   expect(remove).toHaveBeenCalledWith('visibilitychange', expect.any(Function));

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { CAST } from '../../src/cast';
 import { CONTENT_VERSION, ENGINE_VERSION, buildMarket } from '../../src/market';
 import type { HeadlineSlot, HeadlineWords, WriteHeadlines } from '../../src/news';
@@ -91,7 +91,7 @@ interface WrittenGame {
 export function describeHeadlineWriterContract(name: string, write: WriteHeadlines, options: { games?: number } = {}): void {
   const gameCount = options.games ?? 1000;
 
-  // Every game is written once, the first time a case asks, and shared by the cases.
+  // Every game is written once during suite setup and shared by the cases.
   let memo: WrittenGame[] | null = null;
   function games(): WrittenGame[] {
     if (memo !== null) return memo;
@@ -113,6 +113,11 @@ export function describeHeadlineWriterContract(name: string, write: WriteHeadlin
   }
 
   describe(`the headline writer contract: ${name}`, () => {
+    // Building 1,000 complete five-day markets is fixture preparation, not
+    // part of the "never throws" assertion. Give only this setup a bounded
+    // budget for busy CI runners; keep every seed and the normal test timeout.
+    beforeAll(() => { games(); }, 30_000);
+
     it('never throws, in any of the games', () => {
       const threw = games().flatMap((game) => ('threw' in game.result ? [`game ${game.seed}: ${String(game.result.threw)}`] : []));
 

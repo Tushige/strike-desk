@@ -31,14 +31,13 @@ export function ArcadeMascot() {
   const root = useRef<HTMLDivElement>(null);
   const clip = useId();
   const [ready, setReady] = useState(false);
-  const [paused, setPaused] = useState(false);
 
   useEffect(() => {
     const node = root.current;
     if (!node) return;
     let visible = true;
     const sync = () => {
-      node.dataset.running = String(ready && !paused && visible && !document.hidden);
+      node.dataset.running = String(ready && visible && !document.hidden);
     };
     const observer =
       typeof IntersectionObserver === 'undefined'
@@ -57,7 +56,7 @@ export function ArcadeMascot() {
       observer?.disconnect();
       document.removeEventListener('visibilitychange', sync);
     };
-  }, [ready, paused]);
+  }, [ready]);
 
   return (
     <div ref={root} className="v2-hero-art arcade-mascot" data-running="false">
@@ -83,16 +82,6 @@ export function ArcadeMascot() {
           <Eye right />
         </g>
       </svg>
-      {/* <button
-        type="button"
-        className="arcade-mascot-pause"
-        aria-pressed={paused}
-        onClick={() => {
-          setPaused((value) => !value);
-        }}
-      >
-        {paused ? 'Resume mascot' : 'Pause mascot'}
-      </button> */}
     </div>
   );
 }

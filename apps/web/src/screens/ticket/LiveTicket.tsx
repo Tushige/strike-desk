@@ -2,7 +2,7 @@ import type { Frame, PositionView } from '@strike-desk/shared/protocol';
 import { CASH_OUT_BLOCKER_WORDS, cashOutBlocker } from '../../modules/order-ticket/index';
 import { OpeningBellButton, SkipToBellButton } from '../desk/PhaseActions';
 import { count, money, price, signedMoney } from '../format';
-import { ActionDock, cx, Label, GhostButton, PrimaryButton } from '../ui';
+import { ActionDock, cx, Label, PrimaryButton } from '../ui';
 import { Notice } from './Notice';
 import { RoboPup } from '../mascot/RoboPup';
 import type { TicketMachine } from './useTicketMachine';

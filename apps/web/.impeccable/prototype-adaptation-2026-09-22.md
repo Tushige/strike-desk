@@ -1,6 +1,6 @@
 # Prototype-informed desk adaptation
 
-The user supplied `option-arcade.zip` and its hosted URL, preferring its spacing, company access, and separate news presentation while retaining Strike Desk's backend and playful character. The user explicitly chose market-first mobile navigation with a separate News view.
+The user supplied `option-arcade.zip` and its hosted URL, preferring its spacing, company access, and separate news presentation while retaining Pupside's backend and playful character. The user explicitly chose market-first mobile navigation with a separate News view.
 
 ## Reference evidence
 
@@ -10,7 +10,7 @@ During implementation, the hosted prototype required an OpenAI login, so that pa
 
 ### Follow-up live inspection
 
-Selecting Fizzly visibly updated the company chart and draft context. The live mobile composition confirmed a three-column company selector followed by the chart, a separate newswire section, and the ticket. Its newswire remains inline below the chart; Strike Desk's separate News navigation follows the user's explicit preference.
+Selecting Fizzly visibly updated the company chart and draft context. The live mobile composition confirmed a three-column company selector followed by the chart, a separate newswire section, and the ticket. Its newswire remains inline below the chart; Pupside's separate News navigation follows the user's explicit preference.
 
 The reference has stronger chart-header hierarchy: company identity on the left, price and change on the right, and phase information on a separate row. Its mobile chart panel measured 349.25px tall, with a 92.25px header; company cards measured 102px tall with 11px padding and 9px radii. News metadata, headlines, body text, and actions have distinct levels.
 

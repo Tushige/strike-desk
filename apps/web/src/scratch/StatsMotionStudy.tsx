@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { gsap } from 'gsap';
 import { digitTravel, formatStudyNumber } from './numberMotion';
 import type { NumberSpec } from './numberMotion';
-import mark from '../assets/brand/ticket-s.svg';
+import mark from '../assets/brand/ticket-p.svg';
 import '../styles.css';
 import '../screens/landing/community-stats.css';
 import './landing-stats-study.css';
@@ -144,7 +144,7 @@ function Study() {
   const [slow, setSlow] = useState(false);
   const [mobile, setMobile] = useState(false);
   return <main className="stats-workbench number-motion-study" data-mobile={mobile}>
-    <header className="stats-study-heading"><a className="stats-study-brand" href="/scratch/stats.html"><img src={mark} alt="" /><span>Strike Desk</span></a>
+    <header className="stats-study-heading"><a className="stats-study-brand" href="/scratch/stats.html"><img src={mark} alt="" /><span>Pupside</span></a>
       <h1>Give the numbers<br /><span>some momentum.</span></h1>
       <p>Same ticket. Two ways to move through a value. Watch the digits, then replay the one that feels right.</p></header>
     <div className="stats-study-tools"><label>Example <select value={example} onChange={event => { setExample(Number(event.target.value)); }}>

@@ -1,10 +1,10 @@
-# Strike Desk
+# Pupside
 
 **Grow it. Or blow it.**
 
-Strike Desk is a single-player options game for your browser. Start with $1,000,000 of pretend money, follow six fictional companies, and decide what to buy and when to cash out over five trading days.
+Pupside is a single-player options game for your browser. Start with $1,000,000 of pretend money, follow six fictional companies, and decide what to buy and when to cash out over five trading days.
 
-[**Play Strike Desk →**](https://strike-desk.onrender.com/)
+[**Play Pupside →**](https://strike-desk.onrender.com/)
 
 No account required. All companies, prices, news, and money are fictional.
 

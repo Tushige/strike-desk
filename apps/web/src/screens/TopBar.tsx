@@ -43,7 +43,7 @@ export function TopBar({ onEnd }: { onEnd?: () => void }) {
     >
       <div className="topbar-brand flex min-w-0 items-center gap-3">
         <LogoMark />
-        <span className="topbar-brand-name brand-wordmark">Strike Desk</span>
+        <span className="topbar-brand-name brand-wordmark">Pupside</span>
         {line !== 'live' && (
           <span
             role="status"

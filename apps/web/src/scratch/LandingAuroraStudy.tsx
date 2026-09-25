@@ -114,7 +114,7 @@ function Landing({ take }: { take: Take }) {
     <Atmosphere />
     <a className="v2-skip" href="#v2-start">Skip to the game setup</a>
     <header className="v2-header">
-      <a className="v2-brand" href="/scratch/landing-aurora.html" aria-label="Strike Desk home"><LogoMark /><span className="brand-wordmark">Strike Desk</span></a>
+      <a className="v2-brand" href="/scratch/landing-aurora.html" aria-label="Pupside home"><LogoMark /><span className="brand-wordmark">Pupside</span></a>
       <nav aria-label="Landing navigation"><a href="#how-to-play">How to play</a><a href="#meet-the-market">The companies</a></nav>
     </header>
     <main>

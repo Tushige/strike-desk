@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { gsap } from 'gsap';
 import { DrawSVGPlugin } from 'gsap/DrawSVGPlugin';
 import { CompanyTile } from '../screens/ui';
-import mark from '../assets/brand/ticket-s.svg';
+import mark from '../assets/brand/ticket-p.svg';
 import '../styles.css';
 import './landing-stats-study.css';
 import './page-motion-study.css';
@@ -180,7 +180,7 @@ function Study() {
   function choose(next: Scene) { clearTimeout(loadTimer.current); setLoading(false); setScene(next); setRun(value => value + 1); }
   const labels: Record<Scene, string> = { journey: 'Balance journey', companies: 'Company cards', desk: 'Trading desk' };
   return <main className="stats-workbench page-motion-study" data-mobile={mobile}>
-    <header className="stats-study-heading"><a className="stats-study-brand" href="/scratch/stats-motion.html"><img src={mark} alt="" /><span>Strike Desk</span></a><h1>Let the story move.</h1><p>Trace the journey. Deal in the companies. Settle into the desk.</p></header>
+    <header className="stats-study-heading"><a className="stats-study-brand" href="/scratch/stats-motion.html"><img src={mark} alt="" /><span>Pupside</span></a><h1>Let the story move.</h1><p>Trace the journey. Deal in the companies. Settle into the desk.</p></header>
     <nav className="motion-scene-tabs" aria-label="Motion previews">{(Object.keys(labels) as Scene[]).map(key => <button type="button" key={key} aria-pressed={scene === key} onClick={() => { choose(key); }}>{labels[key]}</button>)}</nav>
     <div className="stats-study-tools"><button type="button" className="motion-replay" onClick={() => { replay(); }}>Replay animation</button><button type="button" aria-pressed={slow} onClick={() => { setSlow(!slow); }}>Half speed</button><button type="button" aria-pressed={mobile} onClick={() => { setMobile(!mobile); }}>Mobile width</button>
       {scene === 'companies' && <button type="button" aria-pressed={bold} onClick={() => { setBold(!bold); }}>Reference energy</button>}

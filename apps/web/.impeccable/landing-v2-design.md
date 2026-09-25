@@ -6,9 +6,9 @@ This records the initial alternative. The approved version is now the default; s
 
 The incumbent StartScreen has a large text hero, three equal rounded rule cards, a start button and pace selector, and explanatory footnotes. It uses the same game TopBar and build footer as the trading desk. There is no hero artwork. Existing dials are approximately variance 3, motion 2, density 5.
 
-Preserve the Strike Desk wordmark and mark, self-hosted Unbounded/Lexend type, midnight-purple palette, sunflower accent, original company marks, approachable copy, all game rules, and the server-authoritative start flow. Retire the equal-card feature row and pre-game balance/timer dashboard from this alternative only.
+Preserve the Pupside wordmark and mark, self-hosted Unbounded/Lexend type, midnight-purple palette, sunflower accent, original company marks, approachable copy, all game rules, and the server-authoritative start flow. Retire the equal-card feature row and pre-game balance/timer dashboard from this alternative only.
 
-The root index is titled Strike Desk and explicitly noindex. No additional SEO metadata, analytics events, consent UI, or marketing routes exist in the inspected landing source. Keep the original route and page intact.
+The root index is titled Pupside and explicitly noindex. No additional SEO metadata, analytics events, consent UI, or marketing routes exist in the inspected landing source. Keep the original route and page intact.
 
 ## Direction
 

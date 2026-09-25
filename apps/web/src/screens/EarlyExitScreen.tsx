@@ -30,7 +30,7 @@ export function EarlyExitScreen({ exit }: { exit: EarlyExit }) {
       <header className="flex min-h-[76px] flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3 sm:px-7">
         <div className="flex items-center gap-3">
           <LogoMark />
-          <span className="brand-wordmark">Strike Desk</span>
+          <span className="brand-wordmark">Pupside</span>
         </div>
         <span className="text-sm text-muted">Run ended early</span>
       </header>

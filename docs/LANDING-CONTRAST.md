@@ -1,6 +1,6 @@
 # Approved landing contrast
 
-Approved 2026-09-23: promote the Motion.dev-inspired contrast sketch to the live Strike Desk landing using **Lilac (`#b6a0ff`)**, retain the new lesson accordion and its example cards, and preserve the previous community statistics.
+Approved 2026-09-23: promote the Motion.dev-inspired contrast sketch to the live Pupside landing using **Lilac (`#b6a0ff`)**, retain the new lesson accordion and its example cards, and preserve the previous community statistics.
 
 ## Scope and layout
 

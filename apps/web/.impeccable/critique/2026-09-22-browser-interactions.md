@@ -1,4 +1,4 @@
-# Strike Desk: live interaction review
+# Pupside: live interaction review
 
 Follow-up to the source critique, 22 September 2026. The user prioritizes micro-interactions, animation, enjoyable controls, minimal layout movement, typography, and tasteful spacing. This review supersedes the earlier browser-unavailable limitation for the flows tested below; it does not replace that critique's product findings or assign a new Nielsen score.
 

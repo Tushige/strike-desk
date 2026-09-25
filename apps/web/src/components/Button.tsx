@@ -13,12 +13,13 @@ export function Button({
   variant = 'plain',
   className = '',
   type = 'button',
+  dimWhenDisabled = true,
   ...props
-}: ComponentProps<'button'> & { variant?: keyof typeof VARIANTS }) {
+}: ComponentProps<'button'> & { variant?: keyof typeof VARIANTS; dimWhenDisabled?: boolean }) {
   return (
     <button
       type={type}
-      className={`desk-control focus-visible:outline-3 focus-visible:outline-offset-3 focus-visible:outline-sun disabled:opacity-40 ${VARIANTS[variant]} ${className}`}
+      className={`desk-control focus-visible:outline-3 focus-visible:outline-offset-3 focus-visible:outline-sun ${dimWhenDisabled ? 'disabled:opacity-40' : ''} ${VARIANTS[variant]} ${className}`}
       {...props}
     />
   );

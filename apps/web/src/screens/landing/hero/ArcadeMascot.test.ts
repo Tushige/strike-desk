@@ -2,7 +2,7 @@
 import { createElement } from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { ArcadeMascot } from '../src/screens/landing/ArcadeMascot';
+import { ArcadeMascot } from './ArcadeMascot';
 
 afterEach(() => {
   cleanup();

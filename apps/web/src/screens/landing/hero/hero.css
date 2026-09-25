@@ -1,0 +1,11 @@
+@layer components {
+  .landing-line-mask {
+    display: block;
+    overflow: clip;
+    padding-bottom: 0.08em;
+    margin-bottom: -0.08em;
+  }
+  .landing-line-mask > span {
+    display: block;
+  }
+}

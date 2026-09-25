@@ -39,7 +39,7 @@ export function ChoiceButton({
   selected,
   className,
   ...props
-}: ButtonProps & { selected: boolean }) {
+}: ButtonProps & { selected: boolean; dimWhenDisabled?: boolean }) {
   return <Button aria-pressed={selected} className={className} {...props} />;
 }
 

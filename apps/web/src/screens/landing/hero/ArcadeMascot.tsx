@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import artwork from '../../assets/landing-v2/robopup-blank-display.jpg';
+import artwork from '../../../assets/landing-v2/robopup-blank-display.jpg';
 import './arcade-mascot.css';
 
 function Eye({ right = false }: { right?: boolean }) {

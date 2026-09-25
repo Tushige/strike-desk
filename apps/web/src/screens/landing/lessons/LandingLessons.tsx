@@ -1,7 +1,7 @@
 import { useId, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
-import { ArrowUp } from '../ui';
-import { startWords } from '../words';
+import { ArrowUp } from '../../ui';
+import { startWords } from '../../words';
 import { LessonVisual } from './LessonVisual';
 
 const LESSONS = [
@@ -106,7 +106,7 @@ export function LandingLessons() {
         role="region"
         aria-labelledby={`${id}-button-${String(step)}`}
       >
-        <LessonVisual step={step} />
+        <LessonVisual step={step} key={step} />
       </div>
     </section>
   );

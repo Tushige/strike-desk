@@ -9,7 +9,9 @@ export function usePublicStats() {
   useEffect(() => {
     const controller = new AbortController();
     let disposed = false;
-    const timeout = setTimeout(() => { controller.abort(); }, 8000);
+    const timeout = setTimeout(() => {
+      controller.abort();
+    }, 8000);
     void (async () => {
       try {
         const response = await fetch('/api/stats', { signal: controller.signal });
@@ -22,8 +24,15 @@ export function usePublicStats() {
         clearTimeout(timeout);
       }
     })();
-    return () => { disposed = true; clearTimeout(timeout); controller.abort(); };
+    return () => {
+      disposed = true;
+      clearTimeout(timeout);
+      controller.abort();
+    };
   }, [attempt]);
-  const retry = () => { setState({ status: 'loading' }); setAttempt(value => value + 1); };
+  const retry = () => {
+    setState({ status: 'loading' });
+    setAttempt((value) => value + 1);
+  };
   return { state, retry };
 }

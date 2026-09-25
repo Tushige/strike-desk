@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { CommunityStats } from '../screens/landing/CommunityStats';
-import type { StatsState, StatsStyle } from '../screens/landing/CommunityStats';
-import { parseLandingStats } from '../screens/landing/publicStats';
-import { ArcadeMascot } from '../screens/landing/ArcadeMascot';
+import { CommunityStats } from '../screens/landing/stats/CommunityStats';
+import type { StatsState, StatsStyle } from '../screens/landing/stats/CommunityStats';
+import { parseLandingStats } from '../screens/landing/stats/publicStats';
+import { ArcadeMascot } from '../screens/landing/hero/ArcadeMascot';
 import mark from '../assets/brand/ticket-s.svg';
 import '../styles.css';
 import '../screens/landing/landing-v2.css';
@@ -84,7 +84,7 @@ function Study() {
           <p>$1,000,000 of pretend money. Five trading days to read the news, pick a direction, and make your move.</p>
           <a className="stats-context-play" href="/">Open the desk</a></div><ArcadeMascot /></section>
         <div className="stats-context-section">{stats(context)}</div>
-        <section className="stats-context-next"><h2>Made-up companies. Real decisions.</h2><p>The existing company roster continues here.</p></section>
+        <section className="stats-context-next"><h2>Fictional companies. Real decisions.</h2><p>The existing company roster continues here.</p></section>
       </div>
     </>}
     <footer className="stats-study-math"><h2>What the numbers mean</h2><p><strong>Games completed</strong> counts finished five-day games, not unique players.</p>

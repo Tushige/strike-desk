@@ -330,13 +330,11 @@
   border-radius: 4px;
   background: var(--color-line);
 }
-.loading-roster,
 .loading-table,
 .loading-chart {
   position: relative;
   overflow: hidden;
 }
-.loading-roster::after,
 .loading-table::after,
 .loading-chart::after {
   content: '';
@@ -359,26 +357,6 @@
   to {
     transform: translateX(110%);
   }
-}
-.loading-company-icon {
-  width: 36px;
-  height: 36px;
-  flex: none;
-}
-.loading-company-copy {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 8px;
-}
-.loading-company-copy > :first-child {
-  width: 75%;
-  max-width: 88px;
-  height: 13px;
-}
-.loading-company-copy > :last-child {
-  width: 90%;
-  max-width: 104px;
 }
 .loading-chip {
   color: transparent;

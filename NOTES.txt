@@ -10,3 +10,9 @@ node --version
 cd 'C:\Users\TushigOchirkhuyag\Documents\strike-desk-v2-port (Fable MAX)\strike-desk'
 corepack.cmd pnpm install --frozen-lockfile
 corepack.cmd pnpm dev
+
+--------------------
+$env:DATABASE_URL = Read-Host DATABASE_URL
+$env:STATS_ENVIRONMENT = "production"
+
+pnpm db:migrate

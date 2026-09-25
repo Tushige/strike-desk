@@ -1,9 +1,9 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArcadeMascot } from '../screens/landing/ArcadeMascot';
-import { CommunityStats } from '../screens/landing/CommunityStats';
-import type { StatsState } from '../screens/landing/CommunityStats';
+import { ArcadeMascot } from '../screens/landing/hero/ArcadeMascot';
+import { CommunityStats } from '../screens/landing/stats/CommunityStats';
+import type { StatsState } from '../screens/landing/stats/CommunityStats';
 import { GameHelp } from '../screens/GameHelp';
 import { CompanyTile, LogoMark } from '../screens/ui';
 import { PACE_WORDS, startWords } from '../screens/words';
@@ -144,7 +144,7 @@ function Landing({ take }: { take: Take }) {
       <div className="v2-community"><CommunityStats variant="ticket" state={STATS} onRetry={() => undefined} /></div>
 
       <section className="v2-cast" id="meet-the-market" aria-labelledby="v2-cast-title">
-        <h2 id="v2-cast-title">Made-up companies. Real decisions.</h2>
+        <h2 id="v2-cast-title">Fictional companies. Real decisions.</h2>
         <div className="v2-cast-space">
           <ul>{COMPANIES.map((company, index) => <li key={company.name}>
             <CompanyTile companyId={index} size="md" />

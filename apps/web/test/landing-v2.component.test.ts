@@ -17,6 +17,7 @@ beforeAll(async () => {
     unobserve() {}
     disconnect() {}
   });
+  vi.stubGlobal('matchMedia', () => ({ matches: true }));
   window.history.replaceState({}, '', '/');
   const { connection } = await import('../src/boot');
   close = () => { connection.close(); };

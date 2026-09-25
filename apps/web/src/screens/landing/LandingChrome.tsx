@@ -3,13 +3,9 @@ import { GameHelp } from '../GameHelp';
 
 function BrandLink() {
   return (
-    <a
-      className="inline-flex items-center gap-2.5 no-underline"
-      href="/"
-      aria-label="Strike Desk home"
-    >
+    <a className="inline-flex items-center gap-2.5 no-underline" href="/" aria-label="Pupside home">
       <LogoMark />
-      <span className="brand-wordmark">Strike Desk</span>
+      <span className="brand-wordmark">Pupside</span>
     </a>
   );
 }

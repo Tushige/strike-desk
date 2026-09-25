@@ -1,6 +1,6 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 import { Button } from '../components/Button';
-import ticketMark from '../assets/brand/ticket-s.svg';
+import ticketMark from '../assets/brand/ticket-p.svg';
 
 export const cx = (...parts: (string | false | null | undefined)[]): string =>
   parts.filter(Boolean).join(' ');

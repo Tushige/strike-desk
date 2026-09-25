@@ -4,7 +4,7 @@ import { CommunityStats } from '../screens/landing/stats/CommunityStats';
 import type { StatsState, StatsStyle } from '../screens/landing/stats/CommunityStats';
 import { parseLandingStats } from '../screens/landing/stats/publicStats';
 import { ArcadeMascot } from '../screens/landing/hero/ArcadeMascot';
-import mark from '../assets/brand/ticket-s.svg';
+import mark from '../assets/brand/ticket-p.svg';
 import '../styles.css';
 import '../screens/landing/landing-v2.css';
 import './landing-stats-study.css';
@@ -56,7 +56,7 @@ function Study() {
   const stats = (variant: StatsStyle) => <CommunityStats key={`${variant}-${String(entrance)}`} variant={variant} state={state} onRetry={retry} />;
 
   return <main className="stats-workbench" data-mobile={mobile}>
-    <header className="stats-study-heading"><a className="stats-study-brand" href="/"><img src={mark} alt="" /><span>Strike Desk</span></a>
+    <header className="stats-study-heading"><a className="stats-study-brand" href="/"><img src={mark} alt="" /><span>Pupside</span></a>
       <h1>A few numbers.<br /><span>A whole lot of decisions.</span></h1>
       <p>Three ways to show what players have done. Preview each beneath the existing hero before choosing.</p>
     </header>
@@ -78,7 +78,7 @@ function Study() {
       <div className="stats-context-choices" role="group" aria-label="Stats design">{DESIGNS.map(design => <button type="button" key={design.id}
         aria-pressed={context === design.id} onClick={() => { setContext(design.id); }}>{design.name}</button>)}</div>
       <div className="stats-study-preview stats-landing-context landing-v2">
-        <header className="v2-header"><a className="stats-study-brand" href="/"><img src={mark} alt="" /><span>Strike Desk</span></a>
+        <header className="v2-header"><a className="stats-study-brand" href="/"><img src={mark} alt="" /><span>Pupside</span></a>
           <nav aria-label="Landing preview navigation"><a href="/#how-to-play">How to play</a><a href="/#meet-the-market">The companies</a></nav></header>
         <section className="v2-hero"><div className="v2-hero-copy"><h2>Grow it.<br /><span>Or blow it.</span></h2>
           <p>$1,000,000 of pretend money. Five trading days to read the news, pick a direction, and make your move.</p>

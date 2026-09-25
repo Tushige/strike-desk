@@ -55,7 +55,7 @@ export function SummaryComposition({ frame, layout }: { frame: Frame; layout: Su
       <div key={layout} className={`summary-scene summary-${layout}`}>
         {(layout === 'receipt' || layout === 'scorecard') && (
           <div className="summary-masthead">
-            <strong>STRIKE DESK</strong>
+            <strong>Pupside</strong>
             <span>{finalWords.kicker}</span>
           </div>
         )}

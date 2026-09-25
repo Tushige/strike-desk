@@ -2,7 +2,7 @@
 
 Open [the local sketch](http://localhost:5173/scratch/landing-motion.html) with the web development server running.
 
-This experiment explores the requested Motion.dev contrast aesthetic in Strike Desk’s color scheme: a bright, solid field around a dark hero card, strong type, crisp edges, and compact supporting sections. The user approved the Lilac version for the production landing on 2026-09-23, including its lesson accordion and example cards while retaining live community statistics. Production and scratch now share the artwork and landing styles; this page retains palette experiments and preview controls. The approved change is landing-specific, with whole-game design tokens unchanged. See `docs/LANDING-CONTRAST.md` for production scope.
+This experiment explores the requested Motion.dev contrast aesthetic in Pupside’s color scheme: a bright, solid field around a dark hero card, strong type, crisp edges, and compact supporting sections. The user approved the Lilac version for the production landing on 2026-09-23, including its lesson accordion and example cards while retaining live community statistics. Production and scratch now share the artwork and landing styles; this page retains palette experiments and preview controls. The approved change is landing-specific, with whole-game design tokens unchanged. See `docs/LANDING-CONTRAST.md` for production scope.
 
 The screenshot-inspired sharp field and dark card intentionally override generic rounded-shape guidance on this landing. Design dials: **variance 7 / motion intensity 4 / visual density 4**.
 

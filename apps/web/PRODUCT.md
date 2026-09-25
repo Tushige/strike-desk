@@ -1,4 +1,4 @@
-# Strike Desk
+# Pupside
 
 <!-- impeccable:product-schema 1 -->
 
@@ -48,7 +48,7 @@ Existing implementation facts, grounded in the repository:
 
 Explain news events quietly at the chart and in News, keeping the original report and existing confidence labels. Do not add repetitive uncertainty disclaimers, flashing twist banners, or interrupting prompts. Daily and final reviews connect the player's direction and entry/exit timing to the event, then distinguish payout from profit. Requested 2026-09-23.
 
-The product name is Strike Desk. Keep explanations plain and approachable, introduce financial terminology in context, and consistently identify the companies and money as fictional.
+The product name is Pupside. Keep explanations plain and approachable, introduce financial terminology in context, and consistently identify the companies and money as fictional.
 
 Keep the existing playful company icons, color accents, and approachable typography. The user's Option Arcade prototype is a reference for restrained spacing and separate company navigation and news presentation, not for backend behavior or game rules.
 
@@ -91,6 +91,6 @@ No user research or measured learning outcomes were established during initializ
 
 ## Open Decisions
 
-The selected app identity is Ticket S: a yellow notched ticket with an S cutout, paired with title-case “Strike Desk” in Bricolage Grotesque 800. Use it consistently in landing and gameplay headers and the browser icon. Keep Lexend for body copy and Unbounded for existing display typography. Alternate identity studies remain on `/scratch/brand.html`.
+The selected app identity is Ticket S: a yellow notched ticket with an S cutout, paired with title-case “Pupside” in Bricolage Grotesque 800. Use it consistently in landing and gameplay headers and the browser icon. Keep Lexend for body copy and Unbounded for existing display typography. Alternate identity studies remain on `/scratch/brand.html`.
 
 Specific age ranges, classroom requirements, supported device commitments, and a formal accessibility conformance target have not been established. Existing keyboard and focus support are implementation evidence to preserve during refinements, not a claim of full conformance.

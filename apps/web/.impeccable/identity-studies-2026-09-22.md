@@ -1,6 +1,6 @@
 # Logo and wordmark studies
 
-The user requested several redesign directions for the app logo and name typography using the established scratch-review workflow. The name Strike Desk, midnight palette, yellow accent, and live identity remain unchanged.
+The user requested several redesign directions for the app logo and name typography using the established scratch-review workflow. The name Pupside, midnight palette, yellow accent, and live identity remain unchanged.
 
 `/scratch/brand.html` presents three custom vector directions, an incumbent reference, large lockups, header-sized applications, 16/24/40/64px icon checks, light-background versions, single-color mode, mobile-width mode, optional typeface mixing and replayable finite arrivals.
 
